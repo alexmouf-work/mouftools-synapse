@@ -37,6 +37,17 @@ export function wireFactors(spec: BrainSpec): Float64Array {
   return f;
 }
 
+/**
+ * The workbench's estimate of a brain's use per tick, before it has run: exact static cost plus every wire at the
+ * assumed activity CONFIG.cost.estimateActivity. Shown as "est." wherever wires are costed.
+ */
+export function estimate(spec: BrainSpec): { sensors: number; upkeep: number; wires: number; total: number } {
+  const s = staticCost(spec);
+  let wires = 0;
+  for (const f of wireFactors(spec)) wires += f * CONFIG.cost.estimateActivity;
+  return { sensors: s.sensors, upkeep: s.upkeep, wires, total: s.total + wires };
+}
+
 /** Signal-dependent cost of one tick: Σ factor × |sender output × weight|. Arrays are in compiled wire order. */
 export function fireCost(factor: Float64Array, from: Int32Array, w: Float64Array, vals: Float64Array): number {
   let s = 0;

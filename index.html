@@ -2,17 +2,62 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Synapse</title>
-  <style>
-    :root { --bg: #eef0f3; --text: #1d2330; --muted: #6a7385; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #15181e; --text: #e6e9ef; --muted: #98a1b2; } }
-    body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
-    p { color: var(--muted); max-width: 60ch; }
-  </style>
 </head>
 <body>
-  <h1>Synapse</h1>
-  <p>Nothing to play yet: the headless sim and evolution benchmark exist (milestone 1, step S1). The workbench comes next.</p>
+<div class="app">
+  <header class="top">
+    <span class="word">Synapse</span>
+    <button class="name" id="name" type="button" title="Rename">Untitled brain</button>
+    <div class="meter" id="meter" aria-label="Energy use">
+      <div class="bar"><i id="eFill"></i></div>
+      <span id="eVal"></span>
+    </div>
+    <select class="trainer" id="trainer" aria-label="Trainer">
+      <option>Evolution</option>
+      <option disabled>Backprop (soon)</option>
+      <option disabled>Actor-critic (soon)</option>
+      <option disabled>A_RP (soon)</option>
+    </select>
+    <button class="btn primary" id="train" type="button">Train</button>
+  </header>
+
+  <main class="work">
+    <div class="board">
+      <svg id="net" aria-label="Brain board, drawn over the car"></svg>
+      <div class="count" id="count"></div>
+      <div class="palette">
+        <button class="btn" id="addN" type="button">+ Neuron</button>
+        <button class="btn" id="addL" type="button">+ Layer</button>
+        <button class="btn" id="clear" type="button">Clear wires</button>
+      </div>
+    </div>
+    <aside class="side">
+      <section id="sel"></section>
+      <section>
+        <h2>Energy budget</h2>
+        <dl class="kv" id="ledger"></dl>
+      </section>
+      <section>
+        <h2>Start from</h2>
+        <div class="presets" id="presets">
+          <button class="btn" type="button" data-preset="starter">Starter</button>
+          <button class="btn" type="button" data-preset="minimal">Minimal</button>
+          <button class="btn" type="button" data-preset="deep">Deep</button>
+        </div>
+      </section>
+      <p class="note help">Drag from a sensor or a neuron's dot to wire it. Click a wire to cut it. Signals run left to right: car, hidden layers, wheels.</p>
+    </aside>
+  </main>
+</div>
+<div id="rotate"><div class="rot">
+  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="14" width="30" height="20" rx="3"/><path d="M14 8 A18 18 0 0 1 38 10 M38 10 V4 M38 10 H32"/></svg>
+  <h1>Turn your phone sideways</h1>
+  <p class="note">The builder needs the width: the car on the left, your network reading across to the wheels on the right.</p>
+  <button class="btn" id="stay" type="button">Continue in portrait</button>
+</div></div>
+<div id="toast" hidden></div>
+<script type="module" src="/src/client/main.ts"></script>
 </body>
 </html>

@@ -100,10 +100,21 @@ Changed from the plan, and why:
 - `yawMax` 3 rad/s added: the grip cap (grip / v) has no bound at standstill, so a pivot turn would spin at 60 rad/s.
 - Wheels have no transfer function and no upkeep (the workbench shows none); output = clamp(sum, −1, 1).
 - The wire cost uses the plan's c_fire 0.1 × |out × w|; the mock-up's 0.05 per wire is kept as the workbench's
-  static estimate (`cost.wireEstimate`). "Energy left" costs 0.3 (mock-up).
+  static estimate (S2: `cost.estimateActivity` 0.5 × fire, via `energy.estimate`). "Energy left" costs 0.3 (mock-up).
 - Over-budget noise is drawn per (car seed, node, tick), not from one sequential stream, so adding a node never shifts
   another node's noise.
 - `Trainer.step` is async (worker pools answer asynchronously); trainers take `{start: fresh | carry}`.
 - A generation runs only if its worst case fits what is left of T (whole generations).
 - Minimal keeps the one (empty) hidden line the workbench always shows, so its car → wheel wires span 2 (+50%).
 - Deep preset left for S2 (the plan does not define it; nothing in S1 uses it).
+
+## S2 notes (2026-10-30)
+Built as planned; checks green (edit-op unit tests, save parsing, `scripts/checks/workbench.ts` in headless Chromium).
+Reviewer notes followed: the workbench shows energy only through `energy.ts` (`estimate`, with the mock-up's 0.05 per
+wire as `cost.estimateActivity` 0.5 × fire, labelled "est."); the board is checked at the caps (3 × 10) and empty
+(no hidden neurons, car wired straight to the wheels: the one hidden line stays on the board, empty, as in the
+mock-up); a corrupt save gives Starter and a toast. Deep preset: five front eyes, road and speed → 4 ReLU → 3 tanh →
+wheels, 90% est. Additions beyond the mock-up, desktop unchanged: "Start from" presets in the side panel, rename,
+and narrow-board rules (one shared "HIDDEN LAYERS" heading when lines are close, no ⊕ on a full line, ⊕ kept clear of
+the palette, a colliding front-eye label moves above its pin). The mock-up itself, opened on a phone, renders zoomed
+out (it has no viewport meta), which hid the label collision there.

@@ -19,7 +19,9 @@ export const CONFIG = {
     bias: 0,
     fire: 0.1, // per wire per tick: fire × |sender output × weight| × (1 + skip × (span − 1))
     skip: 0.5, // surcharge per extra layer a wire spans
-    wireEstimate: 0.05, // the workbench's static per-wire estimate (≈ fire × typical |out × w|); display only
+    // Workbench estimate ("est."): before a brain has run, each wire is costed at an assumed mean |sender output × w|
+    // of this much, so a span-1 wire shows fire × 0.5 = 0.05 per tick (the approved mock-up's figure).
+    estimateActivity: 0.5,
   },
 
   /** Neuron upkeep per tick by transfer function (hidden neurons; wheel outputs have no transfer function). */

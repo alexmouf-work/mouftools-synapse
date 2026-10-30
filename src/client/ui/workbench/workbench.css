@@ -1,0 +1,115 @@
+/* Workbench styles: copied from the approved mock-up (reference/builder-mockup.html); additions at the end. */
+/* Layout: a plain workbench with a light game touch. The board reads left to right: the car is the input layer (each
+   sensor sits where it is on the car), it projects onto flat lines of hidden neurons, and those drive the four wheel
+   outputs in their own line. Narrow side panel; phones use it in landscape. */
+:root {
+  --bg: #eef0f3;
+  --canvas: #f7f8fa;
+  --dot: #d3d8e0;
+  --panel: #ffffff;
+  --line: #dde1e8;
+  --text: #1d2330;
+  --muted: #6a7385;
+  --accent: #2f6fde;
+  --accent-soft: #e3ecfc;
+  --wire: #9aa3b4;
+  --minus: #d9465b;
+  --node: #ffffff;
+  --car: #5b6b88;
+  --shadow: 0 1px 2px rgba(20, 30, 50, .08), 0 2px 8px rgba(20, 30, 50, .06);
+  --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-soft: #24304a; --wire: #5f6879; --minus: #ff7085; --node: #232933; --car: #9fb0d0;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-soft: #24304a; --wire: #5f6879; --minus: #ff7085; --node: #232933; --car: #9fb0d0;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
+button, select { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; }
+
+.top { display: flex; align-items: center; gap: 10px 16px; min-width: 0; }
+.word { font-weight: 700; font-size: 18px; }
+.name { border: 1px solid transparent; background: none; padding: 4px 6px; font-size: 15px; color: var(--muted); border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.name:hover { border-color: var(--line); }
+.meter { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
+.meter .bar { width: 180px; height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; flex: none; }
+.meter .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 6px; transition: width .25s ease; }
+.meter.over .bar i { background: var(--minus); }
+.meter.over .bar { animation: buzz .9s steps(2) infinite; }
+@keyframes buzz { 50% { transform: translateX(1px); } }
+.meter span { font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.meter span b { font-family: var(--mono); font-weight: 500; }
+.meter.over span { color: var(--minus); }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: 9px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.trainer { border: 1px solid var(--line); background: var(--panel); padding: 7px 10px; border-radius: 9px; }
+
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; min-height: 0; }
+.board { position: relative; min-height: 300px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: radial-gradient(var(--dot) 1.2px, transparent 1.3px) 0 0 / 22px 22px, var(--canvas); }
+#net { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+.palette { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+.count { position: absolute; left: 12px; bottom: 14px; font-size: 12px; color: var(--muted); }
+
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 16px; overflow: auto; min-height: 0; }
+.side > section { min-width: 0; }
+.side h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+.fx { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.fx button { border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 7px 8px; cursor: pointer; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 0 7px; text-align: left; min-width: 0; }
+.fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.fx svg { width: 20px; height: 13px; grid-row: span 2; }
+.fx small { font-family: var(--mono); color: var(--muted); font-size: 11px; }
+.note { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.kv .t { border-top: 1px solid var(--line); padding-top: 5px; color: var(--text); font-weight: 700; }
+.link { background: none; border: 0; color: var(--minus); padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* svg */
+.lbl { paint-order: stroke; stroke: var(--canvas); stroke-width: 4px; stroke-linejoin: round; }
+.pop { animation: pop .28s cubic-bezier(.3, 1.6, .5, 1) both; transform-box: fill-box; transform-origin: center; }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } }
+.flow { stroke-dasharray: 3 7; animation: flow 1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -10; } }
+
+#toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 9px; max-width: calc(100% - 32px); z-index: 5; }
+
+/* phones: landscape is the layout */
+#rotate { display: none; }
+@media (max-height: 540px) and (orientation: landscape) {
+  .app { gap: 6px; padding-block: 6px; }
+  .word { font-size: 16px; } .name { display: none; }
+  .meter .bar { width: 110px; } .btn, .trainer { padding: 5px 9px; }
+  .work { grid-template-columns: minmax(0, 1fr) 200px; gap: 6px; }
+  .side { padding: 10px; gap: 10px; }
+  .side .note.help { display: none; }
+  .count { display: none; }
+}
+@media (orientation: portrait) and (max-width: 700px) {
+  body:not(.portrait-ok) #rotate { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg);
+    padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(520px, 72vh) auto; }
+  .top { flex-wrap: wrap; } .meter { margin-left: 0; width: 100%; } .meter .bar { flex: 1; width: auto; }
+}
+.rot { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 280px; }
+.rot svg { width: 72px; height: 72px; color: var(--accent); }
+.rot h1 { margin: 0; font-size: 20px; }
+@media (prefers-reduced-motion: reduce) { .pop, .flow, .meter.over .bar { animation: none; } .meter .bar i { transition: none; } }
+
+/* additions beyond the mock-up: rename field, presets, line count on phones */
+input.name { border-color: var(--line); background: var(--panel); color: var(--text); width: 16ch; cursor: text; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets .btn { padding: 5px 10px; }
+.presets .btn.confirm { border-color: var(--minus); color: var(--minus); }

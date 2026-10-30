@@ -3,7 +3,8 @@
 What exists, updated in the same commit as the code. The intended full layout is §1 of
 `docs/plans/2026-10-30-solo-loop.md`; milestone steps are in `docs/plans/2026-10-30-sandbox-loop.md`.
 
-Built so far: **S1, the headless sim and evolution benchmark**. No workbench, renderer or game screens yet.
+Built so far: **S1, the headless sim and evolution benchmark**, and **S2, the workbench** (build a brain, see its
+energy, saved in the browser). No training view, renderer or drive view yet.
 
 ## Stack
 Vite + TypeScript, Vitest, tsx for Node scripts, Playwright (dev only, browser bench). No backend. Three.js arrives
@@ -21,8 +22,8 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
 | `sim/spec.ts` | Fixed pins (10 inputs, 4 wheel outputs), `BrainSpec`, `Genome`, validation. |
-| `sim/energy.ts` | THE energy cost function (static cost, wire factors, fire cost, noise level, Energy left). |
-| `sim/brain.ts` | Spec → compiled net, evaluation, Starter and Minimal presets, canonical genome JSON and hash. |
+| `sim/energy.ts` | THE energy cost function (static cost, wire factors, fire cost, noise level, Energy left) and the workbench `estimate`. |
+| `sim/brain.ts` | Spec → compiled net, evaluation, presets (Starter, Minimal, Deep), pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | The 10 input readings (only wired inputs are computed). |
@@ -50,6 +51,19 @@ and every policy in a generation sees the same noise (common random numbers).
 Upgrade invariance (tested for all four transfer functions over 600 ticks): adding w = 0 wires or neurons, even a
 whole new layer, leaves every wheel output and car position identical **while the brain is under budget and Energy
 left is unwired**. A new neuron's upkeep changes the energy used, and those two read energy by design.
+
+### Edit ops
+Every change the workbench makes is a pure function in `brain.ts` on a `Draft = {genome, nextId}`: `addWire`,
+`removeWire`, `unplug`, `clearWires`, `addNeuron`, `addLayer`, `removeNeuron`, `setAct`, with `wireCheck` naming why a
+wire is refused (`into-car`, `backward`, `duplicate`, …). Neuron ids are never reused (`nextId`). Kept wires keep
+their weights; new wires start at 0. Removing the last neuron of a line removes the line (unless it is the only one)
+and later lines move down; wires whose ends are gone are dropped. Caps: 3 lines × 10 neurons.
+
+### Energy as the workbench shows it
+`energy.estimate(spec)` = exact static cost (wired sensors + upkeep) + every wire at `wireFactor(span) ×
+CONFIG.cost.estimateActivity` (0.5, so a span-1 wire shows 0.05 per tick, the mock-up's figure). The meter, the
+ledger ("Wires (est.)"), the per-function and per-sensor costs and the noise figure all come from `energy.ts`, shown
+as % of the round-1 budget. The client has no cost table of its own.
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws
@@ -81,12 +95,29 @@ The Env also offers `openCar` (one car stepped tick by tick, metered per tick, o
 wheels) for the gradient trainers to come; neuroevolution does not use it.
 
 ## src/client
-Only the dev-only benchmark so far: `bench/index.html` → `src/client/bench/main.ts` runs one phase in the browser on
-`BrowserPool` and exposes the result on `window.__bench`. `index.html` is a placeholder. The production build
-(`vite build`) excludes `bench/`.
+- `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono), then the
+  workbench.
+- `ui/workbench/` — a TypeScript port of `reference/builder-mockup.html`: `workbench.css` (the mock-up's styles,
+  plus the rename field and presets), `pins.ts` (where each pin sits on the car, icons, panel text; pin ids and
+  labels come from `spec.ts`), `store.ts` (save/load), `workbench.ts` (board layout and drawing, wiring by drag,
+  side panel, meter, toasts). Same look in light and dark; phones use it in landscape, portrait shows the "turn
+  sideways" card. Additions to the mock-up: a "Start from" section (Starter / Minimal / Deep; a second click within
+  3 s confirms, since it replaces the brain), a real rename, and three narrow-board rules that leave the desktop
+  layout untouched: several lines too close for "HIDDEN n" share one "HIDDEN LAYERS" heading with a number per line;
+  a full line has no ⊕ and a ⊕ that would sit under the palette is kept above it; a front-diagonal eye label that
+  runs into another label moves above its pin. Neurons shrink (17 → down to 6 px) only when a full line needs it.
+- Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 1, name, nextId, genome}`
+  (canonical genome JSON). Reads and writes are in try/catch: a missing save starts from Starter; an unreadable one
+  starts from Starter with a toast saying so; a browser that refuses storage gets a toast that changes last until the
+  tab closes. Train shows a "next build step" toast until S3.
+- `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
+  it out.
 
 ## scripts
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
 - `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`), `bench.ts`
   (+ `bench-baseline.json`, Node time ≤ baseline × 1.3), `bench-browser.ts` (headless Chrome time + hash = Node).
-- `npm run check` runs types, purity, unit + contract tests, determinism and the bench time check.
+- `scripts/checks/workbench.ts` — the workbench in headless Chromium: drag a wire, backward wires refused, % shown =
+  `energy.estimate`, reload keeps the brain, corrupt save → Starter + toast, 844×390 without horizontal scroll,
+  portrait card, 3 × 10 and empty brains without overlaps; screenshots to `out/s2/`.
+- `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check and the workbench check.

@@ -7,7 +7,7 @@ import { Hasher } from '../hash';
 import { hashU } from '../rng';
 import { fireCost, staticCost, wiredInputs, wireFactors } from './energy';
 import {
-  INPUTS, OUTPUTS, inputIdx, outputIdx, validateGenome, type BrainSpec, type Genome,
+  depthOf, INPUTS, OUTPUTS, inputIdx, outputIdx, validateGenome, type BrainSpec, type ConnSpec, type Genome, type NodeSpec,
 } from './spec';
 
 const ACT_CODE: Record<Act, number> = { step: 0, relu: 1, sigmoid: 2, tanh: 3 };
@@ -143,7 +143,138 @@ export function minimalSpec(): BrainSpec {
   return { v: 1, layers: 1, nodes: [], conns };
 }
 
+/** Deep: the five front eyes, road and speed → 4 ReLU → 3 tanh → wheels (two hidden lines, about 90% est.). */
+export function deepSpec(): BrainSpec {
+  const l1 = ['n1', 'n2', 'n3', 'n4'], l2 = ['n5', 'n6', 'n7'];
+  const conns: ConnSpec[] = [];
+  for (const from of ['i:l', 'i:fl', 'i:f', 'i:fr', 'i:r', 'i:road', 'i:spd']) for (const to of l1) conns.push({ from, to });
+  for (const from of l1) for (const to of l2) conns.push({ from, to });
+  for (const from of l2) for (const o of OUTPUTS) conns.push({ from, to: o.id });
+  return {
+    v: 1,
+    layers: 2,
+    nodes: [
+      ...l1.map((id): NodeSpec => ({ id, layer: 1, act: 'relu', dropout: 0 })),
+      ...l2.map((id): NodeSpec => ({ id, layer: 2, act: 'tanh', dropout: 0 })),
+    ],
+    conns,
+  };
+}
+
+export const PRESETS = { starter: starterSpec, minimal: minimalSpec, deep: deepSpec } as const;
+export type PresetName = keyof typeof PRESETS;
+
 export const zeroGenome = (spec: BrainSpec): Genome => ({ spec, w: spec.conns.map(() => 0) });
+
+// ---- edit ops (pure: each returns a new draft; the workbench calls nothing else to change a brain) ----
+
+/** A brain being edited: the genome plus the next neuron id, so ids are never reused after a delete. */
+export interface Draft { genome: Genome; nextId: number }
+
+export type EditRefusal =
+  | 'same' // a wire from a node to itself
+  | 'into-car' // a wire ending on an input pin
+  | 'from-wheel' // a wire starting at a wheel
+  | 'unknown' // an id that is not on the board
+  | 'backward' // not to a later layer
+  | 'duplicate'
+  | 'layer-full' // CONFIG.brain.maxPerLayer
+  | 'max-layers'; // CONFIG.brain.maxLayers
+
+export type EditResult = { ok: true; draft: Draft; id?: string } | { ok: false; reason: EditRefusal };
+
+const idNum = (id: string): number => Number(id.slice(1));
+
+export function draftOf(g: Genome, nextId = 1): Draft {
+  validateGenome(g);
+  let next = nextId;
+  for (const n of g.spec.nodes) next = Math.max(next, idNum(n.id) + 1);
+  return { genome: g, nextId: next };
+}
+
+/** Build a draft from a spec and per-wire weights, dropping wires whose ends are gone or no longer forward. */
+function rebuild(spec: BrainSpec, w: number[], nextId: number): Draft {
+  const ids = new Set(spec.nodes.map((n) => n.id));
+  const known = (id: string) => inputIdx(id) !== undefined || outputIdx(id) !== undefined || ids.has(id);
+  const conns: ConnSpec[] = [], ws: number[] = [];
+  spec.conns.forEach((c, k) => {
+    if (known(c.from) && known(c.to) && depthOf(spec, c.from) < depthOf(spec, c.to)) { conns.push(c); ws.push(w[k]); }
+  });
+  const genome = { spec: { ...spec, conns }, w: ws };
+  validateGenome(genome);
+  return { genome, nextId };
+}
+
+/** Why a wire from → to would be refused, or null if it is allowed. */
+export function wireCheck(spec: BrainSpec, from: string, to: string): EditRefusal | null {
+  if (from === to) return 'same';
+  if (inputIdx(to) !== undefined) return 'into-car';
+  if (outputIdx(from) !== undefined) return 'from-wheel';
+  const has = (id: string) => inputIdx(id) !== undefined || outputIdx(id) !== undefined || spec.nodes.some((n) => n.id === id);
+  if (!has(from) || !has(to)) return 'unknown';
+  if (depthOf(spec, from) >= depthOf(spec, to)) return 'backward';
+  if (spec.conns.some((c) => c.from === from && c.to === to)) return 'duplicate';
+  return null;
+}
+
+/** New wires start at weight 0 (ruling 2026-10-30), so the trained behaviour is unchanged until retraining. */
+export function addWire(d: Draft, from: string, to: string): EditResult {
+  const g = d.genome, why = wireCheck(g.spec, from, to);
+  if (why) return { ok: false, reason: why };
+  return { ok: true, draft: rebuild({ ...g.spec, conns: [...g.spec.conns, { from, to }] }, [...g.w, 0], d.nextId) };
+}
+
+export function removeWire(d: Draft, from: string, to: string): Draft {
+  const g = d.genome, keep = g.spec.conns.map((c) => !(c.from === from && c.to === to));
+  return rebuild({ ...g.spec, conns: g.spec.conns.filter((_, k) => keep[k]) }, g.w.filter((_, k) => keep[k]), d.nextId);
+}
+
+/** Remove every wire touching a pin or neuron. */
+export function unplug(d: Draft, id: string): Draft {
+  const g = d.genome, keep = g.spec.conns.map((c) => c.from !== id && c.to !== id);
+  return rebuild({ ...g.spec, conns: g.spec.conns.filter((_, k) => keep[k]) }, g.w.filter((_, k) => keep[k]), d.nextId);
+}
+
+export function clearWires(d: Draft): Draft {
+  return rebuild({ ...d.genome.spec, conns: [] }, [], d.nextId);
+}
+
+export function addNeuron(d: Draft, layer: number, act: Act = 'tanh'): EditResult {
+  const s = d.genome.spec;
+  if (!Number.isInteger(layer) || layer < 1 || layer > s.layers) return { ok: false, reason: 'unknown' };
+  if (s.nodes.filter((n) => n.layer === layer).length >= CONFIG.brain.maxPerLayer) return { ok: false, reason: 'layer-full' };
+  const id = `n${d.nextId}`;
+  const draft = rebuild({ ...s, nodes: [...s.nodes, { id, layer, act, dropout: 0 }] }, d.genome.w, d.nextId + 1);
+  return { ok: true, draft, id };
+}
+
+/** Add a hidden line after the last one, with one neuron in it. Wires into the wheels now span one more layer. */
+export function addLayer(d: Draft, act: Act = 'tanh'): EditResult {
+  const s = d.genome.spec;
+  if (s.layers >= CONFIG.brain.maxLayers) return { ok: false, reason: 'max-layers' };
+  const grown = rebuild({ ...s, layers: s.layers + 1 }, d.genome.w, d.nextId);
+  return addNeuron(grown, s.layers + 1, act);
+}
+
+/**
+ * Delete a neuron and its wires. If that empties its line and there is more than one line, the line goes too and
+ * later lines move down one (every wire still runs forward, so none is lost to the renumbering).
+ */
+export function removeNeuron(d: Draft, id: string): Draft {
+  const s = d.genome.spec, n = s.nodes.find((m) => m.id === id);
+  if (!n) return d;
+  let nodes = s.nodes.filter((m) => m.id !== id), layers = s.layers;
+  if (layers > 1 && !nodes.some((m) => m.layer === n.layer)) {
+    nodes = nodes.map((m) => (m.layer > n.layer ? { ...m, layer: m.layer - 1 } : m));
+    layers--;
+  }
+  return rebuild({ ...s, layers, nodes }, d.genome.w, d.nextId);
+}
+
+export function setAct(d: Draft, id: string, act: Act): Draft {
+  const s = d.genome.spec;
+  return rebuild({ ...s, nodes: s.nodes.map((m) => (m.id === id ? { ...m, act } : m)) }, d.genome.w, d.nextId);
+}
 
 // ---- canonical JSON + hash ----
 
