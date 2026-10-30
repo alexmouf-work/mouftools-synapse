@@ -1,6 +1,6 @@
 id,item,status,notes
 M1-0,Builder menu mock-up,done,reference/builder-mockup.html; principal: "looks excellent"
-M1-1,Headless sim + evolution benchmark (go/no-go),in progress,docs/plans/2026-10-30-sandbox-loop.md S1
+M1-1,Headless sim + evolution benchmark (go/no-go),in progress,docs/plans/2026-10-30-sandbox-loop.md S1; sim + trainer + checks built; criterion (b) short; levers next
 M1-2,Workbench,planned,S2
 M1-3,Training view,planned,S3
 M1-4,Drive view,planned,S4

@@ -58,3 +58,21 @@ The principal connects the repo in Vercel and adds the `synapse` CNAME (no Verce
 Build → train → drive → edit → retrain works without a reload in desktop Chrome (Firefox and Safari: the principal
 checks). All checks green (types, unit, purity, determinism, bench, Playwright, render smoke). ARCHITECTURE.md
 describes what exists; ROADMAP.csv current; this plan marked historical.
+
+## S1 results (2026-10-30)
+Measured in the 4-core build container (Xeon 2.1 GHz, Node 22, headless Chromium 1243 via Playwright), not the
+reference desktop. Full report, fitness per generation and per-seed path SVGs: `npm run bench` → `out/bench/`.
+
+**T fixed at 6,000,000** by the plan's rule: one Starter phase takes 2.39 s for 3M car-ticks in headless Chrome on
+the default 3 workers (2.16 s on 4), so 7 s fits 9.5M here, clamped to 6M. (e) is to confirm on the reference
+desktop: 6M stays valid there if it runs at ≥ 0.7× this container's speed.
+
+Lever log (seeds 1–20, Starter, budget 10):
+
+| run | (a) median final / gen 1 | (b) ≥ 80% lap | (c) | (d) Minimal ≥ 50% | (f) |
+|---|---|---|---|---|---|
+| T 3M (plan default) | 1227 / 103 m, ×11.9 | 11/20 ✗ | 20/20 | 18/20 | pass |
+| T 6M (fixed) | 1349 / 103 m, ×13.1 | 13/20 ✗ | 20/20 | 16/20 | pass |
+
+Training fitness climbs on every seed (gen-1 best ≈ 35–225 m → 870–1100 m per 20 s episode, near the car's top
+speed), but on the unseen track the final champion often scrapes a wall or stalls: overfitting to two tracks.

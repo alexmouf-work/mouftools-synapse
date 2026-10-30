@@ -1,0 +1,29 @@
+{
+  "name": "synapse",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check:types": "tsc --noEmit -p .",
+    "check:unit": "vitest run",
+    "check:purity": "tsx scripts/checks/purity.ts",
+    "check:determinism": "tsx scripts/checks/determinism.ts",
+    "check:bench": "tsx scripts/checks/bench.ts",
+    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench",
+    "bench": "tsx scripts/sim/bench.ts",
+    "bench:browser": "tsx scripts/checks/bench-browser.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "playwright": "1.63.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "3.2.7"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

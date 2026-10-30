@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Synapse bench</title>
+  <style>
+    :root { --bg: #eef0f3; --panel: #fff; --line: #dde1e8; --text: #1d2330; --muted: #6a7385; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #15181e; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2; } }
+    body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
+    pre { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow-x: auto; font: 12.5px/1.5 ui-monospace, Menlo, monospace; }
+    p { color: var(--muted); max-width: 70ch; }
+  </style>
+</head>
+<body>
+  <h1>Evolution bench</h1>
+  <p>One training phase of the Starter brain, the same code and split as the Node bench. Query: <code>?seed=1&amp;workers=4&amp;runs=1</code>. Dev only.</p>
+  <pre id="out">running…</pre>
+  <script type="module" src="/src/client/bench/main.ts"></script>
+</body>
+</html>

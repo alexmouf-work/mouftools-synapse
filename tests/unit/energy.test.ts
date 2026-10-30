@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+import { CONFIG } from '../../src/common/config';
+import { compile, evalNet, starterSpec } from '../../src/common/sim/brain';
+import { energyLeft, noiseLevel, percentOfBudget, staticCost, wireFactor } from '../../src/common/sim/energy';
+import { Runner } from '../../src/common/sim/race';
+import type { BrainSpec } from '../../src/common/sim/spec';
+import { generateTrack } from '../../src/common/sim/track';
+import { hashU } from '../../src/common/rng';
+
+describe('energy maths', () => {
+  it('Starter static cost = 5 eyes + road + speed + energy left + 2 tanh + 1 ReLU', () => {
+    const s = staticCost(starterSpec());
+    expect(s.sensors).toBeCloseTo(5 * 0.6 + 0.6 + 0.3 + 0.3, 12);
+    expect(s.upkeep).toBeCloseTo(0.5 + 0.25 + 0.5, 12);
+    expect(percentOfBudget(s.total, CONFIG.budget[0])).toBeCloseTo(54.5, 9);
+  });
+  it('skip surcharge: +50% per extra layer spanned', () => {
+    expect(wireFactor(1)).toBeCloseTo(0.1, 15);
+    expect(wireFactor(2)).toBeCloseTo(0.15, 15);
+    expect(wireFactor(3)).toBeCloseTo(0.2, 15);
+    expect(() => wireFactor(0)).toThrow();
+  });
+  it('per-tick use = static + Σ factor·|out·w| (hand-computed)', () => {
+    // layers 2: speed → n1 (span 1), n1 → wheel (span 2), bias → wheel (span 3)
+    const spec: BrainSpec = {
+      v: 1, layers: 2, nodes: [{ id: 'n1', layer: 1, act: 'tanh', dropout: 0 }],
+      conns: [{ from: 'i:spd', to: 'n1' }, { from: 'n1', to: 'o:fr' }, { from: 'i:bias', to: 'o:fl' }],
+    };
+    const net = compile({ spec, w: [2, -1.5, 0.5] });
+    const inputs = new Float64Array(10); inputs[8] = 0.25; inputs[9] = 1;
+    const vals = new Float64Array(net.nNodes);
+    const used = evalNet(net, inputs, vals, 0, 0, 0);
+    const h = Math.tanh(0.5);
+    const expected = 0.3 + 0.5 + 0.1 * Math.abs(0.25 * 2) + 0.15 * Math.abs(h * -1.5) + 0.2 * Math.abs(1 * 0.5);
+    expect(used).toBeCloseTo(expected, 13);
+  });
+  it('overage → noise level a, and Energy left', () => {
+    expect(noiseLevel(5, 10)).toBe(0);
+    expect(noiseLevel(10, 10)).toBe(0);
+    expect(noiseLevel(15, 10)).toBeCloseTo(0.5, 15);
+    expect(noiseLevel(20, 10)).toBe(1);
+    expect(noiseLevel(35, 10)).toBe(1);
+    expect(energyLeft(0, 10)).toBe(1);
+    expect(energyLeft(2.5, 10)).toBeCloseTo(0.75, 15);
+    expect(energyLeft(14, 10)).toBe(0);
+  });
+  it('noise mixes after the transfer function: (1 − a)·clean + a·U(−1, 1)', () => {
+    const spec: BrainSpec = { v: 1, layers: 1, nodes: [{ id: 'n1', layer: 1, act: 'sigmoid', dropout: 0 }],
+      conns: [{ from: 'i:bias', to: 'n1' }, { from: 'n1', to: 'o:rl' }] };
+    const net = compile({ spec, w: [0.8, 1] });
+    const inputs = new Float64Array(10); inputs[9] = 1;
+    const vals = new Float64Array(net.nNodes);
+    const a = 0.3, seed = 1234, tick = 17;
+    evalNet(net, inputs, vals, a, seed, tick);
+    const u = (k: number) => 2 * hashU(seed, k, tick) - 1;
+    const bias = 0.7 * 1 + a * u(9);
+    const h = 0.7 * (1 / (1 + Math.exp(-0.8 * bias))) + a * u(101);
+    const o = 0.7 * Math.max(-1, Math.min(1, h)) + a * u(12);
+    expect(vals[9]).toBeCloseTo(bias, 14);
+    expect(vals[10]).toBeCloseTo(h, 14);
+    expect(vals[net.outStart + 2]).toBeCloseTo(o, 14);
+    evalNet(net, inputs, vals, 1, seed, tick);
+    expect(vals[net.outStart + 2]).toBeCloseTo(u(12), 14); // all noise at 200%
+  });
+  it('a brain far over budget drives on noise', () => {
+    const spec = starterSpec();
+    const net = compile({ spec, w: spec.conns.map(() => 4) });
+    const r = new Runner(), t = generateTrack(3);
+    const res = r.run(net, t, { ticks: 100, budget: 2, noiseSeed: 5, earlyStop: false });
+    expect(res.ticks).toBe(100);
+  });
+});
