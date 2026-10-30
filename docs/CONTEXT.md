@@ -27,3 +27,8 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - On the first builder mock-up (race-HUD styled): "this isn't what I wanted. It's way too \"racing game\". The game isn't
   a racing game as a base, it's a sandbox game. the racing part is one aspect. make it more simple, more plain, more
   sandbox." → the builder is a plain workbench; racing styling stays in the racing arena.
+- "I want the inputs and outputs to be fixed at all times, but whether or not they are used is the user's decision"
+  → every pin is always on the board; an input costs energy only while wired.
+- "maybe we have 6 directions for the \"eyes\" in a circle, with the exception of the two back angled ones. we keep the
+  backwards one, and the five front-sideways ones." → eyes: left, front-left, front, front-right, right, back.
+- "simplify and gameify the GUI just slightly" → energy as a battery, arrow icons on pins, small feedback.
