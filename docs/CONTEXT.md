@@ -42,3 +42,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "the car should only be the position of the input layer. can you find a way to make that work? I see the input as
   projecting to a flat line of neurons in the hidden layer" → board reads left to right: car (inputs) → hidden lines →
   wheel outputs in their own line.
+- On the car-as-input-layer builder: "looks excellent."
+- Milestone 1 is the sandbox loop (build → train → drive, no timers); the timed match comes after. "build the plan end
+  to end".

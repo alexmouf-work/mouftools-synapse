@@ -1,13 +1,11 @@
 id,item,status,notes
-M1-0,Builder menu mock-up,built,reference/builder-mockup.html (v2: plain sandbox workbench); awaiting the principal's look
-M1-1,Headless sim + evolution benchmark (go/no-go),planned,plan step 1
-M1-2,Race view (renderer port) + Vercel,planned,plan step 2
-M1-3,Brain editor,planned,plan step 3; follows the approved builder mock-up
-M1-4,Training in workers + training view,planned,plan step 4
-M1-5,Match loop,planned,plan step 5
-M1-6,Bots,planned,plan step 6
-M1-7,Scoring HUD scouting,planned,plan step 7
-M1-8,Production hardening,planned,plan step 8
-M2,Lab + backprop trainer + trainer picker,later,
-M3,Actor-critic then A_RP,later,
-M4,Multiplayer,later,
+M1-0,Builder menu mock-up,done,reference/builder-mockup.html; principal: "looks excellent"
+M1-1,Headless sim + evolution benchmark (go/no-go),in progress,docs/plans/2026-10-30-sandbox-loop.md S1
+M1-2,Workbench,planned,S2
+M1-3,Training view,planned,S3
+M1-4,Drive view,planned,S4
+M1-5,Ship to synapse.mouftools.com,planned,S5; principal connects Vercel + CNAME
+M2,Match mode: 5 rounds vs 4 bots with timers,later,solo-loop plan steps 5-7
+M3,Lab + backprop trainer + trainer picker,later,
+M4,Actor-critic then A_RP,later,
+M5,Multiplayer,later,
