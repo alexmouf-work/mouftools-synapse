@@ -1,0 +1,26 @@
+# Context: why things are the way they are
+
+Rulings from the principal, verbatim where quoted. Newest last.
+
+## 2026-10-30
+- The player builds a network in layers (inputs, hidden, outputs) and chooses the connections; "the user creates a
+  neural network, and watches it train".
+- Evolution finds the weights; training is shown live, simulated very fast.
+- Match: 5 players, humans and/or computer. "the users would get a 1 minute first build phase, followed by a 10 second
+  train phase, then a 30 second compete phase. Round 2 you get a 30 second upgrade phase, then 10s retrain, 30s
+  compete. we do 5 rounds per game". Same game mode all match.
+- "weights are definitely separate per game." Weights carry over between rounds.
+- Energy: a maximum per tick (20 ticks/s), growing every round. "when over budget, we add noise to every signal
+  proportionally to how far over budget the went, until the full system is noise."
+- First mode: racing, in 3-D ("I think it'll be cooler"). Look: "low-poly ISH but high res very stylised …
+  quasi-trackmania turbo". The look mock-up (`reference/look-mockup.html`): "this is FIRE. it's exactly what I was
+  going for with the style."
+- "The cars will be ghosts with respect to each other, so they can pass through each other freely. this way training
+  will be fairer."
+- Name: "the app is just going to be called \"Synapse\"", at synapse.mouftools.com, hosted on Vercel.
+- First milestone: solo vs 4 bots; multiplayer after. Desktop first.
+- "I see this as a tool that I can use to teach my degree content back to myself and my peers." Several learning
+  algorithms; the trainer is part of each player's build. An untimed Lab, early. Trainer order after evolution:
+  backprop (copy a teacher), actor-critic, A_RP.
+- "make sure that you work on the \"main\" branch and commit there the whole way through. let's mock up the builder
+  menu before we continue."
