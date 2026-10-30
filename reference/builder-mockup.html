@@ -4,8 +4,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: a plain workbench with a light game touch. Thin top bar with an energy battery, a dot-grid board,
-   a narrow side panel. Every input pinned left and every output pinned right, always; wiring one is what uses it. */
+/* Layout: a plain workbench with a light game touch. Thin top bar with the energy meter, a dot-grid board with a
+   translucent car in the middle, a narrow side panel. Pins sit where they are on the car: eyes round it, wheel outputs
+   on its wheels, energy in its middle. Neurons go anywhere. Phones use it in landscape. */
 :root {
   --bg: #eef0f3;
   --canvas: #f7f8fa;
@@ -19,18 +20,18 @@
   --wire: #9aa3b4;
   --minus: #d9465b;
   --node: #ffffff;
-  --cell: #e2e6ec;
+  --car: #5b6b88;
   --shadow: 0 1px 2px rgba(20, 30, 50, .08), 0 2px 8px rgba(20, 30, 50, .06);
   --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
-  --accent: #6b9cff; --accent-soft: #24304a; --wire: #5f6879; --minus: #ff7085; --node: #232933; --cell: #2c323d;
+  --accent: #6b9cff; --accent-soft: #24304a; --wire: #5f6879; --minus: #ff7085; --node: #232933; --car: #9fb0d0;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
-  --accent: #6b9cff; --accent-soft: #24304a; --wire: #5f6879; --minus: #ff7085; --node: #232933; --cell: #2c323d;
+  --accent: #6b9cff; --accent-soft: #24304a; --wire: #5f6879; --minus: #ff7085; --node: #232933; --car: #9fb0d0;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -41,42 +42,40 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 .app { height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 10px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; }
 
-.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.top { display: flex; align-items: center; gap: 10px 16px; min-width: 0; }
 .word { font-weight: 700; font-size: 18px; }
-.name { border: 1px solid transparent; background: none; padding: 4px 6px; font-size: 15px; color: var(--muted); border-radius: 6px; cursor: pointer; }
+.name { border: 1px solid transparent; background: none; padding: 4px 6px; font-size: 15px; color: var(--muted); border-radius: 6px; cursor: pointer; white-space: nowrap; }
 .name:hover { border-color: var(--line); }
-.battery { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.cells { display: flex; gap: 3px; padding: 3px; border: 2px solid var(--line); border-radius: 7px; position: relative; background: var(--panel); }
-.cells::after { content: ""; position: absolute; right: -6px; top: 50%; width: 4px; height: 10px; transform: translateY(-50%); background: var(--line); border-radius: 0 2px 2px 0; }
-.cell { width: 12px; height: 16px; border-radius: 3px; background: var(--cell); position: relative; overflow: hidden; }
-.cell i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
-.battery.over .cell i { background: var(--minus); }
-.battery.over .cells { border-color: var(--minus); animation: buzz .9s steps(2) infinite; }
+.meter { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
+.meter .bar { width: 180px; height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; flex: none; }
+.meter .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 6px; transition: width .25s ease; }
+.meter.over .bar i { background: var(--minus); }
+.meter.over .bar { animation: buzz .9s steps(2) infinite; }
 @keyframes buzz { 50% { transform: translateX(1px); } }
-.battery span { font-family: var(--mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.battery.over span { color: var(--minus); }
-.btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: 9px; cursor: pointer; box-shadow: var(--shadow); }
+.meter span { font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.meter span b { font-family: var(--mono); font-weight: 500; }
+.meter.over span { color: var(--minus); }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: 9px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; }
 .btn:hover { border-color: var(--muted); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .trainer { border: 1px solid var(--line); background: var(--panel); padding: 7px 10px; border-radius: 9px; }
 
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; min-height: 0; }
-.board { position: relative; min-height: 440px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+.board { position: relative; min-height: 300px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
   background: radial-gradient(var(--dot) 1.2px, transparent 1.3px) 0 0 / 22px 22px, var(--canvas); }
 #net { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
-.palette { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 6px; }
-.palette .btn { white-space: nowrap; }
-.count { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.palette { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+.count { position: absolute; left: 12px; bottom: 14px; font-size: 12px; color: var(--muted); }
 
 .side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 16px; overflow: auto; min-height: 0; }
+.side > section { min-width: 0; }
 .side h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
 .fx { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .fx button { border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 7px 8px; cursor: pointer; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 0 7px; text-align: left; min-width: 0; }
 .fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .fx svg { width: 20px; height: 13px; grid-row: span 2; }
 .fx small { font-family: var(--mono); color: var(--muted); font-size: 11px; }
-.side > section { min-width: 0; }
 .note { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0; font-size: 13px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -84,27 +83,43 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 .link { background: none; border: 0; color: var(--minus); padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
 /* svg */
+.lbl { paint-order: stroke; stroke: var(--canvas); stroke-width: 4px; stroke-linejoin: round; }
 .pop { animation: pop .28s cubic-bezier(.3, 1.6, .5, 1) both; transform-box: fill-box; transform-origin: center; }
 @keyframes pop { from { transform: scale(.4); opacity: 0; } }
 .flow { stroke-dasharray: 3 7; animation: flow 1s linear infinite; }
 @keyframes flow { to { stroke-dashoffset: -10; } }
-.neuron:hover circle.body { stroke: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .pop, .flow, .battery.over .cells { animation: none; } }
 
 #toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 9px; max-width: calc(100% - 32px); z-index: 5; }
 
-@media (max-width: 760px) {
-  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(520px, 70vh) auto; }
-  .battery { margin-left: 0; width: 100%; }
+/* phones: landscape is the layout */
+#rotate { display: none; }
+@media (max-height: 540px) and (orientation: landscape) {
+  .app { gap: 6px; padding-block: 6px; }
+  .word { font-size: 16px; } .name { display: none; }
+  .meter .bar { width: 110px; } .btn, .trainer { padding: 5px 9px; }
+  .work { grid-template-columns: minmax(0, 1fr) 200px; gap: 6px; }
+  .side { padding: 10px; gap: 10px; }
+  .side .note.help { display: none; }
+  .count { display: none; }
 }
+@media (orientation: portrait) and (max-width: 700px) {
+  body:not(.portrait-ok) #rotate { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg);
+    padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(520px, 72vh) auto; }
+  .top { flex-wrap: wrap; } .meter { margin-left: 0; width: 100%; } .meter .bar { flex: 1; width: auto; }
+}
+.rot { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 280px; }
+.rot svg { width: 72px; height: 72px; color: var(--accent); }
+.rot h1 { margin: 0; font-size: 20px; }
+@media (prefers-reduced-motion: reduce) { .pop, .flow, .meter.over .bar { animation: none; } .meter .bar i { transition: none; } }
 </style>
 
 <div class="app">
   <header class="top">
     <span class="word">Synapse</span>
     <button class="name" id="name" type="button" title="Rename">Untitled brain</button>
-    <div class="battery" id="battery" aria-label="Energy per tick">
-      <div class="cells" id="cells"></div>
+    <div class="meter" id="meter" aria-label="Energy use">
+      <div class="bar"><i id="eFill"></i></div>
       <span id="eVal"></span>
     </div>
     <select class="trainer" id="trainer" aria-label="Trainer">
@@ -118,67 +133,85 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 
   <main class="work">
     <div class="board">
-      <svg id="net" aria-label="Brain board"></svg>
+      <svg id="net" aria-label="Brain board, drawn over the car"></svg>
       <div class="count" id="count"></div>
       <div class="palette">
         <button class="btn" id="addN" type="button">+ Neuron</button>
-        <button class="btn" id="tidy" type="button">Tidy</button>
         <button class="btn" id="clear" type="button">Clear wires</button>
       </div>
     </div>
     <aside class="side">
       <section id="sel"></section>
       <section>
-        <h2>Energy per tick</h2>
+        <h2>Energy budget</h2>
         <dl class="kv" id="ledger"></dl>
       </section>
-      <p class="note">Drag from a dot to wire. Drag a neuron to move it. Click a wire to cut it. Double-click the board for a new neuron.</p>
+      <p class="note help">Drag from a sensor or a neuron's dot to wire it. Drag a neuron to move it. Click a wire to cut it. Double-click the board for a new neuron.</p>
     </aside>
   </main>
 </div>
+<div id="rotate"><div class="rot">
+  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="14" width="30" height="20" rx="3"/><path d="M14 8 A18 18 0 0 1 38 10 M38 10 V4 M38 10 H32"/></svg>
+  <h1>Turn your phone sideways</h1>
+  <p class="note">The builder needs the width: the car sits in the middle with room for neurons either side.</p>
+  <button class="btn" id="stay" type="button">Continue in portrait</button>
+</div></div>
 <div id="toast" hidden></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
-const el = (t, a = {}, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+const el = (t, a = {}, p) => { const e = document.createElementNS(NS, t); for (const k in a) if (a[k] != null) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const pct = (v) => `${Math.round(v * 100 / BUDGET)}%`;
 
 const BUDGET = 10;
-const COST = { eye: 0.6, speed: 0.3, road: 0.6, bias: 0, fire: 0.05 };
+const COST = { eye: 0.6, speed: 0.3, road: 0.6, energy: 0.3, bias: 0, fire: 0.05 };
 const UP = { step: 0.2, relu: 0.25, sigmoid: 0.5, tanh: 0.5 };
 const FX = {
   step: { n: 'Step', g: 'M-8 4 H0 V-4 H8', d: 'On or off. Cheapest, but it has no slope, so backprop can’t learn through it.' },
-  relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', d: 'Zero below 0, a straight line above. Cheap.' },
+  relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', d: 'Zero below 0, a straight line above. Cheap. It can’t go negative, so it can’t reverse a wheel alone.' },
   sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4', d: 'Smooth from 0 to 1. Dearer to compute.' },
-  tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', d: 'Smooth from −1 to 1. Dearer to compute.' },
+  tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', d: 'Smooth from −1 to 1, so it can drive a wheel forwards or backwards. Dearer to compute.' },
 };
-// fixed pins: whatever the brain is plugged into provides these (here, the car); always on the board
-// eyes: 8 directions round the car minus the two back diagonals (principal, 2026-10-30)
+// Fixed pins. Positions are in car units: x across (−1 left side … +1 right side), y along (−1 nose … +1 tail).
+// Eyes: 8 directions round the car minus the two back diagonals (principal, 2026-10-30).
 const EYES = [['l', 'Left', -90], ['fl', 'Front-left', -45], ['f', 'Front', 0], ['fr', 'Front-right', 45], ['r', 'Right', 90], ['b', 'Back', 180]];
-const INPUTS = EYES.map(([id, label, deg]) => ({ id: 'i:' + id, label, k: 'eye', deg }))
-  .concat([{ id: 'i:spd', label: 'Speed', k: 'speed' }, { id: 'i:road', label: 'Road ahead', k: 'road' }, { id: 'i:bias', label: 'Bias', k: 'bias' }]);
-const OUTPUTS = [{ id: 'o:steer', label: 'Steer', k: 'steer' }, { id: 'o:gas', label: 'Throttle', k: 'gas' }];
+const INPUTS = EYES.map(([id, label, deg]) => ({ id: 'i:' + id, label, k: 'eye', deg, ring: deg }))
+  .concat([
+    { id: 'i:road', label: 'Road ahead', k: 'road', at: [0, -0.62] },
+    { id: 'i:energy', label: 'Energy left', k: 'energy', at: [0, -0.08] },
+    { id: 'i:spd', label: 'Speed', k: 'speed', at: [0, 0.36] },
+    { id: 'i:bias', label: 'Bias', k: 'bias', corner: true },
+  ]);
+const OUTPUTS = [['fl', 'Front-left wheel', -1, -0.56], ['fr', 'Front-right wheel', 1, -0.56], ['rl', 'Rear-left wheel', -1, 0.56], ['rr', 'Rear-right wheel', 1, 0.56]]
+  .map(([id, label, x, y]) => ({ id: 'o:' + id, label, short: id.toUpperCase(), k: 'wheel', at: [x, y] }));
 const ABOUT = {
   eye: 'Distance to the nearest wall in this direction. 1 = touching, 0 = nothing within 80 m.',
-  speed: 'How fast you are going, 0 to 1.', road: 'Which way the road bends 30 m ahead, −1 to 1.',
-  bias: 'Always 1. Lets a neuron fire with no other input.', steer: 'Turns the car: −1 hard left, +1 hard right.', gas: 'Accelerates the car; below 0 it brakes.',
+  road: 'Which way the road bends 30 m ahead, −1 left to +1 right.',
+  energy: 'How much of the energy budget is left this tick, 0 to 1. Lets the brain notice it is close to static.',
+  speed: 'How fast the car is going, 0 to 1.',
+  bias: 'Always 1. Lets a neuron fire with no other input.',
+  wheel: 'This wheel’s speed, from −1 (full reverse) to +1 (full forward). Same speed on both sides drives straight; a difference turns.',
 };
 
 const S = { neurons: [], wires: new Set(), sel: null, fresh: null };
 let nid = 1;
 const isPin = (id) => id.startsWith('i:') || id.startsWith('o:');
+const pinOf = (id) => INPUTS.find((p) => p.id === id) || OUTPUTS.find((p) => p.id === id);
 const used = (id) => { for (const w of S.wires) { const [a, b] = w.split('|'); if (a === id || b === id) return true; } return false; };
 function reaches(from, to) { const st = [from], seen = new Set(); while (st.length) { const a = st.pop(); if (a === to) return true; if (seen.has(a)) continue; seen.add(a); for (const w of S.wires) { const [x, y] = w.split('|'); if (x === a) st.push(y); } } return false; }
 function canWire(a, b) { if (a === b || a.startsWith('o:') || b.startsWith('i:') || S.wires.has(a + '|' + b)) return false; return !reaches(b, a); }
 function prune() { const ids = new Set([...INPUTS, ...OUTPUTS].map((p) => p.id).concat(S.neurons.map((n) => n.id))); for (const w of [...S.wires]) { const [a, b] = w.split('|'); if (!ids.has(a) || !ids.has(b)) S.wires.delete(w); } }
 
+// starter: two steering neurons, one per side, and a cruise neuron that drives all four wheels
 function starter() {
-  S.neurons = [{ act: 'relu', x: .5, y: .2 }, { act: 'relu', x: .5, y: .4 }, { act: 'relu', x: .5, y: .6 }, { act: 'tanh', x: .5, y: .8 }].map((n) => ({ id: 'n' + nid++, ...n }));
-  const [a, b, c, d] = S.neurons.map((n) => n.id);
-  for (const w of [['i:l', a], ['i:fl', a], ['i:f', b], ['i:fr', c], ['i:r', c], ['i:road', b], ['i:road', d], ['i:spd', d], ['i:bias', d],
-    [a, 'o:steer'], [c, 'o:steer'], [b, 'o:steer'], [b, 'o:gas'], [d, 'o:gas']]) S.wires.add(w[0] + '|' + w[1]);
+  S.neurons = [{ act: 'tanh', x: .17, y: .5 }, { act: 'tanh', x: .83, y: .5 }, { act: 'relu', x: .2, y: .16 }].map((n) => ({ id: 'n' + nid++, ...n }));
+  const [L, R, C] = S.neurons.map((n) => n.id);
+  for (const w of [['i:l', R], ['i:fl', R], ['i:f', L], ['i:r', L], ['i:fr', L], ['i:f', R],
+    [L, 'o:fl'], [L, 'o:rl'], [R, 'o:fr'], [R, 'o:rr'],
+    ['i:road', C], ['i:spd', C], ['i:energy', C], [C, 'o:fl'], [C, 'o:fr'], [C, 'o:rl'], [C, 'o:rr']]) S.wires.add(w[0] + '|' + w[1]);
 }
 
 function energy() {
@@ -188,126 +221,159 @@ function energy() {
   return { sens, up, fire, total, noise: clamp(total / BUDGET - 1, 0, 1) };
 }
 
-// ---- icons for pins (drawn at 0,0, ~12 px) ----
+// ---- icons, drawn at 0,0 ----
 function icon(k, g, deg = 0) {
-  const s = { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  const s = { fill: 'none', style: 'stroke:currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
   if (k === 'eye') { const a = el('g', { transform: `rotate(${deg})` }, g); el('path', { d: 'M0 6 V-6 M-4 -2 L0 -6 L4 -2', ...s }, a); }
   if (k === 'speed') { el('path', { d: 'M-6 3 A6.5 6.5 0 1 1 6 3', ...s }, g); el('path', { d: 'M0 1 L4 -3', ...s }, g); }
-  if (k === 'road') { el('path', { d: 'M-5 6 C-5 0 0 -2 5 -6 M1 -6 H5 V-2', ...s }, g); }
-  if (k === 'bias') { el('text', { y: 4.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: 'currentColor', 'font-family': 'IBM Plex Mono, monospace' }, g).textContent = '1'; }
-  if (k === 'steer') { el('circle', { r: 6, ...s }, g); el('path', { d: 'M-6 0 H6 M0 0 V6', ...s }, g); }
-  if (k === 'gas') { el('path', { d: 'M-5 5 L-2 -6 H3 L6 5 Z', ...s }, g); }
+  if (k === 'road') el('path', { d: 'M-5 6 C-5 0 0 -2 5 -6 M1 -6 H5 V-2', ...s }, g);
+  if (k === 'energy') el('path', { d: 'M1 -7 L-4 1 H0 L-1 7 L4 -1 H0 Z', ...s }, g);
+  if (k === 'bias') el('text', { y: 4.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, style: 'fill:currentColor', 'font-family': 'IBM Plex Mono, monospace' }, g).textContent = '1';
+  if (k === 'wheel') { el('path', { d: 'M0 -6 V6 M-3 -3 L0 -6 L3 -3 M-3 3 L0 6 L3 3', ...s }, g); }
 }
 
 // ---- board ----
 const svg = $('net');
-let P = new Map(), box = { w: 800, h: 500 }, drag = null, hover = null;
-const PILL = 120, PAD_L = 190, PAD_R = 170;
+let P = new Map(), box = { w: 800, h: 500 }, car = null, drag = null;
 function layout() {
-  const r = svg.getBoundingClientRect(); box = { w: Math.max(r.width, 320), h: Math.max(r.height, 400) };
+  const r = svg.getBoundingClientRect(); box = { w: Math.max(r.width, 320), h: Math.max(r.height, 280) };
   svg.setAttribute('viewBox', `0 0 ${box.w} ${box.h}`);
+  const H = Math.min(box.h * 0.6, box.w * 0.42), W = H * 0.46;
+  car = { cx: box.w / 2, cy: box.h / 2, W, H };
   P = new Map();
-  const gap = Math.min(40, (box.h - 110) / INPUTS.length);
-  INPUTS.forEach((i, k) => P.set(i.id, { x: 12 + PILL, y: box.h / 2 + (k - (INPUTS.length - 1) / 2) * gap, pin: i, side: 'in' }));
-  OUTPUTS.forEach((o, k) => P.set(o.id, { x: box.w - 12 - PILL, y: box.h / 2 + (k - .5) * 70, pin: o, side: 'out' }));
-  const fx = (x) => PAD_L + x * (box.w - PAD_L - PAD_R), fy = (y) => 54 + y * (box.h - 120);
-  S.neurons.forEach((n) => P.set(n.id, { x: fx(n.x), y: fy(n.y), side: 'mid', n }));
+  const at = ([x, y]) => ({ x: car.cx + x * W / 2, y: car.cy + y * H / 2 });
+  const rx = W / 2 + 80, ry = H / 2 + 30;
+  for (const p of INPUTS) {
+    let q;
+    if (p.ring !== undefined) { const t = p.ring * Math.PI / 180; q = { x: car.cx + Math.sin(t) * rx, y: car.cy - Math.cos(t) * ry }; }
+    else if (p.corner) q = { x: 40, y: 40 };
+    else q = at(p.at);
+    P.set(p.id, { ...q, pin: p, side: 'in' });
+  }
+  for (const o of OUTPUTS) P.set(o.id, { ...at(o.at), pin: o, side: 'out' });
+  S.neurons.forEach((n) => P.set(n.id, { x: 30 + n.x * (box.w - 60), y: 30 + n.y * (box.h - 90), side: 'mid', n }));
 }
-const endX = (p, from) => p.side === 'in' ? p.x : p.side === 'out' ? p.x : p.x + (from ? 17 : -17);
+const RAD = { in: 15, out: 13, mid: 17 };
+function drawCar(g) {
+  const { cx, cy, W, H } = car; const st = 'fill:var(--car);fill-opacity:.1;stroke:var(--car);stroke-opacity:.35';
+  const w = W / 2, h = H / 2;
+  el('path', { d: `M ${cx - w * .78} ${cy - h} Q ${cx} ${cy - h * 1.08} ${cx + w * .78} ${cy - h} L ${cx + w} ${cy - h * .55} L ${cx + w} ${cy + h * .86} Q ${cx + w} ${cy + h} ${cx + w * .8} ${cy + h} L ${cx - w * .8} ${cy + h} Q ${cx - w} ${cy + h} ${cx - w} ${cy + h * .86} L ${cx - w} ${cy - h * .55} Z`, style: st, 'stroke-width': 1.5 }, g);
+  el('path', { d: `M ${cx - w * .6} ${cy - h * .32} Q ${cx} ${cy - h * .46} ${cx + w * .6} ${cy - h * .32} L ${cx + w * .52} ${cy + h * .2} L ${cx - w * .52} ${cy + h * .2} Z`, style: 'fill:var(--car);fill-opacity:.12;stroke:var(--car);stroke-opacity:.25' }, g);
+  for (const [sx, sy] of [[-1, -.56], [1, -.56], [-1, .56], [1, .56]]) el('rect', { x: cx + sx * w - W * .13, y: cy + sy * h - H * .11, width: W * .26, height: H * .22, rx: W * .06, style: 'fill:var(--car);fill-opacity:.22;stroke:var(--car);stroke-opacity:.35' }, g);
+  el('text', { x: cx, y: cy - h + 16, 'text-anchor': 'middle', 'font-size': 10.5, 'letter-spacing': '1.5', style: 'fill:var(--muted)', 'font-family': 'Atkinson Hyperlegible, sans-serif' }, g).textContent = 'FRONT';
+}
+function edgePoint(p, toward, r) { const dx = toward.x - p.x, dy = toward.y - p.y, d = Math.hypot(dx, dy) || 1; return { x: p.x + dx / d * r, y: p.y + dy / d * r }; }
+function wirePath(p, q, rp, rq) {
+  const a = edgePoint(p, q, rp), b = edgePoint(q, p, rq + 3);
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y;
+  return `M ${a.x} ${a.y} Q ${mx - dy * .12} ${my + dx * .12} ${b.x} ${b.y}`;
+}
 function render() {
   prune(); layout(); svg.innerHTML = '';
+  const defs = el('defs', {}, svg);
+  for (const [id, c] of [['arw', 'var(--wire)'], ['arwHot', 'var(--accent)']]) { const m = el('marker', { id, viewBox: '0 0 8 8', refX: 6, refY: 4, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, defs); el('path', { d: 'M0 0 L8 4 L0 8 Z', style: `fill:${c}` }, m); }
+  drawCar(el('g', { 'pointer-events': 'none' }, svg));
   const wg = el('g', {}, svg);
   for (const w of S.wires) {
     const [a, b] = w.split('|'); const p = P.get(a), q = P.get(b); if (!p || !q) continue;
-    const x1 = endX(p, true), x2 = endX(q, false), mx = (x1 + x2) / 2;
-    const d = `M ${x1} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${x2} ${q.y}`;
+    const d = wirePath(p, q, RAD[p.side], RAD[q.side]);
     const hot = S.sel && (a === S.sel || b === S.sel);
-    const hit = el('path', { d, stroke: 'transparent', 'stroke-width': 12, fill: 'none', style: 'cursor:pointer' }, wg);
-    el('path', { d, fill: 'none', stroke: hot ? 'var(--accent)' : 'var(--wire)', 'stroke-width': hot ? 2.2 : 1.5, 'stroke-linecap': 'round', 'pointer-events': 'none', opacity: S.sel && !hot ? .45 : 1 }, wg);
-    if (hot && !reduce) el('path', { d, fill: 'none', stroke: 'var(--canvas)', 'stroke-width': 1.4, class: 'flow', 'pointer-events': 'none' }, wg);
+    const hit = el('path', { d, stroke: 'transparent', 'stroke-width': 12, fill: 'none', style: 'cursor:pointer;stroke:transparent' }, wg);
+    el('path', { d, fill: 'none', style: `stroke:${hot ? 'var(--accent)' : 'var(--wire)'}`, 'stroke-width': hot ? 2.2 : 1.5, 'stroke-linecap': 'round', 'pointer-events': 'none', opacity: S.sel && !hot ? .35 : 1, 'marker-end': `url(#${hot ? 'arwHot' : 'arw'})` }, wg);
+    if (hot && !reduce) el('path', { d, fill: 'none', style: 'stroke:var(--canvas)', 'stroke-width': 1.3, class: 'flow', 'pointer-events': 'none' }, wg);
     hit.addEventListener('click', () => { S.wires.delete(w); render(); });
   }
-  el('path', { id: 'ghost', d: '', fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2.2, 'stroke-dasharray': '4 4', 'pointer-events': 'none' }, svg);
+  el('path', { id: 'ghost', d: '', fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-dasharray': '4 4', 'pointer-events': 'none' }, svg);
   for (const [id, p] of P) {
     const sel = S.sel === id;
     if (p.side === 'mid') {
-      const g = el('g', { 'data-id': id, class: 'neuron' + (S.fresh === id ? ' pop' : ''), tabindex: 0, role: 'button', 'aria-label': FX[p.n.act].n + ' neuron' }, svg);
-      el('circle', { cx: p.x, cy: p.y + 2, r: 17, fill: 'rgba(20,30,50,.08)', 'pointer-events': 'none' }, g);
-      el('circle', { class: 'body', cx: p.x, cy: p.y, r: 17, fill: sel ? 'var(--accent-soft)' : 'var(--node)', stroke: sel ? 'var(--accent)' : 'var(--muted)', 'stroke-width': sel ? 2.5 : 1.5, style: 'cursor:move', 'data-move': id }, g);
-      el('path', { d: FX[p.n.act].g, transform: `translate(${p.x} ${p.y})`, fill: 'none', stroke: sel ? 'var(--accent)' : 'var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
-      handle(g, id, p.x + 17, p.y);
+      const g = el('g', { 'data-id': id, class: S.fresh === id ? 'pop' : null, tabindex: 0, role: 'button', 'aria-label': FX[p.n.act].n + ' neuron' }, svg);
+      el('circle', { cx: p.x, cy: p.y + 2, r: 17, style: 'fill:rgba(20,30,50,.08)', 'pointer-events': 'none' }, g);
+      el('circle', { cx: p.x, cy: p.y, r: 17, style: `fill:${sel ? 'var(--accent-soft)' : 'var(--node)'};stroke:${sel ? 'var(--accent)' : 'var(--muted)'};cursor:move`, 'stroke-width': sel ? 2.5 : 1.5, 'data-move': id }, g);
+      el('path', { d: FX[p.n.act].g, transform: `translate(${p.x} ${p.y})`, fill: 'none', style: `stroke:${sel ? 'var(--accent)' : 'var(--text)'}`, 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
+      el('circle', { cx: p.x + 17, cy: p.y, r: 10, style: 'fill:transparent;cursor:crosshair', 'data-wire': id }, g);
+      el('circle', { cx: p.x + 17, cy: p.y, r: 4.5, style: 'fill:var(--accent);stroke:var(--canvas)', 'stroke-width': 1.5, 'pointer-events': 'none' }, g);
       g.addEventListener('keydown', (e) => { if (e.key === 'Enter') { S.sel = id; render(); } });
     } else {
-      const on = used(id), rx = p.side === 'in' ? p.x - PILL : p.x;
+      const on = used(id), isIn = p.side === 'in', r = RAD[p.side];
       const g = el('g', { 'data-id': id, tabindex: 0, role: 'button', 'aria-label': `${p.pin.label}, ${on ? 'used' : 'unused'}` }, svg);
-      el('rect', { x: rx, y: p.y - 14, width: PILL, height: 28, rx: 14, fill: on ? 'var(--node)' : 'transparent', stroke: sel ? 'var(--accent)' : on ? 'var(--muted)' : 'var(--line)', 'stroke-width': sel ? 2.5 : 1.5, 'stroke-dasharray': on || sel ? null : '4 3', 'data-move': id, style: 'cursor:pointer' }, g);
-      const ig = el('g', { transform: `translate(${rx + 18} ${p.y})`, style: `color:${on ? 'var(--accent)' : 'var(--muted)'}`, 'pointer-events': 'none' }, g);
+      const shape = isIn
+        ? el('circle', { cx: p.x, cy: p.y, r }, g)
+        : el('rect', { x: p.x - r, y: p.y - r, width: r * 2, height: r * 2, rx: 6 }, g);
+      shape.setAttribute('style', `fill:${on ? 'var(--node)' : 'var(--canvas)'};stroke:${sel ? 'var(--accent)' : on ? 'var(--accent)' : 'var(--muted)'};cursor:${isIn ? 'crosshair' : 'pointer'}`);
+      shape.setAttribute('stroke-width', sel ? 2.8 : on ? 1.8 : 1.3);
+      if (!on && !sel) shape.setAttribute('stroke-dasharray', '3 3');
+      shape.dataset[isIn ? 'wire' : 'pick'] = id;
+      const ig = el('g', { transform: `translate(${p.x} ${p.y})`, style: `color:${on ? 'var(--accent)' : 'var(--muted)'}`, 'pointer-events': 'none' }, g);
       icon(p.pin.k, ig, p.pin.deg);
-      el('text', { x: rx + 34, y: p.y + 4.5, fill: on ? 'var(--text)' : 'var(--muted)', 'font-size': 12.5, 'font-family': 'Atkinson Hyperlegible, sans-serif', 'pointer-events': 'none' }, g).textContent = p.pin.label;
-      if (p.side === 'in') handle(g, id, p.x, p.y);
-      else el('circle', { cx: p.x, cy: p.y, r: 4, fill: on ? 'var(--accent)' : 'var(--canvas)', stroke: on ? 'none' : 'var(--muted)', 'stroke-width': 1.3, 'pointer-events': 'none' }, g);
+      const lab = isIn ? p.pin.label : p.pin.short;
+      let lx = p.x, ly = p.y + r + 13, anchor = 'middle';
+      if (!isIn) { lx = p.x + (p.pin.at[0] < 0 ? -(r + 6) : r + 6); ly = p.y + 4; anchor = p.pin.at[0] < 0 ? 'end' : 'start'; }
+      if (isIn && p.pin.ring === 0) ly = p.y - r - 7;
+      el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'lbl', style: `fill:${on ? 'var(--text)' : 'var(--muted)'}`, 'font-size': 11.5, 'font-family': 'Atkinson Hyperlegible, sans-serif', 'pointer-events': 'none' }, g).textContent = lab;
       g.addEventListener('keydown', (e) => { if (e.key === 'Enter') { S.sel = id; render(); } });
     }
   }
   S.fresh = null;
   side(); meter();
   const usedIn = INPUTS.filter((i) => used(i.id)).length, usedOut = OUTPUTS.filter((o) => used(o.id)).length;
-  $('count').textContent = `${usedIn} / ${INPUTS.length} inputs · ${S.neurons.length} neurons · ${S.wires.size} wires · ${usedOut} / ${OUTPUTS.length} outputs`;
-}
-function handle(g, id, x, y) {
-  el('circle', { cx: x, cy: y, r: 10, fill: 'transparent', style: 'cursor:crosshair', 'data-wire': id }, g);
-  el('circle', { cx: x, cy: y, r: 4.5, fill: 'var(--accent)', stroke: 'var(--canvas)', 'stroke-width': 1.5, 'pointer-events': 'none' }, g);
+  $('count').textContent = `${usedIn} / ${INPUTS.length} inputs · ${S.neurons.length} neurons · ${S.wires.size} wires · ${usedOut} / ${OUTPUTS.length} wheels`;
 }
 
 // ---- pointer ----
 const pt = (e) => { const r = svg.getBoundingClientRect(); return { x: (e.clientX - r.left) * box.w / r.width, y: (e.clientY - r.top) * box.h / r.height }; };
 svg.addEventListener('pointerdown', (e) => {
   const t = e.target;
-  if (t.dataset.wire) drag = { kind: 'wire', id: t.dataset.wire };
+  if (t.dataset.wire) drag = { kind: 'wire', id: t.dataset.wire, moved: false, start: pt(e) };
   else if (t.dataset.move) drag = { kind: 'move', id: t.dataset.move, moved: false, start: pt(e) };
+  else if (t.dataset.pick) { S.sel = S.sel === t.dataset.pick ? null : t.dataset.pick; render(); return; }
   else { S.sel = null; render(); return; }
   svg.setPointerCapture(e.pointerId); e.preventDefault();
 });
 svg.addEventListener('pointermove', (e) => {
   if (!drag) return; const q = pt(e);
-  if (drag.kind === 'wire') { const p = P.get(drag.id); const sx = endX(p, true), mx = (sx + q.x) / 2; svg.querySelector('#ghost').setAttribute('d', `M ${sx} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x} ${q.y}`); }
-  else {
-    if (Math.hypot(q.x - drag.start.x, q.y - drag.start.y) > 4) drag.moved = true;
-    const n = S.neurons.find((m) => m.id === drag.id);
-    if (n && drag.moved) { n.x = clamp((q.x - PAD_L) / (box.w - PAD_L - PAD_R), 0, 1); n.y = clamp((q.y - 54) / (box.h - 120), 0, 1); render(); }
-  }
+  if (Math.hypot(q.x - drag.start.x, q.y - drag.start.y) > 4) drag.moved = true;
+  if (!drag.moved) return;
+  if (drag.kind === 'wire') { const p = P.get(drag.id); const a = edgePoint(p, q, RAD[p.side]); svg.querySelector('#ghost').setAttribute('d', `M ${a.x} ${a.y} L ${q.x} ${q.y}`); }
+  else { const n = S.neurons.find((m) => m.id === drag.id); if (n) { n.x = clamp((q.x - 30) / (box.w - 60), 0, 1); n.y = clamp((q.y - 30) / (box.h - 90), 0, 1); render(); } }
 });
 svg.addEventListener('pointerup', (e) => {
   if (!drag) return; const d = drag; drag = null;
+  if (!d.moved) { S.sel = S.sel === d.id ? null : d.id; render(); return; }
   if (d.kind === 'wire') {
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-id]')?.dataset.id;
     if (target && target !== d.id) {
-      if (canWire(d.id, target)) { const wasUnused = isPin(target) && !used(target); S.wires.add(d.id + '|' + target); if (d.id.startsWith('i:') && S.wires.size && [...S.wires].filter((w) => w.startsWith(d.id + '|')).length === 1) toast(`${P.get(d.id).pin.label} is now in use.`); else if (wasUnused) toast(`${P.get(target).pin.label} is now in use.`); }
-      else toast(target.startsWith('i:') ? 'Inputs only send signals.' : 'That would make a loop. Signals only flow forward.');
+      if (canWire(d.id, target)) {
+        const news = [d.id, target].filter((id) => isPin(id) && !used(id));
+        S.wires.add(d.id + '|' + target);
+        if (news.length) toast(`${news.map((id) => pinOf(id).label).join(' and ')} now in use.`);
+      } else toast(target.startsWith('i:') ? 'Sensors only send signals.' : 'That would make a loop. Signals only flow forward.');
     }
     render();
-  } else if (!d.moved) { S.sel = S.sel === d.id ? null : d.id; render(); }
+  }
 });
-svg.addEventListener('dblclick', (e) => { if (e.target !== svg) return; const q = pt(e); addNeuron(clamp((q.x - PAD_L) / (box.w - PAD_L - PAD_R), 0, 1), clamp((q.y - 54) / (box.h - 120), 0, 1)); });
-function addNeuron(x = .3 + Math.random() * .4, y = .1 + Math.random() * .8) { const n = { id: 'n' + nid++, x, y, act: 'relu' }; S.neurons.push(n); S.sel = n.id; S.fresh = n.id; render(); }
+svg.addEventListener('dblclick', (e) => { if (e.target !== svg) return; const q = pt(e); addNeuron(clamp((q.x - 30) / (box.w - 60), 0, 1), clamp((q.y - 30) / (box.h - 90), 0, 1)); });
+function addNeuron(x, y) {
+  if (x === undefined) { const side = S.neurons.length % 2 ? .82 : .18; x = side + (Math.random() - .5) * .1; y = .15 + Math.random() * .7; }
+  const n = { id: 'n' + nid++, x, y, act: 'tanh' }; S.neurons.push(n); S.sel = n.id; S.fresh = n.id; render();
+}
 
 // ---- side panel ----
 function side() {
-  const box2 = $('sel'); const n = S.neurons.find((m) => m.id === S.sel);
-  const pin = [...INPUTS, ...OUTPUTS].find((p) => p.id === S.sel);
+  const box2 = $('sel'); const n = S.neurons.find((m) => m.id === S.sel); const pin = pinOf(S.sel || '');
   if (pin) {
-    const on = used(pin.id); const isIn = pin.id.startsWith('i:'); const c = isIn ? COST[pin.k] : 0;
+    const on = used(pin.id); const isIn = pin.id.startsWith('i:');
     let k = 0; for (const w of S.wires) { const [a, b] = w.split('|'); if (a === pin.id || b === pin.id) k++; }
-    box2.innerHTML = `<h2>${isIn ? 'Input' : 'Output'} · ${pin.label}</h2><p class="note">${ABOUT[pin.k]}</p>
-      <dl class="kv" style="margin-top:8px"><dt>Status</dt><dd>${on ? `in use · ${k} wire${k === 1 ? '' : 's'}` : 'unused'}</dd>${isIn ? `<dt>Cost when used</dt><dd>${c ? c.toFixed(1) : 'free'}</dd>` : ''}</dl>
-      ${on ? `<button class="link" id="unplug" type="button" style="margin-top:8px">Unplug all its wires</button>` : `<p class="note" style="margin-top:8px">Drag from its dot to a neuron to start using it.</p>`}`;
+    box2.innerHTML = `<h2>${isIn ? 'Sensor' : 'Wheel'} · ${pin.label}</h2><p class="note">${ABOUT[pin.k]}</p>
+      <dl class="kv" style="margin-top:8px"><dt>Status</dt><dd>${on ? `in use · ${k} wire${k === 1 ? '' : 's'}` : 'unused'}</dd>${isIn ? `<dt>Cost when used</dt><dd>${COST[pin.k] ? pct(COST[pin.k]) : 'free'}</dd>` : ''}</dl>
+      ${on ? `<button class="link" id="unplug" type="button" style="margin-top:8px">Unplug all its wires</button>` : `<p class="note" style="margin-top:8px">${isIn ? 'Drag from it to a neuron to start using it.' : 'Wire a neuron into it to drive this wheel.'}</p>`}`;
     if (on) $('unplug').onclick = () => { for (const w of [...S.wires]) { const [a, b] = w.split('|'); if (a === pin.id || b === pin.id) S.wires.delete(w); } render(); };
     return;
   }
-  if (!n) { box2.innerHTML = `<h2>Selected</h2><p class="note">Nothing. Click a neuron to change how it responds, or a pin to see what it does.</p>`; return; }
+  if (!n) { box2.innerHTML = `<h2>Selected</h2><p class="note">Nothing. Click a neuron to change how it responds, or a sensor or wheel to see what it does.</p>`; return; }
   let ins = 0, outs = 0; for (const w of S.wires) { const [a, b] = w.split('|'); if (b === n.id) ins++; if (a === n.id) outs++; }
   box2.innerHTML = `<h2>Neuron</h2>
-    <div class="fx" role="group" aria-label="Transfer function">${Object.keys(FX).map((k) => `<button type="button" id="fx-${k}" data-fx="${k}" aria-pressed="${n.act === k}"><svg viewBox="-10 -7 20 14"><path d="${FX[k].g}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>${FX[k].n}</span><small>${UP[k]} per tick</small></button>`).join('')}</div>
+    <div class="fx" role="group" aria-label="Transfer function">${Object.keys(FX).map((k) => `<button type="button" id="fx-${k}" data-fx="${k}" aria-pressed="${n.act === k}"><svg viewBox="-10 -7 20 14"><path d="${FX[k].g}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>${FX[k].n}</span><small>${pct(UP[k])}</small></button>`).join('')}</div>
     <p class="note" style="margin-top:8px">${FX[n.act].d}</p>
     <dl class="kv" style="margin-top:8px"><dt>Wires in</dt><dd>${ins}</dd><dt>Wires out</dt><dd>${outs}</dd></dl>
     <button class="link" id="rm" type="button" style="margin-top:8px">Delete neuron</button>`;
@@ -315,28 +381,21 @@ function side() {
   $('rm').onclick = () => { S.neurons = S.neurons.filter((m) => m !== n); S.sel = null; render(); };
 }
 function meter() {
-  const e = energy(); const over = e.total > BUDGET;
-  const cells = $('cells'); cells.innerHTML = '';
-  for (let k = 0; k < BUDGET; k++) { const c = document.createElement('div'); c.className = 'cell'; const i = document.createElement('i'); i.style.width = `${clamp(e.total - k, 0, 1) * 100}%`; c.appendChild(i); cells.appendChild(c); }
-  $('battery').classList.toggle('over', over);
-  $('eVal').textContent = over ? `${e.total.toFixed(1)} / ${BUDGET} · ${Math.round(e.noise * 100)}% noise` : `${e.total.toFixed(1)} / ${BUDGET}`;
-  $('ledger').innerHTML = `<dt>Inputs in use</dt><dd>${e.sens.toFixed(2)}</dd><dt>Neurons</dt><dd>${e.up.toFixed(2)}</dd><dt>Wires (est.)</dt><dd>${e.fire.toFixed(2)}</dd><dt class="t">Total</dt><dd class="t">${e.total.toFixed(2)}</dd>`;
+  const e = energy(); const p = e.total / BUDGET; const over = p > 1;
+  $('eFill').style.width = `${clamp(p, 0, 1) * 100}%`;
+  $('meter').classList.toggle('over', over);
+  $('eVal').innerHTML = `<b>${Math.round(p * 100)}%</b> of energy budget${over ? ` · ${Math.round(e.noise * 100)}% noise` : ''}`;
+  $('ledger').innerHTML = `<dt>Sensors in use</dt><dd>${pct(e.sens)}</dd><dt>Neurons</dt><dd>${pct(e.up)}</dd><dt>Wires (est.)</dt><dd>${pct(e.fire)}</dd><dt class="t">Total</dt><dd class="t">${pct(e.total)}</dd>`;
 }
 
 let tt; function toast(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), 1800); }
 $('addN').onclick = () => addNeuron();
 $('clear').onclick = () => { S.wires.clear(); render(); };
-$('tidy').onclick = () => {
-  const depth = new Map(); const get = (id) => { if (id.startsWith('i:')) return 0; if (depth.has(id)) return depth.get(id); depth.set(id, 1); let d = 1; for (const w of S.wires) { const [a, b] = w.split('|'); if (b === id) d = Math.max(d, get(a) + 1); } depth.set(id, d); return d; };
-  S.neurons.forEach((n) => get(n.id)); const maxD = Math.max(1, ...S.neurons.map((n) => depth.get(n.id)));
-  const cols = new Map(); S.neurons.forEach((n) => { const d = depth.get(n.id); if (!cols.has(d)) cols.set(d, []); cols.get(d).push(n); });
-  for (const [d, list] of cols) list.forEach((n, k) => { n.x = maxD === 1 ? .5 : (d - 1) / (maxD - 1) * .7 + .15; n.y = list.length === 1 ? .5 : k / (list.length - 1); });
-  render();
-};
 $('name').onclick = () => { const b = $('name'); b.textContent = b.textContent === 'Untitled brain' ? 'Gerald' : 'Untitled brain'; };
 $('train').onclick = () => toast('Training opens the arena. Not part of this mock-up.');
+$('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
 addEventListener('resize', render);
 addEventListener('keydown', (e) => { if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel?.startsWith('n')) { S.neurons = S.neurons.filter((m) => m.id !== S.sel); S.sel = null; render(); } });
 
-starter(); S.sel = S.neurons[1].id; render();
+starter(); S.sel = S.neurons[0].id; render();
 </script>

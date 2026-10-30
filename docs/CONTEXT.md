@@ -32,3 +32,10 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "maybe we have 6 directions for the \"eyes\" in a circle, with the exception of the two back angled ones. we keep the
   backwards one, and the five front-sideways ones." → eyes: left, front-left, front, front-right, right, back.
 - "simplify and gameify the GUI just slightly" → energy as a battery, arrow icons on pins, small feedback.
+- "let's make the output neurons be each of the four wheel's speeds, from -1 to +1." → the car is driven skid-steer.
+- "change the mobile UI to landscape for more space." → phones use the builder in landscape; portrait asks to rotate.
+- "change the energy per tick to just say \"xx% of energy budget\" and have a meter which increases and can go up to
+  100%."
+- "let's also add another input which is \"energy remaining\"" → "Energy left": 1 − last tick's use / budget.
+- "add a mostly translucent image of the car onto the builder diagram, then position the different input neurons
+  relative to the car, so the wheel ones are on top of each of the wheels, and the energy one is in the middle of the car."
