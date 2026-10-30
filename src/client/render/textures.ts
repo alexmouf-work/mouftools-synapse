@@ -1,4 +1,4 @@
-// Canvas textures, from the look mock-up (reference/look-mockup.html): road surface, start checker, boost pad.
+// Canvas textures, from the look mock-up (reference/look-mockup.html): road surface, start checker, boost pad, car glow.
 import * as THREE from 'three';
 import { Rng } from '../../common/rng';
 
@@ -13,7 +13,7 @@ function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D, w: 
   return t;
 }
 
-export interface Textures { road: THREE.CanvasTexture; checker: THREE.CanvasTexture; boost: THREE.CanvasTexture; dispose(): void }
+export interface Textures { road: THREE.CanvasTexture; checker: THREE.CanvasTexture; boost: THREE.CanvasTexture; glow: THREE.CanvasTexture; dispose(): void }
 
 export function makeTextures(aniso: number): Textures {
   const r = new Rng(20261030);
@@ -41,5 +41,10 @@ export function makeTextures(aniso: number): Textures {
       g.moveTo(30, y + 90); g.lineTo(128, y); g.lineTo(226, y + 90); g.lineTo(226, y + 118); g.lineTo(128, y + 34); g.lineTo(30, y + 118); g.closePath(); g.fill();
     }
   }, aniso, true);
-  return { road, checker, boost, dispose: () => { road.dispose(); checker.dispose(); boost.dispose(); } };
+  const glow = canvasTex(128, 128, (g, w, h) => {
+    const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.45, 'rgba(255,255,255,.35)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, w, h);
+  }, aniso);
+  return { road, checker, boost, glow, dispose: () => { road.dispose(); checker.dispose(); boost.dispose(); glow.dispose(); } };
 }

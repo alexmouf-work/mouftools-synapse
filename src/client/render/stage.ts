@@ -8,13 +8,25 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Track } from '../../common/sim/track';
-import { GhostSwarm } from './ghosts';
+import { makeCar, type CarModel } from './car';
+import { Swarm } from './ghosts';
 import { assertFiniteArray } from './guard';
 import { buildScenery, type Scenery } from './scenery';
 import { makeTextures, type Textures } from './textures';
-import { trackCentre, trackParts, type PartKey } from './trackMesh';
+import { at, trackParts, type PartKey } from './trackMesh';
 
 const FOG = new THREE.Color('#bcd4f2');
+/** Bloom picks up HDR luminance above this. Scenery stays under it; only lights, pads, wall strips and cars' lamps
+ * (objects tagged userData.glow) go over (bloomAudit checks it). */
+export const BLOOM_THRESHOLD = 1.3;
+/**
+ * Lit scenery is kept under the bloom threshold by construction: all scene light (sun, sky light, environment, fog,
+ * sky dome, emissive scenery) is scaled by LIGHT and the exposure by 1/LIGHT, so the picture looks the same but a
+ * sunlit white kerb sits near 1.2 instead of 1.9. Glow-tagged things keep their HDR values and still bloom.
+ */
+const LIGHT = 0.6;
+// training camera: chase angle over the pack, metres
+const CAM_BACK = 46, CAM_SIDE = 14, CAM_UP = 44, CAM_AHEAD = 24;
 const SUN_DIR = new THREE.Vector3(0.62, 0.36, -0.42).normalize();
 
 /** Software rasterisers (SwiftShader, llvmpipe) cannot keep up with full quality; neither can some old iGPUs. */
@@ -31,18 +43,20 @@ export class Stage {
   /** low: pixel ratio 1, no shadows, no MSAA (bloom stays: it is where a NaN pixel would show). */
   readonly quality: Quality;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(42, 1, 0.3, 4000);
-  readonly swarm = new GhostSwarm();
+  readonly camera = new THREE.PerspectiveCamera(50, 1, 0.3, 4000);
+  readonly swarm: Swarm;
+  private readonly car: CarModel;
+  private track: Track | null = null;
   private readonly composer: EffectComposer;
   private readonly bloom: UnrealBloomPass;
-  private readonly sun = new THREE.DirectionalLight('#fff0dc', 2.6);
+  private readonly sun = new THREE.DirectionalLight('#fff0dc', 2.6 * LIGHT);
   private readonly tex: Textures;
   private readonly mats: Record<PartKey, THREE.Material>;
   private readonly world = new THREE.Group();
   private scenery: Scenery | null = null;
   private readonly look = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
-  private centre = new THREE.Vector3();
+  private readonly tmp2 = new THREE.Vector3();
   private snap = true;
   private readonly reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private readonly disposables: { dispose(): void }[] = [];
@@ -55,7 +69,7 @@ export class Stage {
     const PR = high ? Math.min(window.devicePixelRatio || 1, 2) : 1;
     this.renderer.setPixelRatio(PR);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.88;
+    this.renderer.toneMappingExposure = 0.88 / LIGHT;
     this.renderer.shadowMap.enabled = high;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -66,33 +80,35 @@ export class Stage {
     const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: high ? 4 : 0 });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.45, 1.3);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.45, BLOOM_THRESHOLD);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.disposables.push(rt, this.bloom);
 
-    this.scene.fog = new THREE.Fog(FOG, 600, 2300);
+    const fog = FOG.clone().multiplyScalar(LIGHT);
+    this.scene.fog = new THREE.Fog(fog, 600, 2300);
     const skyGeo = new THREE.SphereGeometry(1900, 32, 16);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: {
         top: { value: new THREE.Color('#1847c4') }, mid: { value: new THREE.Color('#4f9cff') },
         horizon: { value: FOG.clone() }, sunCol: { value: new THREE.Color('#ffe6c2') }, sunDir: { value: SUN_DIR },
+        scale: { value: LIGHT },
       },
       vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform vec3 top, mid, horizon, sunCol, sunDir; varying vec3 vDir;
+      fragmentShader: `uniform vec3 top, mid, horizon, sunCol, sunDir; uniform float scale; varying vec3 vDir;
         void main(){ vec3 d = normalize(vDir); float h = d.y;
           vec3 c = mix(horizon, mid, smoothstep(-0.02, 0.2, h));
           c = mix(c, top, smoothstep(0.18, 0.8, h));
           float s = max(dot(d, normalize(sunDir)), 0.0);
           c += sunCol * (pow(s, 1400.0) * 9.0 + pow(s, 40.0) * 0.35 + pow(s, 4.0) * 0.12);
-          gl_FragColor = vec4(c, 1.0); }`,
+          gl_FragColor = vec4(c * scale, 1.0); }`,
     });
     const sky = new THREE.Mesh(skyGeo, skyMat);
-    sky.renderOrder = -1; sky.frustumCulled = false;
+    sky.renderOrder = -1; sky.frustumCulled = false; sky.userData.glow = true; // the sun disc blooms
     this.scene.add(sky);
     this.disposables.push(skyGeo, skyMat);
-    this.scene.add(new THREE.HemisphereLight('#cfe2ff', '#3f6f45', 0.55));
+    this.scene.add(new THREE.HemisphereLight('#cfe2ff', '#3f6f45', 0.55 * LIGHT));
     const sun = this.sun;
     sun.castShadow = high;
     sun.shadow.mapSize.set(2048, 2048);
@@ -109,7 +125,12 @@ export class Stage {
       pad: new THREE.MeshBasicMaterial({ map: this.tex.boost, color: new THREE.Color(1.7, 1.5, 1.4), transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
       start: new THREE.MeshStandardMaterial({ map: this.tex.checker, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 }),
     };
-    this.scene.add(this.world, this.swarm.mesh);
+    this.car = makeCar('#ffc21a', '#14161d', this.tex.glow);
+    this.swarm = new Swarm(this.car);
+    this.swarm.mesh.userData.glow = true;
+    this.scene.add(this.world, this.swarm.mesh, this.car.car);
+    this.scaleLight(this.car.car);
+    this.scaleLight(this.world);
     this.resize();
   }
 
@@ -120,13 +141,29 @@ export class Stage {
       const m = new THREE.Mesh(p.geometry, this.mats[p.key]);
       m.receiveShadow = p.key !== 'strip' && p.key !== 'pad';
       m.castShadow = p.key === 'wall' || p.key === 'skirt';
+      if (p.key === 'strip' || p.key === 'pad') m.userData.glow = true;
       this.world.add(m);
     }
     this.scenery = buildScenery(t, t.seed);
     this.world.add(this.scenery.group);
-    this.centre = trackCentre(t);
-    this.look.set(t.px[t.startIdx], 0, -t.py[t.startIdx]);
+    this.scaleLight(this.world);
+    this.track = t;
+    this.swarm.setTrack(t);
     this.snap = true;
+  }
+
+  private readonly scaled = new WeakSet<THREE.Material>();
+  /** Apply LIGHT to the environment reflections and emission of lit, non-glow materials (once per material). */
+  private scaleLight(root: THREE.Object3D): void {
+    root.traverse((o) => {
+      if (o.userData.glow || !(o instanceof THREE.Mesh)) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!(m instanceof THREE.MeshStandardMaterial) || this.scaled.has(m)) continue;
+        this.scaled.add(m);
+        m.envMapIntensity *= LIGHT;
+        m.emissiveIntensity *= LIGHT;
+      }
+    });
   }
 
   private clearWorld(): void {
@@ -151,18 +188,62 @@ export class Stage {
   /** Advance the swarm and camera by dt seconds and draw. */
   frame(dt: number, time: number): void {
     this.swarm.update(dt, time);
-    // hover high over the swarm (between its leader and its middle), circling slowly
-    const target = this.tmp.copy(this.swarm.mesh.count ? this.swarm.leader : this.look).lerp(this.swarm.mesh.count ? this.swarm.centre : this.look, 0.5).lerp(this.centre, 0.05);
-    this.look.lerp(target, this.snap ? 1 : 1 - Math.exp(-dt * 3));
-    this.snap = false;
-    const a = (this.reduceMotion ? 0 : time * 0.05) + 0.6, R = 150;
-    this.camera.position.set(this.look.x + Math.sin(a) * R, this.look.y + 175, this.look.z + Math.cos(a) * R);
+    // chase the pack from behind and a little to the side, low enough that a car reads as a car
+    const t = this.track;
+    if (t) {
+      const i = this.swarm.focusIdx, back = Math.round(CAM_BACK / t.ds), ahead = Math.round(CAM_AHEAD / t.ds);
+      const want = at(t, i - back, CAM_SIDE, CAM_UP, this.tmp);
+      const look = at(t, i + ahead, 0, 0, this.tmp2);
+      const k = this.snap ? 1 : 1 - Math.exp(-dt * (this.reduceMotion ? 1.2 : 2.5));
+      this.camera.position.lerp(want, k);
+      this.look.lerp(look, k);
+      this.snap = false;
+    }
     this.camera.lookAt(this.look);
     assertFiniteArray(this.camera.matrixWorld.elements, 'camera');
     this.sun.target.position.copy(this.look);
     this.sun.position.copy(this.look).addScaledVector(SUN_DIR, 400);
     this.tex.boost.offset.y -= dt * 1.6;
     this.composer.render();
+  }
+
+  /**
+   * Bloom audit: render the scene without its glow-tagged objects to a float target and report how much of it is
+   * above the bloom threshold (it should be none: scenery must not glow).
+   */
+  bloomAudit(mask = false): { over: number; max: number; mask?: string } {
+    const hidden: THREE.Object3D[] = [];
+    this.scene.traverse((o) => { if (o.userData.glow && o.visible) { o.visible = false; hidden.push(o); } });
+    const w = 320, h = 200;
+    const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.FloatType });
+    const bg = this.scene.background;
+    this.scene.background = new THREE.Color(0, 0, 0);
+    this.renderer.setRenderTarget(rt);
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.setRenderTarget(null);
+    this.scene.background = bg;
+    for (const o of hidden) o.visible = true;
+    const px = new Float32Array(w * h * 4);
+    this.renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
+    rt.dispose();
+    let over = 0, max = 0;
+    for (let i = 0; i < w * h; i++) {
+      const l = 0.2126 * px[4 * i] + 0.7152 * px[4 * i + 1] + 0.0722 * px[4 * i + 2];
+      if (l > BLOOM_THRESHOLD) over++;
+      if (l > max) max = l;
+    }
+    let maskUrl: string | undefined;
+    if (mask) { // debug: where scenery goes over, as a small image (red = over)
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d') as CanvasRenderingContext2D, img = g.createImageData(w, h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (h - 1 - y) * w + x, o = 4 * (y * w + x);
+        const l = 0.2126 * px[4 * i] + 0.7152 * px[4 * i + 1] + 0.0722 * px[4 * i + 2];
+        img.data[o] = l > BLOOM_THRESHOLD ? 255 : Math.min(255, l * 150); img.data[o + 1] = l > BLOOM_THRESHOLD ? 0 : Math.min(255, l * 150); img.data[o + 2] = l > BLOOM_THRESHOLD ? 0 : Math.min(255, l * 150); img.data[o + 3] = 255;
+      }
+      g.putImageData(img, 0, 0); maskUrl = c.toDataURL();
+    }
+    return { over: over / (w * h), max, mask: maskUrl };
   }
 
   /** Mean luminance (0–255) and its spread over the frame just drawn (render smoke check). */
@@ -182,6 +263,7 @@ export class Stage {
   dispose(): void {
     this.clearWorld();
     this.swarm.dispose();
+    this.car.dispose();
     this.tex.dispose();
     for (const m of new Set(Object.values(this.mats))) m.dispose();
     for (const d of this.disposables) d.dispose();

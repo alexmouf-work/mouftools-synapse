@@ -3,8 +3,10 @@
 // grows. When done the champion's weights are saved with the brain; Train again continues from them (carry).
 // Results never depend on speed: rendering, the worker count and the path recording only change how it looks.
 import { CONFIG } from '../../../common/config';
-import { genomeHash } from '../../../common/sim/brain';
-import { generateTrack } from '../../../common/sim/track';
+import { compile, genomeHash } from '../../../common/sim/brain';
+import { newRecording, Runner } from '../../../common/sim/race';
+import type { Genome } from '../../../common/sim/spec';
+import { generateTrack, type Track } from '../../../common/sim/track';
 import { defaultWorkers } from '../../../common/train/episodes';
 import { phaseSeeds, runPhase, type GenStat, type PhaseResult } from '../../../common/train/phase';
 import type { Stage } from '../../render/stage';
@@ -16,6 +18,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   if (!e) throw new Error(`training: #${id} missing`);
   return e as T;
 };
+/** Generations recorded for the story, as fractions of the run (gen 1 and the final one are always recorded). */
+const STORY_AT = [0.1, 0.25, 0.5];
 const fmtTicks = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 2)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 
 export interface TrainingHooks {
@@ -28,11 +32,12 @@ export interface TrainingHooks {
 export interface TrainingStatus {
   state: 'running' | 'done' | 'stopped';
   seed: number; phase: number; start: 'fresh' | 'carry'; workers: number; T: number;
-  gen: number; ticksUsed: number; shownGen: number; ghostCapacity: number;
+  gen: number; ticksUsed: number; shownGen: number; finale: boolean; story: number[]; ghostCapacity: number;
   hash?: string; genome?: string; ms?: number; webgl: boolean; quality?: string;
   /** Frames drawn and the last frame's main-thread cost (ms), for the checks and for tuning. */
   frames: number; frameMs: number;
   probe?: () => { mean: number; sd: number; w: number; h: number };
+  bloomAudit?: (mask?: boolean) => { over: number; max: number; mask?: string };
 }
 declare global { interface Window { __training?: TrainingStatus } }
 
@@ -55,9 +60,12 @@ function newSeed(): number {
 }
 
 let stage: Stage | null = null;
+let track0: Track | null = null;
 let stopAsked = false;
 let raf = 0;
 let running = false;
+let estGens = 0; // estimated generations in this run (exact once done)
+let doneGens = 0;
 
 /** Open the view and train the given brain; resolves when the run ends (done or stopped). */
 export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<void> {
@@ -72,6 +80,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
   const T = p.T ?? CONFIG.train.T;
   const seeds = phaseSeeds(seed, phase);
+  estGens = 0; doneGens = 0;
 
   document.body.classList.add('training');
   $('trainView').hidden = false;
@@ -90,7 +99,8 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
       stage = new Stage(canvas, p.quality);
     }
     stage.resize();
-    stage.setTrack(generateTrack(seeds.trainTracks[0]));
+    track0 = generateTrack(seeds.trainTracks[0]);
+    stage.setTrack(track0);
   } catch (e) {
     console.warn('training: no 3-D view', e);
     webgl = false;
@@ -98,8 +108,9 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     showNoGl();
   }
   const status: TrainingStatus = {
-    state: 'running', seed, phase, start, workers, T, gen: 0, ticksUsed: 0, shownGen: 0, frames: 0, frameMs: 0,
-    ghostCapacity: stage?.swarm.capacity ?? 0, webgl, quality: stage?.quality, probe: stage ? () => (stage as Stage).probe() : undefined,
+    state: 'running', seed, phase, start, workers, T, gen: 0, ticksUsed: 0, shownGen: 0, finale: false, story: [], frames: 0, frameMs: 0,
+    ghostCapacity: stage?.swarm.capacity ?? 0, webgl, quality: stage?.quality,
+    probe: stage ? () => (stage as Stage).probe() : undefined, bloomAudit: stage ? (m?: boolean) => (stage as Stage).bloomAudit(m) : undefined,
   };
   window.__training = status;
   const gens: GenStat[] = [];
@@ -108,25 +119,35 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
 
   const pool = new BrowserPool(workers);
   let consumed: unknown = null;
-  let lastAsk = -Infinity;
   const pop = CONFIG.train.population;
+  const taken = new Set<number>(); // story fractions already recorded
+  let finalCandidate = false;
   let result: PhaseResult;
   try {
     result = await runPhase(pool, genome.spec, seed, {
       T, phase, start, genome, now: () => performance.now(),
       stepTicks: (env) => env.worstCase(pop),
       beforeStep: (env) => {
-        const now = performance.now();
-        const maybeLast = env.remaining() < 2 * env.worstCase(pop);
-        const swarmWants = stage ? stage.swarm.wantsNext() : false;
-        if (stage && (maybeLast || (swarmWants && now - lastAsk >= 200))) { pool.record = true; lastAsk = now; }
+        // The story is chosen by generation count, not by time: gen 1, ~10%, 25%, 50% of the run, and the last one
+        // (any generation that could be the last is recorded; only the last is kept as final).
+        const g = doneGens + 1;
+        // early generations are cheap (episodes stop on a stall); trained ones run ~80% of the worst case, so use
+        // that as a floor or the estimate overshoots and the story's early picks come late
+        const perGen = Math.max(doneGens ? env.used / doneGens : 0, 0.8 * env.worstCase(pop));
+        estGens = doneGens + Math.max(1, Math.floor(env.remaining() / perGen));
+        finalCandidate = env.remaining() < 2 * env.worstCase(pop);
+        const due = STORY_AT.findIndex((f, k) => !taken.has(k) && g >= Math.max(2, Math.round(f * estGens)));
+        if (due >= 0) STORY_AT.forEach((f, k) => { if (g >= Math.round(f * estGens)) taken.add(k); });
+        if (stage && (g === 1 || due >= 0 || finalCandidate)) pool.record = true;
       },
       onEvent: (e) => {
         if (e.type !== 'generation') return;
         gens.push({ gen: e.gen, best: e.best, mean: e.mean, ticksUsed: e.ticksUsed, champion: e.championW });
+        doneGens = e.gen;
         if (stage && pool.lastPaths && pool.lastPaths !== consumed) {
           consumed = pool.lastPaths;
-          stage.swarm.offer(pool.lastPaths, e.gen, e.champion);
+          stage.swarm.enqueue(pool.lastPaths, e.gen, e.champion, finalCandidate);
+          if (!finalCandidate) status.story.push(e.gen);
         }
         status.gen = e.gen; status.ticksUsed = e.ticksUsed;
         showProgress(e.gen, e.ticksUsed, T);
@@ -156,12 +177,23 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     status.hash = result.hash;
     status.genome = genomeHash(result.final);
     status.ms = result.trainMs;
+    estGens = result.gens.length;
+    status.story.push(estGens);
+    if (stage && track0) stage.swarm.setLap(championLap(result.final, track0, seeds.trainNoise[0], estGens));
     $('tvState').textContent = 'Trained';
     $('tvNote').textContent = `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain of the last generation is saved; Train again continues from it on new tracks.`;
     setButtons('done');
     $('tvAgain').onclick = () => { void openTraining(next, hooks); };
   }
   $('tvBack').onclick = () => close(hooks);
+}
+
+/** The champion's 30 s lap on training track 0, replayed for display only (no experience is charged). */
+function championLap(g: Genome, t: Track, noiseSeed: number, gen: number) {
+  const net = compile(g);
+  const rec = newRecording(net, CONFIG.race.ticks);
+  new Runner().run(net, t, { ticks: CONFIG.race.ticks, budget: CONFIG.budget[0], noiseSeed, earlyStop: false, record: rec });
+  return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, ticks: rec.ticks, gen };
 }
 
 function close(hooks: TrainingHooks) {
@@ -192,9 +224,11 @@ function loop() {
       // fifth of this thread; a software rasteriser (quality low) draws on the same CPU cores the workers use, so it
       // gets 4 frames a second.
       nextAt = !running ? 0 : stage.quality === 'low' ? c0 + 250 : cost > 8 ? c0 + 5 * cost : 0;
-      const g = stage.swarm.shownGen;
-      if (window.__training) window.__training.shownGen = g;
-      $('tvShown').textContent = g ? `gen ${g} · ${stage.swarm.mesh.count} cars` : 'waiting for the first generation';
+      const g = stage.swarm.shownGen, fin = stage.swarm.finale;
+      if (window.__training) { window.__training.shownGen = g; window.__training.finale = fin; }
+      const of = running ? `~${estGens}` : String(estGens);
+      $('tvShown').textContent = fin ? `the champion of gen ${g}, its generation faint behind`
+        : g ? `gen ${g} of ${of} · ${stage.swarm.mesh.count} cars` : 'waiting for the first generation';
     }
   };
   raf = requestAnimationFrame(tick);

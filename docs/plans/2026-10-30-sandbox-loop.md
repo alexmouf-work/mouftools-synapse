@@ -139,3 +139,14 @@ about /bench's time on a real GPU — to confirm on the reference desktop.
 - Review call "empty lines are free to cross" re-measured on S1: Starter unchanged (16/20 on (b)); Minimal still 17/20
   on (d).
 
+### S3 revision (review 2026-10-30: "the story doesn't read yet")
+- Story instead of latest-generation sampling: generations picked by count (1, ~10%, 25%, 50%, final), played in
+  order at 3× for 2.6 s each from gen 1 on; overlay "Watching gen 21 of ~172". Measured (seed 7, 145 gens): story
+  1 → 21 → 45 → 82 → 145 before the estimate fix (early generations are cheap, so the run's length was overestimated);
+  the estimate now floors the cost per generation at 80% of the worst case: 1 → 15 → 39 → 77 → 145 (10/27/53%).
+- Camera: chase angle ~44 m up following the pack's median progress; the generation's best is the solid car (ported
+  from the look mock-up); ghosts are see-through cyan, not additive, so a pack of near-identical cars stays readable.
+- Finished state: the champion's 30 s lap loops as the solid car with its generation faint 0.4 s behind.
+- Bloom: lit scenery was going over (white kerbs and road lines, max 1.95; trees under in the frames checked). All
+  scene light ×0.6, exposure ×1/0.6: scenery max 1.17, audit 0% over; strips, pads, lamps and the sun still bloom.
+

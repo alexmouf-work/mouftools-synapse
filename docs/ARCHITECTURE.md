@@ -117,21 +117,29 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   first Train), the phase is its count of finished runs, so every run is reproducible and a retrain sees new tracks.
   All-zero weights train from scratch (fresh), anything else continues from them (carry: slot 0 is the saved genome
   exactly). `runPhase` steps one generation at a time on a `BrowserPool`; before a step the view may ask the pool to
-  record track-0 paths (only when the swarm wants a newer generation, at most 5 a second, and on the possibly last
-  generations), which never changes a result. Overlay (plain, workbench tokens): seed, run, generation, generation
-  on screen, ticks used / T, a fitness graph (best and mean per generation against ticks used), Stop / Back to
+  record track-0 paths, which never changes a result. Display is decoupled from compute: the view records a story
+  chosen by generation count (gen 1, ~10%, 25%, 50% of the estimated run, and every generation that could be the
+  last), and the swarm plays them in order, each for 2.6 s at 3×, starting with gen 1 at once; if compute is behind,
+  the newest recorded generation loops. When the story reaches the final generation, the finale loops the
+  champion's 30 s lap (replayed on the main thread for display, not charged to T) as the solid car, with its
+  generation faint behind it. Overlay (plain, workbench tokens): seed, run, generation, generation
+  on screen ("gen 21 of ~172"), ticks used / T, a fitness graph (best and mean per generation against ticks used), Stop / Back to
   workbench / Train again / Drive (disabled until S4). Done → the champion's genome and `{seed, phases + 1}` are
   saved; Stop keeps the brain as it was. While training, drawing is paced so it cannot starve the pool: a frame
   costing > 8 ms is kept to a fifth of the main thread, and a software rasteriser (which renders on the workers'
   CPU cores) draws 4 frames a second.
 - `render/` — the 3-D port of `reference/look-mockup.html`'s core: `stage.ts` (renderer, ACES, bloom, sky dome, fog,
-  sun and shadows, training camera circling high over the swarm), `trackMesh.ts` (road, kerbs red/white in corners,
+  sun and shadows, the training camera: a chase angle ~44 m up, following the pack's median progress along the
+  track, or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `trackMesh.ts` (road, kerbs red/white in corners,
   run-off, walls with light strip, boost pads, start line, from the sim Track; flat for now), `scenery.ts` (terrain,
   tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the swarm: one InstancedMesh holding a
-  population, played back ~8× from recorded paths; champion yellow, wall contact flashing red, an episode that
-  ended early stays put and fades out flashing red, a full episode fades out in its own colour), `guard.ts`
+  population, see-through cyan ghosts with the generation's best as the solid car; wall contact flashing red, an
+  episode that ended early stays put and fades out flashing red, a full episode fades out in its own colour), `guard.ts`
   (finite-geometry and finite-matrix asserts, instance capacity asserts — all throw). Quality: `low` (pixel ratio 1,
   no shadows, no MSAA; bloom kept) is picked for software rasterisers (SwiftShader, llvmpipe), `high` otherwise.
+  Bloom: threshold 1.3; all scene light is scaled by 0.6 and the exposure by 1/0.6, so lit scenery (max ≈ 1.17) stays
+  under it and only glow-tagged things (wall strips, boost pads, lamps, sun disc) bloom; `bloomAudit` renders the
+  scene without them to a float target and counts pixels over.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
 
@@ -145,6 +153,7 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
 - `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the workbench,
   phase hash = Node's, genome saved and changed, Train again = Node's carry run, the same saved brain on 1 and 4
   workers → the same hash, Stop keeps the brain, ghost capacity, render smoke (mean luminance and spread of a real
-  frame), 844×390 layout, console clean; screenshots to `out/s3/`.
+  frame), the story (gen 1 first, in order, ending on the final generation, then the finale), bloom audit = 0,
+  844×390 layout, console clean; screenshots to `out/s3/`.
 - `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench
   and training checks.

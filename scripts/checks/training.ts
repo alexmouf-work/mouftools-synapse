@@ -3,8 +3,10 @@
 // - 1 vs 4 workers (and the default pool) → the same hash; training the same saved brain twice → the same result.
 // - Train again continues from the saved weights (carry, next phase) and matches Node; Stop leaves the brain as it was.
 // - Ghost capacity ≥ population; render smoke: the frame is lit and not uniform (no black bloom frame); console clean.
+// - The story: gen 1 first, chosen generations in order, ending on the final one, then the champion's lap (finale);
+//   bloom audit: no scenery pixel above the bloom threshold (only lights, strips, pads and lamps glow).
 // - 844×390: no horizontal scroll and the two panels do not overlap.
-// Screenshots → out/s3/ (full T: early swarm, later swarm and finished at 1440×900; mid-training at 844×390).
+// Screenshots → out/s3/ (full T: gen-1 crashes, mid story and the champion's lap at 1440×900; 844×390).
 //   npx tsx scripts/checks/training.ts
 import { mkdirSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -104,7 +106,7 @@ async function main() {
     // 5. landscape phone
     page = await open(`?seed=${SEED}&view=train`, 844, 390, true);
     await page.waitForFunction(() => (window.__training?.shownGen ?? 0) > 0, null, { timeout: 120_000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1300);
     const lay = await page.evaluate(() => {
       const a = document.querySelector('.tv-status')!.getBoundingClientRect(), b = document.querySelector('.tv-graph')!.getBoundingClientRect();
       const overlap = a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -115,23 +117,35 @@ async function main() {
     check((await status(page))?.state === 'running', '844×390 screenshot taken mid-training');
     await page.context().close();
 
-    // 6. screenshots at the real T
+    // 6. the story at the real T, with screenshots
     page = await open(`?seed=${SEED}&view=train`);
+    const seen: number[] = [];
+    const watch = setInterval(() => {
+      page.evaluate(() => window.__training?.shownGen ?? 0).then((g) => { if (g && seen[seen.length - 1] !== g) seen.push(g); }).catch(() => {});
+    }, 150);
     await page.waitForFunction(() => window.__training?.shownGen === 1, null, { timeout: 120_000 });
-    await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${OUT}/swarm-early.png` });
-    const early = await status(page);
-    await page.waitForFunction(() => (window.__training?.shownGen ?? 0) > 40 || window.__training?.state === 'done', null, { timeout: 600_000 });
+    await page.waitForTimeout(1300); // gen 1 a little way in: the first crashes
+    await page.screenshot({ path: `${OUT}/gen1-crashes.png` });
+    let audit = await page.evaluate(() => window.__training!.bloomAudit!());
+    check(audit.over === 0, `bloom audit at gen 1: ${(audit.over * 100).toFixed(2)}% of scenery over the threshold (max ${audit.max.toFixed(2)})`);
+    await page.waitForFunction(() => { const s = window.__training!; return s.shownGen > 1 && !s.finale && s.shownGen < s.gen; }, null, { timeout: 300_000 });
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: `${OUT}/story-mid.png` });
     const mid = await status(page);
-    await page.waitForTimeout(800);
-    await page.screenshot({ path: `${OUT}/swarm-late.png` });
     await waitState(page, 'done');
-    await page.waitForFunction(() => window.__training?.shownGen === window.__training?.gen, null, { timeout: 60_000 }).catch(() => {});
-    await page.waitForTimeout(1500);
-    await page.screenshot({ path: `${OUT}/finished.png` });
+    await page.waitForFunction(() => window.__training?.finale === true, null, { timeout: 300_000 });
+    await page.waitForTimeout(3500);
+    await page.screenshot({ path: `${OUT}/champion-loop.png` });
+    audit = await page.evaluate(() => window.__training!.bloomAudit!());
+    check(audit.over === 0, `bloom audit in the finale: ${(audit.over * 100).toFixed(2)}% over (max ${audit.max.toFixed(2)})`);
+    clearInterval(watch);
     s = await status(page);
-    console.log(`     screenshots: early gen ${early?.shownGen} (training gen ${early?.gen}), late gen ${mid?.shownGen} (state ${mid?.state}), finished gen ${s?.shownGen}/${s?.gen} in ${((s?.ms ?? 0) / 1000).toFixed(1)} s`);
-    check(mid?.state === 'running', 'a later generation was on screen while still training');
+    const story = s?.story ?? [];
+    console.log(`     story recorded ${story.join(', ')}; on screen ${seen.join(' → ')}; mid shot gen ${mid?.shownGen}; done in ${((s?.ms ?? 0) / 1000).toFixed(1)} s`);
+    check(seen[0] === 1 && seen.every((g, k) => k === 0 || g > seen[k - 1]) && seen[seen.length - 1] === s?.gen && seen.length >= 4,
+      `story plays gen 1 first, then later generations in order, ending on the final gen ${s?.gen}`);
+    check(story.length >= 4 && story[0] === 1, `story generations recorded by count: ${story.join(', ')}`);
+    check(s?.finale === true, 'finished state loops the champion with its generation (never an empty road)');
     await page.context().close();
 
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);

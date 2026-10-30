@@ -5,16 +5,21 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import { generateTrack } from '../../src/common/sim/track';
 import { PATH_STRIDE, type Paths } from '../../src/common/train/episodes';
-import { GhostSwarm } from '../../src/client/render/ghosts';
+import { makeCar } from '../../src/client/render/car';
+import { STORY_SLOT_S, Swarm } from '../../src/client/render/ghosts';
 import { assertFiniteGeometry, setInstance } from '../../src/client/render/guard';
 import { buildScenery } from '../../src/client/render/scenery';
 import { trackParts } from '../../src/client/render/trackMesh';
 
-function paths(count: number, samples = 200): Paths {
+/** Cars driving along a real track's centreline, some stopping early. */
+function paths(t: ReturnType<typeof generateTrack>, count: number, samples = 200): Paths {
   const data = new Float64Array(count * samples * PATH_STRIDE), ticks = new Int32Array(count);
   for (let i = 0; i < count; i++) {
-    ticks[i] = 100 + i * 4;
-    for (let j = 0; j < samples; j++) { const q = (i * samples + j) * PATH_STRIDE; data[q] = j * 3; data[q + 1] = i; data[q + 2] = 3.1 * (j % 3); data[q + 3] = 30; data[q + 4] = j % 7 === 0 ? 1 : 0; }
+    ticks[i] = i % 3 === 0 ? 120 + i : 400;
+    for (let j = 0; j < samples; j++) {
+      const k = (t.startIdx + j * 2 + (i % 5)) % t.n, q = (i * samples + j) * PATH_STRIDE;
+      data[q] = t.px[k]; data[q + 1] = t.py[k]; data[q + 2] = t.th[k]; data[q + 3] = 40; data[q + 4] = j % 7 === 0 ? 1 : 0;
+    }
   }
   return { count, samples, data, ticks };
 }
@@ -41,17 +46,26 @@ describe('render guards', () => {
     expect(() => setInstance(m, 4, new THREE.Matrix4())).toThrow(/capacity/);
     expect(() => setInstance(m, 0, new THREE.Matrix4().makeTranslation(NaN, 0, 0))).toThrow(/non-finite/);
   });
-  it('the ghost swarm holds a whole population and refuses more', () => {
-    const sw = new GhostSwarm();
+  it('the swarm holds a whole population, refuses more, and tells the story in order, then the finale', () => {
+    const t = generateTrack(4);
+    const sw = new Swarm(makeCar('#ffc21a', '#14161d', new THREE.Texture()));
+    sw.setTrack(t);
     expect(sw.capacity).toBe(CONFIG.train.population);
-    expect(() => sw.offer(paths(CONFIG.train.population + 1), 1, 0)).toThrow(/capacity|holds/);
-    sw.offer(paths(CONFIG.train.population), 1, 5);
-    for (let k = 0; k < 40; k++) sw.update(0.1, k * 0.1); // plays out, every matrix checked finite
-    expect(sw.shownGen).toBe(1);
-    expect(sw.wantsNext()).toBe(true);
-    sw.offer(paths(10), 2, 0);
-    sw.update(0.1, 5);
-    expect(sw.shownGen).toBe(2);
-    expect(sw.mesh.count).toBe(10);
+    expect(() => sw.enqueue(paths(t, CONFIG.train.population + 1), 1, 0, false)).toThrow(/capacity|holds/);
+    sw.enqueue(paths(t, CONFIG.train.population), 1, 5, false);
+    sw.enqueue(paths(t, 20), 9, 2, false);
+    sw.enqueue(paths(t, 30), 40, 1, true);
+    sw.enqueue(paths(t, 30), 41, 3, true); // a later final candidate replaces the queued one
+    const seen: number[] = [];
+    for (let k = 0; k < 200; k++) { sw.update(0.05, k * 0.05); if (seen[seen.length - 1] !== sw.shownGen) seen.push(sw.shownGen); }
+    expect(seen).toEqual([1, 9, 41]);
+    expect(sw.finale).toBe(false); // no lap yet: the final generation loops
+    expect(sw.focusIdx).toBeGreaterThanOrEqual(0);
+    const n = 600, lap = { x: new Float64Array(n), y: new Float64Array(n), hdg: new Float64Array(n), v: new Float64Array(n).fill(40), ticks: n, gen: 41 };
+    for (let k = 0; k < n; k++) { const i = (t.startIdx + k) % t.n; lap.x[k] = t.px[i]; lap.y[k] = t.py[i]; lap.hdg[k] = t.th[i]; }
+    sw.setLap(lap);
+    for (let k = 0; k < Math.ceil((STORY_SLOT_S + 1) / 0.05); k++) sw.update(0.05, k);
+    expect(sw.finale).toBe(true);
+    for (let k = 0; k < 400; k++) sw.update(0.05, k); // loops the lap; every matrix checked finite
   });
 });
