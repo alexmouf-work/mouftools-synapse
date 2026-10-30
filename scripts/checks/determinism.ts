@@ -9,7 +9,7 @@ import { CONFIG } from '../../src/common/config';
 import { Hasher } from '../../src/common/hash';
 import { Rng } from '../../src/common/rng';
 import { compile, starterSpec } from '../../src/common/sim/brain';
-import { newRecording, Runner } from '../../src/common/sim/race';
+import { newRecording, recordingHash, Runner } from '../../src/common/sim/race';
 import { generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
@@ -25,7 +25,7 @@ function raceHash(seed: number, budget: number): string {
   const net = compile({ spec, w: spec.conns.map(() => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
   const rec = newRecording(net, CONFIG.race.ticks);
   new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, budget, noiseSeed: ps.raceNoise, earlyStop: false, record: rec });
-  return new Hasher().f64s(rec.x).f64s(rec.y).f64s(rec.hdg).f64s(rec.v).f64s(rec.energy).f64s(rec.act).hex();
+  return recordingHash(rec);
 }
 
 async function main() {

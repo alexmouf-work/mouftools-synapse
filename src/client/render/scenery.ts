@@ -20,7 +20,8 @@ function fbm(x: number, y: number) { let s = 0, a = 0.5, f = 1; for (let i = 0; 
 
 export interface Scenery { group: THREE.Group; dispose(): void }
 
-export function buildScenery(t: Track, seed: number): Scenery {
+/** keepClear: places trees stay away from (stands, boards, camera spots). */
+export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: number; r: number }[] = []): Scenery {
   const rng = new Rng(seed ^ 0x5ce4e);
   const rand = () => rng.next();
   const group = new THREE.Group();
@@ -89,6 +90,7 @@ export function buildScenery(t: Track, seed: number): Scenery {
       const x = centre.x + (rand() - 0.5) * 1500, z = centre.z + (rand() - 0.5) * 1500;
       const d = distToTrack(x, z);
       if (d < 22 + rand() * 6) continue;
+      if (keepClear.some((k) => Math.hypot(x - k.x, z - k.z) < k.r)) continue;
       if (vnoise(x * 0.012, z * 0.012) < 0.42 && d > 60) continue;
       const h = terrainH(x, z, d);
       if (h > 120) continue;
@@ -110,7 +112,8 @@ export function buildScenery(t: Track, seed: number): Scenery {
   // clouds
   {
     const cg = new THREE.IcosahedronGeometry(1, 0);
-    const cm = new THREE.MeshStandardMaterial({ color: '#ffffff', flatShading: true, roughness: 1, emissive: '#cfe0ff', emissiveIntensity: 0.25 });
+    // a touch off white, faint glow: sunlit tops must stay under the bloom threshold (bloom audit)
+    const cm = new THREE.MeshStandardMaterial({ color: '#e4e9f1', flatShading: true, roughness: 1, emissive: '#cfe0ff', emissiveIntensity: 0.12 });
     for (let k = 0; k < 16; k++) {
       const a = rand() * Math.PI * 2, r = 420 + rand() * 520;
       const g = new THREE.Group(); g.position.set(centre.x + Math.cos(a) * r, 120 + rand() * 110, centre.z + Math.sin(a) * r);

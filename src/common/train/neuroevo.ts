@@ -3,7 +3,7 @@
 // Common random numbers: every policy sees the same tracks and noise. Ties break by index. Runs whole generations
 // while the next one's worst case fits the budget; the generation count is a result, not a setting.
 import { CONFIG } from '../config';
-import { compile, evalNet, genomeHash, specHash } from '../sim/brain';
+import { compile, evalNet, genomeHash, signalOf, specHash } from '../sim/brain';
 import { startCar } from '../sim/car';
 import { readSensors } from '../sim/sensors';
 import type { Genome } from '../sim/spec';
@@ -137,9 +137,7 @@ export class Neuroevo implements Trainer {
     const inputs = new Float64Array(10), vals = new Float64Array(net.nNodes);
     readSensors(c, t, net.inUsed, env.setup.budget, inputs);
     evalNet(net, inputs, vals, 0, 0, 0);
-    const signal = new Float64Array(g.spec.conns.length);
-    for (let k = 0; k < net.w.length; k++) signal[net.specIdx[k]] = vals[net.from[k]] * net.w[k];
-    return { channels: { signal } };
+    return { channels: { signal: signalOf(net, vals) } };
   }
 
   /** For tests: hash of the current champion. */

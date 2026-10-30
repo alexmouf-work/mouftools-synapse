@@ -1,7 +1,11 @@
 // Run one car (cars are ghosts to each other, so N cars are N independent runs) for up to T ticks, optionally
 // recording frames and activations. Training episodes stop early on a stall or when the car goes too far backwards.
 import { CONFIG } from '../config';
-import { evalNet, type Net } from './brain';
+import { Hasher } from '../hash';
+import { derive, TAG } from '../rng';
+import { compile, evalNet, type Net } from './brain';
+import type { Genome } from './spec';
+import { generateTrack } from './track';
 import { noiseLevel } from './energy';
 import { readSensors } from './sensors';
 import { startCar, stepPhysics, type CarState } from './car';
@@ -19,6 +23,8 @@ export interface Recording {
   energy: Float64Array;
   /** Per tick: 1 if the car touched a wall. */
   wall: Uint8Array;
+  /** Per tick: centreline progress (m). Not part of recordingHash (it follows from x, y). */
+  prog: Float64Array;
   /** Per tick: every node's output (nNodes per tick). */
   act: Float64Array;
   ticks: number;
@@ -27,7 +33,7 @@ export interface Recording {
 export function newRecording(net: Net, ticks: number): Recording {
   return {
     x: new Float64Array(ticks), y: new Float64Array(ticks), hdg: new Float64Array(ticks), v: new Float64Array(ticks),
-    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
+    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
   };
 }
 
@@ -60,7 +66,7 @@ export class Runner {
       const wall = this.tick(net, t, c, o.budget, o.noiseSeed);
       const rec = o.record;
       if (rec) {
-        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev; rec.wall[k] = wall ? 1 : 0;
+        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev; rec.wall[k] = wall ? 1 : 0; rec.prog[k] = c.prog;
         rec.act.set(this.vals.subarray(0, net.nNodes), k * net.nNodes);
         rec.ticks = k + 1;
       }
@@ -99,3 +105,25 @@ export class Runner {
 }
 
 export const fitnessOf = (r: RunResult): number => r.prog - TR.wallPenalty * r.wallTicks;
+
+/** Hash of a recording: frames, energy and every node's output, bit for bit. */
+export function recordingHash(rec: Recording): string {
+  const n = rec.ticks, a = rec.act.length / Math.max(rec.x.length, 1);
+  return new Hasher().f64s(rec.x.subarray(0, n)).f64s(rec.y.subarray(0, n)).f64s(rec.hdg.subarray(0, n)).f64s(rec.v.subarray(0, n))
+    .f64s(rec.energy.subarray(0, n)).f64s(rec.act.subarray(0, n * a)).hex();
+}
+
+/** A drive's noise stream is derived from its track seed, so a track seed alone reproduces a drive. */
+export const driveNoiseSeed = (trackSeed: number): number => derive(trackSeed, TAG.raceNoise);
+
+/**
+ * The drive view's run: the brain on one track for CONFIG.drive.ticks, deterministic and recorded. The browser plays
+ * it back; a Node replay of the same genome and track seed gives the same hash.
+ */
+export function runDrive(g: Genome, trackSeed: number, budget: number = CONFIG.budget[0]) {
+  const net = compile(g);
+  const track = generateTrack(trackSeed);
+  const rec = newRecording(net, CONFIG.drive.ticks);
+  const result = new Runner().run(net, track, { ticks: CONFIG.drive.ticks, budget, noiseSeed: driveNoiseSeed(trackSeed), earlyStop: false, record: rec });
+  return { net, track, rec, result, hash: recordingHash(rec) };
+}

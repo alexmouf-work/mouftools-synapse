@@ -10,6 +10,7 @@ import { generateTrack, type Track } from '../../../common/sim/track';
 import { defaultWorkers } from '../../../common/train/episodes';
 import { phaseSeeds, runPhase, type GenStat, type PhaseResult } from '../../../common/train/phase';
 import type { Stage } from '../../render/stage';
+import { getStage, hideArena, showArena } from '../arena';
 import { BrowserPool } from '../../workers/pool';
 import type { Saved } from '../workbench/store';
 
@@ -27,6 +28,8 @@ export interface TrainingHooks {
   save(s: Saved): void;
   /** Leave for the workbench. */
   back(): void;
+  /** Leave for the drive view with this (trained) brain. */
+  drive(s: Saved): void;
 }
 
 export interface TrainingStatus {
@@ -49,7 +52,6 @@ function params() {
     workers: num('workers'),
     // a smaller budget is for the browser checks only; the game always spends CONFIG.train.T
     T: import.meta.env.DEV ? num('T') : undefined,
-    quality: q.get('quality') === 'low' ? 'low' as const : q.get('quality') === 'high' ? 'high' as const : undefined,
   };
 }
 
@@ -82,8 +84,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
   const seeds = phaseSeeds(seed, phase);
   estGens = 0; doneGens = 0;
 
-  document.body.classList.add('training');
-  $('trainView').hidden = false;
+  showArena('train');
   $('tvName').textContent = saved.name;
   $('tvSeed').textContent = String(seed);
   $('tvRun').textContent = `${phase + 1}${start === 'carry' ? ' · continues from saved weights' : ' · from scratch'}`;
@@ -91,22 +92,10 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
   $('tvState').textContent = 'Training';
 
   // the scene (optional: training runs without WebGL)
-  const canvas = $('scene') as HTMLCanvasElement;
-  let webgl = true;
-  try {
-    if (!stage) {
-      const { Stage } = await import('../../render/stage');
-      stage = new Stage(canvas, p.quality);
-    }
-    stage.resize();
-    track0 = generateTrack(seeds.trainTracks[0]);
-    stage.setTrack(track0);
-  } catch (e) {
-    console.warn('training: no 3-D view', e);
-    webgl = false;
-    stage = null;
-    showNoGl();
-  }
+  stage = await getStage();
+  const webgl = stage !== null;
+  track0 = generateTrack(seeds.trainTracks[0]);
+  if (stage) await stage.setTrack(track0, 'train');
   const status: TrainingStatus = {
     state: 'running', seed, phase, start, workers, T, gen: 0, ticksUsed: 0, shownGen: 0, finale: false, story: [], frames: 0, frameMs: 0,
     ghostCapacity: stage?.swarm.capacity ?? 0, webgl, quality: stage?.quality,
@@ -184,6 +173,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     $('tvNote').textContent = `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain of the last generation is saved; Train again continues from it on new tracks.`;
     setButtons('done');
     $('tvAgain').onclick = () => { void openTraining(next, hooks); };
+    $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; hooks.drive(next); };
   }
   $('tvBack').onclick = () => close(hooks);
 }
@@ -200,8 +190,7 @@ function close(hooks: TrainingHooks) {
   if (running) return;
   cancelAnimationFrame(raf);
   raf = 0;
-  $('trainView').hidden = true;
-  document.body.classList.remove('training');
+  hideArena();
   hooks.back();
 }
 
@@ -213,7 +202,7 @@ function loop() {
     raf = requestAnimationFrame(tick);
     if (now < nextAt) return;
     // real time, so the swarm plays at its speed even when frames are slow
-    const dt = Math.min((now - last) / 1000, 0.5);
+    const dt = Math.max(0, Math.min((now - last) / 1000, 0.5)); // rAF time can precede performance.now(): no negative steps
     last = now;
     if (stage) {
       const c0 = performance.now();
@@ -251,12 +240,6 @@ function showProgress(gen: number, used: number, T: number) {
   $('tvFill').parentElement?.setAttribute('aria-valuenow', pct.toFixed(0));
 }
 
-function showNoGl() {
-  const p = document.createElement('p');
-  p.className = 'tv-nogl';
-  p.textContent = 'The 3-D view needs WebGL, which this browser has turned off. Training still runs; the numbers are on the left.';
-  $('trainView').appendChild(p);
-}
 
 function drawGraph(gens: GenStat[], T: number) {
   const cv = $('tvGraph') as HTMLCanvasElement;
@@ -295,4 +278,3 @@ function drawGraph(gens: GenStat[], T: number) {
   line('best', col('--accent'), 2.2);
 }
 
-window.addEventListener('resize', () => { stage?.resize(); });

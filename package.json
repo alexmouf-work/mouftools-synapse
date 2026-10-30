@@ -11,14 +11,16 @@
     "check:purity": "tsx scripts/checks/purity.ts",
     "check:determinism": "tsx scripts/checks/determinism.ts",
     "check:bench": "tsx scripts/checks/bench.ts",
-    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench && npm run check:workbench && npm run check:training",
+    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench && npm run check:workbench && npm run check:training && npm run check:drive",
     "bench": "tsx scripts/sim/bench.ts",
     "bench:browser": "tsx scripts/checks/bench-browser.ts",
     "check:workbench": "tsx scripts/checks/workbench.ts",
-    "check:training": "tsx scripts/checks/training.ts"
+    "check:training": "tsx scripts/checks/training.ts",
+    "check:drive": "tsx scripts/checks/drive.ts"
   },
   "devDependencies": {
     "@fontsource/atkinson-hyperlegible": "5.3.0",
+    "@fontsource/chakra-petch": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@types/node": "22.20.5",
     "@types/three": "0.160.0",

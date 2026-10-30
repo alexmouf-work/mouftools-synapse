@@ -108,6 +108,10 @@ export const CONFIG = {
     ticks: 600, // 30 s on the unseen track
   },
 
+  drive: {
+    ticks: 1200, // the drive view's run: 60 s
+  },
+
   pool: {
     maxWorkers: 4, // min(cores − 1, this)
   },

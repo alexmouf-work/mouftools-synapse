@@ -3,8 +3,9 @@
 What exists, updated in the same commit as the code. The intended full layout is §1 of
 `docs/plans/2026-10-30-solo-loop.md`; milestone steps are in `docs/plans/2026-10-30-sandbox-loop.md`.
 
-Built so far: **S1** (headless sim, evolution benchmark), **S2** (the workbench) and **S3** (the training view: Train
-→ the swarm learns on a 3-D track → the champion is saved; Train again continues). No drive view yet (S4).
+Built so far: **S1** (headless sim, evolution benchmark), **S2** (the workbench), **S3** (the training view: Train →
+the swarm learns on a 3-D track → the champion is saved; Train again continues) and **S4** (the drive view: the
+trained car drives 60 s on an unseen track in the stadium). Not yet: production deploy (S5).
 
 ## Stack
 Vite + TypeScript, Three.js 0.160 (training view only, loaded on first Train), Vitest, tsx for Node scripts,
@@ -27,7 +28,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | The 10 input readings (only wired inputs are computed). |
-| `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training. |
+| `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training; `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry. |
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
 | `train/episodes.ts` | Episode batches: `EpisodeCore` (runs policies × tracks), `splitEven`, `InlineExecutor`. |
@@ -96,8 +97,10 @@ The Env also offers `openCar` (one car stepped tick by tick, metered per tick, o
 wheels) for the gradient trainers to come; neuroevolution does not use it.
 
 ## src/client
-- `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono), the
-  workbench, and the training view in the same page (no reload). `?view=train` trains the saved brain on load;
+- `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono; Chakra
+  Petch for the stadium's signs), the workbench, the training view and the drive view in the same page (no reload),
+  over one shared 3-D stage (`ui/arena.ts`). `?view=train` / `?view=drive` open them on load (`?track=` picks the
+  drive's track);
   `?seed=` and `?workers=` override; `?T=` (dev server only) shrinks the budget for the browser checks;
   `?quality=low|high` overrides the renderer's choice.
 - `ui/workbench/` — a TypeScript port of `reference/builder-mockup.html`: `workbench.css` (the mock-up's styles,
@@ -130,7 +133,12 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   CPU cores) draws 4 frames a second.
 - `render/` — the 3-D port of `reference/look-mockup.html`'s core: `stage.ts` (renderer, ACES, bloom, sky dome, fog,
   sun and shadows, the training camera: a chase angle ~44 m up, following the pack's median progress along the
-  track, or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `trackMesh.ts` (road, kerbs red/white in corners,
+  track, or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `drive.ts`
+  (the drive rig: the yellow car with each wheel spinning at 18 rad/s × its output, so it reverses visibly; the six
+  eye rays from the sensor directions via `sensors.eyeDistance`, brighter as a wall nears, unwired eyes faint,
+  flickering over budget; chase, broadcast and showroom cameras), `stadium.ts` (grandstand with crowd and SYNAPSE
+  banner, start and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards on tight corners, broadcast
+  camera spots; trees keep clear of them), `trackMesh.ts` (road, kerbs red/white in corners,
   run-off, walls with light strip, boost pads, start line, from the sim Track; flat for now), `scenery.ts` (terrain,
   tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the swarm: one InstancedMesh holding a
   population, see-through cyan ghosts with the generation's best as the solid car; wall contact flashing red, an
@@ -140,6 +148,15 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   Bloom: threshold 1.3; all scene light is scaled by 0.6 and the exposure by 1/0.6, so lit scenery (max ≈ 1.17) stays
   under it and only glow-tagged things (wall strips, boost pads, lamps, sun disc) bloom; `bloomAudit` renders the
   scene without them to a float target and counts pixels over.
+- `ui/drive/` — the drive view. `runDrive(genome, trackSeed)` computes the whole 60 s run first (noise seed derived
+  from the track seed), then it plays back in real time and loops. First track: the unseen track of the brain's
+  last training run; New track draws a fresh seed. Overlay (plain): time, distance and laps, best lap, energy % (and
+  static %), track seed, cameras (Chase / Broadcast / Showroom, keys 1–3), New track, Back to workbench. A stall
+  (the training rule: < 5 m of new progress in 3 s) shows "Stuck against the wall since m:ss" (or "Not moving"), and
+  the chase camera swings slowly round the car, whose wheels keep turning at their outputs. `brainPanel.ts` draws
+  the workbench board scaled down on a canvas from the recorded node outputs and the `signal` channel
+  (`brain.signalOf`, the same function as the trainer's probe), with static over budget. The workbench shows Drive
+  once the brain has trained weights; the finished training view has Drive too.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
 
@@ -155,5 +172,9 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   workers → the same hash, Stop keeps the brain, ghost capacity, render smoke (mean luminance and spread of a real
   frame), the story (gen 1 first, in order, ending on the final generation, then the finale), bloom audit = 0,
   844×390 layout, console clean; screenshots to `out/s3/`.
-- `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench
-  and training checks.
+- `scripts/checks/drive.ts` — train a tiny T, Drive: distance increases, drive hash = Node `runDrive` replay (also
+  after New track), render smoke, bloom audit = 0, cameras, Drive on the workbench only when trained, a pinned brain
+  shows the stuck note while the camera keeps moving, an over-budget brain shows static, 844×390; screenshots to
+  `out/s4/`.
+- `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench,
+  training and drive checks.

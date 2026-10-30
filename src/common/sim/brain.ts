@@ -35,6 +35,8 @@ export interface Net {
   specIdx: Int32Array;
   inUsed: Uint8Array;
   staticCost: number;
+  /** Pin or neuron id of each node, in node order. */
+  ids: string[];
 }
 
 export function compile(g: Genome): Net {
@@ -76,6 +78,7 @@ export function compile(g: Genome): Net {
   return {
     spec, nIn, nHidden, nNodes, outStart, act, key, inStart, from, w, factor, specIdx,
     inUsed: wiredInputs(spec), staticCost: staticCost(spec).total,
+    ids: [...INPUTS.map((p) => p.id), ...hidden.map((n) => n.id), ...OUTPUTS.map((o) => o.id)],
   };
 }
 
@@ -113,6 +116,15 @@ export function evalNet(net: Net, inputs: Float64Array, vals: Float64Array, a: n
     vals[d] = noisy ? (1 - a) * v + a * (2 * hashU(noiseSeed, key[d], tick) - 1) : v;
   }
   return net.staticCost + fireCost(net.factor, from, w, vals);
+}
+
+/**
+ * The `signal` probe channel: per spec wire, sender output × weight for the node values of one tick. The trainer's
+ * probe and the drive view's brain panel both use this.
+ */
+export function signalOf(net: Net, vals: ArrayLike<number>, out = new Float64Array(net.spec.conns.length)): Float64Array {
+  for (let k = 0; k < net.w.length; k++) out[net.specIdx[k]] = vals[net.from[k]] * net.w[k];
+  return out;
 }
 
 // ---- presets ----

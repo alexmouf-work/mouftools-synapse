@@ -150,3 +150,16 @@ about /bench's time on a real GPU — to confirm on the reference desktop.
 - Bloom: lit scenery was going over (white kerbs and road lines, max 1.95; trees under in the frames checked). All
   scene light ×0.6, exposure ×1/0.6: scenery max 1.17, audit 0% over; strips, pads, lamps and the sun still bloom.
 
+## S4 notes (2026-10-30)
+Built as planned with the reviewer's notes; checks green (Node: stadium geometry finite and crowd within capacity
+over 50 seeds, drive determinism; `scripts/checks/drive.ts` on SwiftShader). Measured: the browser's drive hash
+equals the Node replay (seed 7, T 1M: 23a2ba9c), bloom audit 0% (max 1.17).
+- The run is computed first (`runDrive`, 1200 ticks) and played back; the noise seed comes from the track seed, so
+  a track seed alone reproduces a drive. The first track is the unseen track of the brain's last training run.
+- Stuck: the training stall rule on the recording; note "Stuck against the wall since m:ss"; the chase camera swings
+  round the car and the wheels keep turning at their outputs.
+- Wheel spin is 18 rad/s × output (readable, reverses with the sign), not the 60 m/s the output asks for.
+- Clouds were the one scenery item over the bloom threshold from the low chase camera; toned down slightly.
+- Seen in the stuck shot: the car body pokes ~0.4 m into the wall when pinned (sim clamps the centre at 11.5 m; the
+  model is 2.9 m wide). Left as is; a render-only inset is an option for S5.
+

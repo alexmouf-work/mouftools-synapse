@@ -51,6 +51,7 @@ const isPin = (id: string) => id.startsWith('i:') || id.startsWith('o:');
 let saveWarned = false;
 let active = true; // false while another view (training) is up: the board ignores keys and resizes
 let onTrain: (s: Saved) => void = () => toast('Training isn’t available here.');
+let onDrive: (s: Saved) => void = () => toast('Driving isn’t available here.');
 
 function commit(draft: Draft, sel: string | null = W.sel, fresh: string | null = null) {
   W.saved = { ...W.saved, draft };
@@ -247,6 +248,7 @@ function render() {
   const usedIn = IN_UI.filter((i) => used(i.id)).length, usedOut = OUT_UI.filter((o) => used(o.id)).length;
   $('count').textContent = `${usedIn} / ${IN_UI.length} inputs · ${s.nodes.length} neurons in ${s.layers} layer${s.layers === 1 ? '' : 's'} · ${s.conns.length} wires · ${usedOut} / ${OUT_UI.length} wheels`;
   ($('addL') as HTMLButtonElement).disabled = s.layers >= MAX_LAYERS;
+  $('drive').hidden = !trained(); // Drive appears once the brain has trained weights
   $('name').textContent = W.saved.name;
 }
 
@@ -363,6 +365,8 @@ $('name').onclick = () => {
   inp.addEventListener('blur', () => finish(true));
 };
 $('train').onclick = () => onTrain(W.saved);
+$('drive').onclick = () => onDrive(W.saved);
+const trained = () => W.saved.draft.genome.w.some((w) => w !== 0);
 $('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
 // Presets replace the whole brain, so the first click asks and the second (within 3 s) does it.
 let armed: { el: HTMLButtonElement; t: ReturnType<typeof setTimeout> } | null = null;
@@ -406,8 +410,9 @@ export function replaceSaved(s: Saved) {
   if (active) render();
 }
 
-export function start(o: { onTrain: (s: Saved) => void }) {
+export function start(o: { onTrain: (s: Saved) => void; onDrive: (s: Saved) => void }) {
   onTrain = o.onTrain;
+  onDrive = o.onDrive;
   W.sel = spec().nodes[0]?.id ?? null;
   render();
   if (loaded.status === 'corrupt') {

@@ -20,6 +20,7 @@
       <option disabled>Actor-critic (soon)</option>
       <option disabled>A_RP (soon)</option>
     </select>
+    <button class="btn" id="drive" type="button" hidden>Drive</button>
     <button class="btn primary" id="train" type="button">Train</button>
   </header>
 
@@ -57,8 +58,9 @@
   <p class="note">The builder needs the width: the car on the left, your network reading across to the wheels on the right.</p>
   <button class="btn" id="stay" type="button">Continue in portrait</button>
 </div></div>
-<div id="trainView" class="tv" hidden>
-  <canvas id="scene" aria-label="The training track, with every car of one generation driving it"></canvas>
+<div id="arena" class="tv" hidden>
+  <canvas id="scene" aria-label="The track in 3-D"></canvas>
+  <div id="trainOverlay" hidden>
   <section class="tv-panel tv-status" aria-live="polite">
     <h1 class="tv-title"><span id="tvState">Training</span><span class="tv-name" id="tvName"></span></h1>
     <dl class="kv">
@@ -74,7 +76,7 @@
       <button class="btn" id="tvStop" type="button">Stop</button>
       <button class="btn primary" id="tvBack" type="button" hidden>Back to workbench</button>
       <button class="btn" id="tvAgain" type="button" hidden>Train again</button>
-      <button class="btn" id="tvDrive" type="button" hidden disabled title="Driving comes in the next build step">Drive</button>
+      <button class="btn" id="tvDrive" type="button" hidden>Drive</button>
     </div>
   </section>
   <section class="tv-panel tv-graph" aria-label="Fitness per generation">
@@ -82,6 +84,34 @@
     <canvas id="tvGraph"></canvas>
     <p class="note tv-legend"><span class="sw best"></span>best <span class="sw mean"></span>mean · metres per 20 s, wall touches cost 0.5 each</p>
   </section>
+  </div>
+  <div id="driveOverlay" hidden>
+    <section class="tv-panel tv-status dv-status" aria-live="polite">
+      <h1 class="tv-title"><span>Drive</span><span class="tv-name" id="dvName"></span></h1>
+      <dl class="kv">
+        <dt>Time</dt><dd id="dvTime"></dd>
+        <dt>Distance</dt><dd id="dvDist"></dd>
+        <dt>Best lap</dt><dd id="dvLap"></dd>
+        <dt>Energy</dt><dd id="dvEnergy"></dd>
+        <dt>Track</dt><dd id="dvTrack"></dd>
+      </dl>
+      <p class="dv-stuck" id="dvStuck" hidden></p>
+      <div class="dv-cams" role="group" aria-label="Camera">
+        <button type="button" data-cam="chase" aria-pressed="true">Chase</button>
+        <button type="button" data-cam="tv" aria-pressed="false">Broadcast</button>
+        <button type="button" data-cam="orbit" aria-pressed="false">Showroom</button>
+      </div>
+      <div class="tv-actions">
+        <button class="btn" id="dvNew" type="button">New track</button>
+        <button class="btn primary" id="dvBack" type="button">Back to workbench</button>
+      </div>
+    </section>
+    <section class="tv-panel dv-brain" aria-label="Live brain">
+      <h2>Brain · live <span class="dv-static" id="dvStatic" hidden></span></h2>
+      <canvas id="dvBrain"></canvas>
+      <p class="note tv-legend"><span class="sw best"></span>signal + <span class="sw neg"></span>signal − · line width = |output × weight|</p>
+    </section>
+  </div>
 </div>
 <div id="toast" hidden></div>
 <script type="module" src="/src/client/main.ts"></script>

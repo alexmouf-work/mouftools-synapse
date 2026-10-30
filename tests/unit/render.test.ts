@@ -9,6 +9,8 @@ import { makeCar } from '../../src/client/render/car';
 import { STORY_SLOT_S, Swarm } from '../../src/client/render/ghosts';
 import { assertFiniteGeometry, setInstance } from '../../src/client/render/guard';
 import { buildScenery } from '../../src/client/render/scenery';
+import { buildStadium } from '../../src/client/render/stadium';
+import { runDrive } from '../../src/common/sim/race';
 import { trackParts } from '../../src/client/render/trackMesh';
 
 /** Cars driving along a real track's centreline, some stopping early. */
@@ -67,5 +69,27 @@ describe('render guards', () => {
     for (let k = 0; k < Math.ceil((STORY_SLOT_S + 1) / 0.05); k++) sw.update(0.05, k);
     expect(sw.finale).toBe(true);
     for (let k = 0; k < 400; k++) sw.update(0.05, k); // loops the lap; every matrix checked finite
+  });
+  it('the drive stadium (stand, crowd, gates, boards, lights, chevrons) is finite and within capacity for 50 seeds', () => {
+    const tex = { banner: () => new THREE.Texture(), gate: () => new THREE.Texture(), lamp: new THREE.Texture(), chevron: new THREE.Texture() };
+    for (let s = 1; s <= 50; s++) {
+      const t = generateTrack(s);
+      const st = buildStadium(t, tex); // every geometry and instance write is checked inside
+      expect(st.tvSpots.length).toBeGreaterThan(5);
+      let crowd = 0;
+      st.group.traverse((o) => { if (o instanceof THREE.InstancedMesh && o.name === 'crowd') crowd = o.count; });
+      expect(crowd).toBeGreaterThan(500);
+      st.group.updateMatrixWorld(true);
+      st.group.traverse((o) => { for (const e of o.matrixWorld.elements) expect(Number.isFinite(e)).toBe(true); });
+      buildScenery(t, s, st.keepClear).dispose();
+      st.dispose();
+    }
+  });
+  it('a drive is deterministic and its hash covers the run', () => {
+    const spec = { v: 1 as const, layers: 1, nodes: [], conns: [{ from: 'i:f', to: 'o:fl' }, { from: 'i:bias', to: 'o:fr' }, { from: 'i:bias', to: 'o:rl' }, { from: 'i:bias', to: 'o:rr' }] };
+    const a = runDrive({ spec, w: [0.5, 0.8, 0.8, 0.8] }, 42), b = runDrive({ spec, w: [0.5, 0.8, 0.8, 0.8] }, 42), c = runDrive({ spec, w: [0.5, 0.8, 0.8, 0.7] }, 42);
+    expect(a.rec.ticks).toBe(CONFIG.drive.ticks);
+    expect(b.hash).toBe(a.hash);
+    expect(c.hash).not.toBe(a.hash);
   });
 });

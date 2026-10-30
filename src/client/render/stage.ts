@@ -9,10 +9,12 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Track } from '../../common/sim/track';
 import { makeCar, type CarModel } from './car';
+import { DriveRig, type DrivePose } from './drive';
+import { buildStadium, type Stadium } from './stadium';
 import { Swarm } from './ghosts';
 import { assertFiniteArray } from './guard';
 import { buildScenery, type Scenery } from './scenery';
-import { makeTextures, type Textures } from './textures';
+import { makeTextures, stadiumTextures, type StadiumTextures, type Textures } from './textures';
 import { at, trackParts, type PartKey } from './trackMesh';
 
 const FOG = new THREE.Color('#bcd4f2');
@@ -54,6 +56,11 @@ export class Stage {
   private readonly mats: Record<PartKey, THREE.Material>;
   private readonly world = new THREE.Group();
   private scenery: Scenery | null = null;
+  private stadium: Stadium | null = null;
+  private stadTex: StadiumTextures | null = null;
+  /** train: the swarm and the pack camera · drive: the yellow car, rays, stadium and the drive cameras. */
+  mode: 'train' | 'drive' = 'train';
+  readonly drive: DriveRig;
   private readonly look = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
   private readonly tmp2 = new THREE.Vector3();
@@ -129,14 +136,20 @@ export class Stage {
     this.swarm = new Swarm(this.car);
     this.swarm.mesh.userData.glow = true;
     this.scene.add(this.world, this.swarm.mesh, this.car.car);
+    this.drive = new DriveRig(this.tex.glow, this.camera, canvas);
+    this.drive.group.visible = false;
+    this.scene.add(this.drive.group);
     this.scaleLight(this.car.car);
+    this.scaleLight(this.drive.group);
     this.scaleLight(this.world);
     this.resize();
   }
 
-  /** Build the track, scenery and an empty swarm for one training track. */
-  setTrack(t: Track): void {
+  /** Build the track and scenery for one view: training (swarm) or drive (stadium, car, rays). */
+  async setTrack(t: Track, mode: 'train' | 'drive' = 'train'): Promise<void> {
+    if (mode === 'drive' && !this.stadTex) this.stadTex = await stadiumTextures(this.renderer.capabilities.getMaxAnisotropy());
     this.clearWorld();
+    this.mode = mode;
     for (const p of trackParts(t)) {
       const m = new THREE.Mesh(p.geometry, this.mats[p.key]);
       m.receiveShadow = p.key !== 'strip' && p.key !== 'pad';
@@ -144,11 +157,24 @@ export class Stage {
       if (p.key === 'strip' || p.key === 'pad') m.userData.glow = true;
       this.world.add(m);
     }
-    this.scenery = buildScenery(t, t.seed);
+    let keep: { x: number; z: number; r: number }[] = [];
+    if (mode === 'drive' && this.stadTex) {
+      this.stadium = buildStadium(t, this.stadTex);
+      this.world.add(this.stadium.group);
+      keep = this.stadium.keepClear;
+      this.drive.setTrack(t, this.stadium.tvSpots);
+    }
+    this.scenery = buildScenery(t, t.seed, keep);
     this.world.add(this.scenery.group);
     this.scaleLight(this.world);
     this.track = t;
     this.swarm.setTrack(t);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = mode === 'drive' ? 420 : 600; fog.far = mode === 'drive' ? 1600 : 2300;
+    this.swarm.mesh.visible = mode === 'train';
+    this.car.car.visible = false;
+    this.drive.group.visible = mode === 'drive';
+    if (mode === 'train') { this.camera.fov = 50; this.camera.updateProjectionMatrix(); }
     this.snap = true;
   }
 
@@ -173,6 +199,8 @@ export class Stage {
     }
     this.scenery?.dispose();
     this.scenery = null;
+    this.stadium?.dispose();
+    this.stadium = null;
   }
 
   resize(): void {
@@ -185,8 +213,18 @@ export class Stage {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Advance the swarm and camera by dt seconds and draw. */
-  frame(dt: number, time: number): void {
+  /** Advance by dt seconds and draw. Drive mode takes the car's pose for this frame. */
+  frame(dt: number, time: number, pose?: DrivePose): void {
+    if (this.mode === 'drive') {
+      if (!pose) throw new Error('stage: drive frame without a pose');
+      this.drive.update(pose, dt, time, this.reduceMotion);
+      const c = this.drive.car.car.position;
+      this.sun.target.position.copy(c);
+      this.sun.position.copy(c).addScaledVector(SUN_DIR, 400);
+      this.tex.boost.offset.y -= dt * 1.6;
+      this.composer.render();
+      return;
+    }
     this.swarm.update(dt, time);
     // chase the pack from behind and a little to the side, low enough that a car reads as a car
     const t = this.track;
@@ -264,6 +302,8 @@ export class Stage {
     this.clearWorld();
     this.swarm.dispose();
     this.car.dispose();
+    this.drive.dispose();
+    this.stadTex?.dispose();
     this.tex.dispose();
     for (const m of new Set(Object.values(this.mats))) m.dispose();
     for (const d of this.disposables) d.dispose();

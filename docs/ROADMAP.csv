@@ -2,8 +2,8 @@ id,item,status,notes
 M1-0,Builder menu mock-up,done,reference/builder-mockup.html; principal: "looks excellent"
 M1-1,Headless sim + evolution benchmark (go/no-go),done,GO accepted; T 6M; (e) to confirm on the reference desktop; results in docs/plans/2026-10-30-sandbox-loop.md
 M1-2,Workbench,done,accepted; review calls logged in docs/CONTEXT.md
-M1-3,Training view,review,S3 built: 3-D swarm + fitness graph + save/continue; screenshots in out/s3/
-M1-4,Drive view,planned,S4
+M1-3,Training view,done,accepted after the story revision
+M1-4,Drive view,review,S4 built: stadium + car + rays + live brain + cameras; screenshots in out/s4/
 M1-5,Ship to synapse.mouftools.com,planned,S5; principal connects Vercel + CNAME
 M2,Match mode: 5 rounds vs 4 bots with timers,later,solo-loop plan steps 5-7
 M3,Lab + backprop trainer + trainer picker,later,
