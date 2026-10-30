@@ -57,6 +57,32 @@
   <p class="note">The builder needs the width: the car on the left, your network reading across to the wheels on the right.</p>
   <button class="btn" id="stay" type="button">Continue in portrait</button>
 </div></div>
+<div id="trainView" class="tv" hidden>
+  <canvas id="scene" aria-label="The training track, with every car of one generation driving it"></canvas>
+  <section class="tv-panel tv-status" aria-live="polite">
+    <h1 class="tv-title"><span id="tvState">Training</span><span class="tv-name" id="tvName"></span></h1>
+    <dl class="kv">
+      <dt>Seed</dt><dd id="tvSeed"></dd>
+      <dt>Run</dt><dd id="tvRun"></dd>
+      <dt>Generation</dt><dd id="tvGen"></dd>
+      <dt>On the track</dt><dd id="tvShown"></dd>
+      <dt>Experience</dt><dd id="tvTicks"></dd>
+    </dl>
+    <div class="tv-progress" role="progressbar" aria-label="Experience used" aria-valuemin="0" aria-valuemax="100"><i id="tvFill"></i></div>
+    <p class="note" id="tvNote">Each car is one brain of this generation. Yellow: its best. Flashing red: touching a wall. Fading red: stopped.</p>
+    <div class="tv-actions">
+      <button class="btn" id="tvStop" type="button">Stop</button>
+      <button class="btn primary" id="tvBack" type="button" hidden>Back to workbench</button>
+      <button class="btn" id="tvAgain" type="button" hidden>Train again</button>
+      <button class="btn" id="tvDrive" type="button" hidden disabled title="Driving comes in the next build step">Drive</button>
+    </div>
+  </section>
+  <section class="tv-panel tv-graph" aria-label="Fitness per generation">
+    <h2>Fitness per generation</h2>
+    <canvas id="tvGraph"></canvas>
+    <p class="note tv-legend"><span class="sw best"></span>best <span class="sw mean"></span>mean · metres per 20 s, wall touches cost 0.5 each</p>
+  </section>
+</div>
 <div id="toast" hidden></div>
 <script type="module" src="/src/client/main.ts"></script>
 </body>

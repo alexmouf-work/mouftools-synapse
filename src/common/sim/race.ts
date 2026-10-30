@@ -17,6 +17,8 @@ export interface Recording {
   v: Float64Array;
   /** Per tick: energy used. */
   energy: Float64Array;
+  /** Per tick: 1 if the car touched a wall. */
+  wall: Uint8Array;
   /** Per tick: every node's output (nNodes per tick). */
   act: Float64Array;
   ticks: number;
@@ -25,7 +27,7 @@ export interface Recording {
 export function newRecording(net: Net, ticks: number): Recording {
   return {
     x: new Float64Array(ticks), y: new Float64Array(ticks), hdg: new Float64Array(ticks), v: new Float64Array(ticks),
-    energy: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
+    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
   };
 }
 
@@ -55,10 +57,10 @@ export class Runner {
     const c = startCar(t);
     let mark = 0;
     for (let k = 0; k < o.ticks; k++) {
-      this.tick(net, t, c, o.budget, o.noiseSeed);
+      const wall = this.tick(net, t, c, o.budget, o.noiseSeed);
       const rec = o.record;
       if (rec) {
-        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev;
+        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev; rec.wall[k] = wall ? 1 : 0;
         rec.act.set(this.vals.subarray(0, net.nNodes), k * net.nNodes);
         rec.ticks = k + 1;
       }

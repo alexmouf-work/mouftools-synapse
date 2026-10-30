@@ -11,7 +11,7 @@ port.on('message', (m: Msg) => {
   try {
     if (m.type === 'setup') { core = new EpisodeCore(m.setup); port.postMessage({ type: 'ready' }); return; }
     if (!core) throw new Error('episodeWorker: run before setup');
-    const out = core.run(m.w, m.count);
+    const { out } = core.run(m.w, m.count);
     port.postMessage({ type: 'result', id: m.id, out }, [out.buffer as ArrayBuffer]);
   } catch (e) {
     port.postMessage({ type: 'error', message: e instanceof Error ? e.stack ?? e.message : String(e) });

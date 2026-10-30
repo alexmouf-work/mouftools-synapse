@@ -12,7 +12,7 @@ import {
 } from '../../src/common/sim/brain';
 import { estimate, percentOfBudget } from '../../src/common/sim/energy';
 import { INPUTS, OUTPUTS } from '../../src/common/sim/spec';
-import { parse, SAVE_KEY, serialize } from '../../src/client/ui/workbench/store';
+import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/workbench/store';
 
 const OUT = 'out/s2';
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -100,7 +100,7 @@ async function main() {
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(url);
     if (o.save !== undefined) {
-      const text = typeof o.save === 'string' ? o.save : serialize({ name: 'Untitled brain', draft: o.save });
+      const text = typeof o.save === 'string' ? o.save : serialize({ name: 'Untitled brain', draft: o.save, train: NO_TRAINING });
       await page.evaluate(([k, v]) => localStorage.setItem(k, v), [SAVE_KEY, text]);
       await page.reload();
     }

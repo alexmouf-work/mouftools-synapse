@@ -1,0 +1,36 @@
+/* Training view: the 3-D swarm full-bleed (racing look lives in the scene), with a plain, legible overlay in the
+   workbench's own tokens and type. */
+[hidden] { display: none !important; }
+body.training { overflow: hidden; }
+body.training #rotate { display: none !important; }
+.tv { position: fixed; inset: 0; background: #0b1226; }
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tv-panel { position: absolute; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 14px; color: var(--text); }
+.tv-status { top: max(12px, env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); width: 290px; display: flex; flex-direction: column; gap: 9px; }
+.tv-title { margin: 0; font-size: 17px; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.tv-name { font-weight: 400; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.tv-progress i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; }
+.tv-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tv-actions .btn[disabled] { opacity: .5; cursor: not-allowed; }
+.tv-graph { right: max(16px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px)); width: 380px; }
+.tv-graph h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 6px; }
+#tvGraph { width: 100%; height: 150px; display: block; }
+.tv-legend { margin: 6px 0 0; font-size: 12px; }
+.tv-legend .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin: 0 4px 0 6px; }
+.tv-legend .sw.best { background: var(--accent); margin-left: 0; }
+.tv-legend .sw.mean { background: var(--muted); }
+.tv-nogl { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #e6e9ef; text-align: center; max-width: 40ch; }
+@media (max-height: 540px) and (orientation: landscape) {
+  .tv-status { width: 250px; padding: 9px 11px; gap: 6px; }
+  .tv-status .note { display: none; }
+  .tv-title { font-size: 15px; }
+  .tv-graph { width: 300px; padding: 9px 11px; }
+  #tvGraph { height: 96px; }
+  .tv-legend { display: none; }
+}
+@media (max-width: 700px) and (orientation: portrait) {
+  .tv-status { right: 16px; width: auto; }
+  .tv-graph { left: 16px; width: auto; }
+  #tvGraph { height: 110px; }
+}

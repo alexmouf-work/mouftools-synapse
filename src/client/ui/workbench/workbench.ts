@@ -10,7 +10,7 @@ import {
 import { estimate, noiseLevel, percentOfBudget, sensorCost, upkeepCost } from '../../../common/sim/energy';
 import { depthOf, type BrainSpec } from '../../../common/sim/spec';
 import { ABOUT, FX, IN_UI, OUT_UI, pinOf, type InPinUi, type OutPinUi } from './pins';
-import { DEFAULT_NAME, load, save, type Saved } from './store';
+import { DEFAULT_NAME, load, NO_TRAINING, save, type Saved } from './store';
 
 const BUDGET = CONFIG.budget[0];
 const MAX_LAYERS = CONFIG.brain.maxLayers;
@@ -49,6 +49,8 @@ const spec = (): BrainSpec => W.saved.draft.genome.spec;
 const used = (id: string) => spec().conns.some((c) => c.from === id || c.to === id);
 const isPin = (id: string) => id.startsWith('i:') || id.startsWith('o:');
 let saveWarned = false;
+let active = true; // false while another view (training) is up: the board ignores keys and resizes
+let onTrain: (s: Saved) => void = () => toast('Training isn’t available here.');
 
 function commit(draft: Draft, sel: string | null = W.sel, fresh: string | null = null) {
   W.saved = { ...W.saved, draft };
@@ -360,7 +362,7 @@ $('name').onclick = () => {
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
   inp.addEventListener('blur', () => finish(true));
 };
-$('train').onclick = () => toast('Training comes in the next build step.');
+$('train').onclick = () => onTrain(W.saved);
 $('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
 // Presets replace the whole brain, so the first click asks and the second (within 3 s) does it.
 let armed: { el: HTMLButtonElement; t: ReturnType<typeof setTimeout> } | null = null;
@@ -377,17 +379,35 @@ $('presets').querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((b) =>
     disarm();
     const name = b.dataset.preset as PresetName;
     const draft = draftOf(zeroGenome(PRESETS[name]()), W.saved.draft.nextId);
+    W.saved = { ...W.saved, train: NO_TRAINING }; // a fresh brain trains from scratch on a new seed
     commit(draft, draft.genome.spec.nodes[0]?.id ?? null);
     toast(`Started from ${b.dataset.label}. Weights start at 0 until it trains.`);
   });
 });
-window.addEventListener('resize', render);
+window.addEventListener('resize', () => { if (active) render(); });
 window.addEventListener('keydown', (e) => {
-  if ((e.target as HTMLElement | null)?.closest('input, select, textarea')) return;
+  if (!active || (e.target as HTMLElement | null)?.closest('input, select, textarea')) return;
   if ((e.key === 'Delete' || e.key === 'Backspace') && W.sel?.startsWith('n')) doRemoveNeuron(W.sel);
 });
 
-export function start() {
+/** The brain as saved now. */
+export const currentSaved = (): Saved => W.saved;
+
+/** Show or hide the workbench (the training view takes the screen while it is up). */
+export function setActive(on: boolean) {
+  active = on;
+  if (on) render();
+}
+
+/** Replace the brain (after training: new weights and training history), save it and redraw. */
+export function replaceSaved(s: Saved) {
+  W.saved = s;
+  persist();
+  if (active) render();
+}
+
+export function start(o: { onTrain: (s: Saved) => void }) {
+  onTrain = o.onTrain;
   W.sel = spec().nodes[0]?.id ?? null;
   render();
   if (loaded.status === 'corrupt') {

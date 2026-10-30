@@ -119,3 +119,23 @@ wheels, 90% est. Additions beyond the mock-up, desktop unchanged: "Start from" p
 and narrow-board rules (one shared "HIDDEN LAYERS" heading when lines are close, no ⊕ on a full line, ⊕ kept clear of
 the palette, a colliding front-eye label moves above its pin). The mock-up itself, opened on a phone, renders zoomed
 out (it has no viewport meta), which hid the label collision there.
+
+## S3 notes (2026-10-30)
+Built as planned; checks green (unit: recording changes no result, per-generation stepping = one big step, renderer
+guards over 200 track seeds; `scripts/checks/training.ts` in headless Chromium on SwiftShader). Measured here: the
+browser's phase hash equals Node's (seed 7, T 6M: 419c1c14, the S1 bench value); 1 and 4 workers agree; a 6M phase
+with the view open takes 15.8 s in this container on SwiftShader (4.5 s in /bench without rendering), so expect
+about /bench's time on a real GPU — to confirm on the reference desktop.
+- The renderer core is ported (track, kerbs, walls, pads, start line, terrain, trees, clouds, sky, bloom, ghost
+  InstancedMesh, training camera); flat track for now, no grandstands, billboards or gates. Detailed car, rays and
+  race cameras are S4.
+- Swarm: the latest recorded generation at ~8×; a set plays through before the next starts, so a 6M phase shows
+  about 4 generations (here 1, 78, 129, 145). Stuck cars flash red and fade in place (episodes that ended early);
+  cars that drove the full 20 s fade out in their own colour.
+- Seeds: each brain keeps its own seed (picked on its first Train); run n uses `phaseSeeds(seed, n)`. Run 1 keeps
+  the S1 trainer stream (same hashes as the bench); later runs draw a new trainer stream and new tracks.
+- Software rasterisers get low quality and 4 fps while training: SwiftShader renders on the same CPU cores as the
+  workers and slowed a phase from 4.5 s to 115 s before this.
+- Review call "empty lines are free to cross" re-measured on S1: Starter unchanged (16/20 on (b)); Minimal still 17/20
+  on (d).
+

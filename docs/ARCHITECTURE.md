@@ -3,12 +3,12 @@
 What exists, updated in the same commit as the code. The intended full layout is §1 of
 `docs/plans/2026-10-30-solo-loop.md`; milestone steps are in `docs/plans/2026-10-30-sandbox-loop.md`.
 
-Built so far: **S1, the headless sim and evolution benchmark**, and **S2, the workbench** (build a brain, see its
-energy, saved in the browser). No training view, renderer or drive view yet.
+Built so far: **S1** (headless sim, evolution benchmark), **S2** (the workbench) and **S3** (the training view: Train
+→ the swarm learns on a 3-D track → the champion is saved; Train again continues). No drive view yet (S4).
 
 ## Stack
-Vite + TypeScript, Vitest, tsx for Node scripts, Playwright (dev only, browser bench). No backend. Three.js arrives
-with the drive view (S4).
+Vite + TypeScript, Three.js 0.160 (training view only, loaded on first Train), Vitest, tsx for Node scripts,
+Playwright (dev only: browser bench, workbench and training checks). No backend.
 
 ## src/common: the deterministic core
 Pure TypeScript: no DOM, no three, no clocks, no `Math.random`, no engine transcendental `Math.*`, no Float32. It runs
@@ -32,7 +32,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
 | `train/episodes.ts` | Episode batches: `EpisodeCore` (runs policies × tracks), `splitEven`, `InlineExecutor`. |
 | `train/neuroevo.ts` | The milestone's trainer. |
-| `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash). |
+| `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop). |
 | `train/contract.test.ts` | The suite every trainer must pass. |
 
 ### Brain
@@ -96,8 +96,10 @@ The Env also offers `openCar` (one car stepped tick by tick, metered per tick, o
 wheels) for the gradient trainers to come; neuroevolution does not use it.
 
 ## src/client
-- `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono), then the
-  workbench.
+- `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono), the
+  workbench, and the training view in the same page (no reload). `?view=train` trains the saved brain on load;
+  `?seed=` and `?workers=` override; `?T=` (dev server only) shrinks the budget for the browser checks;
+  `?quality=low|high` overrides the renderer's choice.
 - `ui/workbench/` — a TypeScript port of `reference/builder-mockup.html`: `workbench.css` (the mock-up's styles,
   plus the rename field and presets), `pins.ts` (where each pin sits on the car, icons, panel text; pin ids and
   labels come from `spec.ts`), `store.ts` (save/load), `workbench.ts` (board layout and drawing, wiring by drag,
@@ -107,10 +109,29 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   layout untouched: several lines too close for "HIDDEN n" share one "HIDDEN LAYERS" heading with a number per line;
   a full line has no ⊕ and a ⊕ that would sit under the palette is kept above it; a front-diagonal eye label that
   runs into another label moves above its pin. Neurons shrink (17 → down to 6 px) only when a full line needs it.
-- Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 1, name, nextId, genome}`
-  (canonical genome JSON). Reads and writes are in try/catch: a missing save starts from Starter; an unreadable one
+- Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 2, name, nextId, train:
+  {seed, phases}, genome}` (canonical genome JSON; v1 saves load with no training history). Reads and writes are in try/catch: a missing save starts from Starter; an unreadable one
   starts from Starter with a toast saying so; a browser that refuses storage gets a toast that changes last until the
-  tab closes. Train shows a "next build step" toast until S3.
+  tab closes. A preset resets the training history (new seed, trains from scratch).
+- `ui/training/` — the training view. Train hands the saved brain over; the seed is the brain's own (picked on its
+  first Train), the phase is its count of finished runs, so every run is reproducible and a retrain sees new tracks.
+  All-zero weights train from scratch (fresh), anything else continues from them (carry: slot 0 is the saved genome
+  exactly). `runPhase` steps one generation at a time on a `BrowserPool`; before a step the view may ask the pool to
+  record track-0 paths (only when the swarm wants a newer generation, at most 5 a second, and on the possibly last
+  generations), which never changes a result. Overlay (plain, workbench tokens): seed, run, generation, generation
+  on screen, ticks used / T, a fitness graph (best and mean per generation against ticks used), Stop / Back to
+  workbench / Train again / Drive (disabled until S4). Done → the champion's genome and `{seed, phases + 1}` are
+  saved; Stop keeps the brain as it was. While training, drawing is paced so it cannot starve the pool: a frame
+  costing > 8 ms is kept to a fifth of the main thread, and a software rasteriser (which renders on the workers'
+  CPU cores) draws 4 frames a second.
+- `render/` — the 3-D port of `reference/look-mockup.html`'s core: `stage.ts` (renderer, ACES, bloom, sky dome, fog,
+  sun and shadows, training camera circling high over the swarm), `trackMesh.ts` (road, kerbs red/white in corners,
+  run-off, walls with light strip, boost pads, start line, from the sim Track; flat for now), `scenery.ts` (terrain,
+  tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the swarm: one InstancedMesh holding a
+  population, played back ~8× from recorded paths; champion yellow, wall contact flashing red, an episode that
+  ended early stays put and fades out flashing red, a full episode fades out in its own colour), `guard.ts`
+  (finite-geometry and finite-matrix asserts, instance capacity asserts — all throw). Quality: `low` (pixel ratio 1,
+  no shadows, no MSAA; bloom kept) is picked for software rasterisers (SwiftShader, llvmpipe), `high` otherwise.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
 
@@ -121,4 +142,9 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
 - `scripts/checks/workbench.ts` — the workbench in headless Chromium: drag a wire, backward wires refused, % shown =
   `energy.estimate`, reload keeps the brain, corrupt save → Starter + toast, 844×390 without horizontal scroll,
   portrait card, 3 × 10 and empty brains without overlaps; screenshots to `out/s2/`.
-- `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check and the workbench check.
+- `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the workbench,
+  phase hash = Node's, genome saved and changed, Train again = Node's carry run, the same saved brain on 1 and 4
+  workers → the same hash, Stop keeps the brain, ghost capacity, render smoke (mean luminance and spread of a real
+  frame), 844×390 layout, console clean; screenshots to `out/s3/`.
+- `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench
+  and training checks.
