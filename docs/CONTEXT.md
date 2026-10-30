@@ -39,3 +39,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "let's also add another input which is \"energy remaining\"" → "Energy left": 1 − last tick's use / budget.
 - "add a mostly translucent image of the car onto the builder diagram, then position the different input neurons
   relative to the car, so the wheel ones are on top of each of the wheels, and the energy one is in the middle of the car."
+- "the car should only be the position of the input layer. can you find a way to make that work? I see the input as
+  projecting to a flat line of neurons in the hidden layer" → board reads left to right: car (inputs) → hidden lines →
+  wheel outputs in their own line.
