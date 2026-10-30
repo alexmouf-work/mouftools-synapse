@@ -1,4 +1,4 @@
-// Purity check: src/common must stay deterministic and engine-free (CLAUDE.md). Fails on DOM/three, clocks,
+// Purity check: src/common must stay deterministic and engine-free (the repo's working rules). Fails on DOM/three, clocks,
 // Math.random, engine transcendental Math (use fmath), Float32, `**`, and a comparator-less .sort().
 // Math is allow-listed: anything not in ALLOWED_MATH fails, so a new engine function cannot slip in.
 //   npx tsx scripts/checks/purity.ts
