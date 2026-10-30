@@ -59,20 +59,51 @@ Build → train → drive → edit → retrain works without a reload in desktop
 checks). All checks green (types, unit, purity, determinism, bench, Playwright, render smoke). ARCHITECTURE.md
 describes what exists; ROADMAP.csv current; this plan marked historical.
 
-## S1 results (2026-10-30)
+## S1 results (2026-10-30): GO on (a)–(d), (f); (e) to confirm on the reference desktop
 Measured in the 4-core build container (Xeon 2.1 GHz, Node 22, headless Chromium 1243 via Playwright), not the
-reference desktop. Full report, fitness per generation and per-seed path SVGs: `npm run bench` → `out/bench/`.
+reference desktop. Full report, fitness per generation and per-seed path SVGs (gen 1 / mid / final champion on the
+unseen track): `npm run bench` → `out/bench/` (ignored).
 
-**T fixed at 6,000,000** by the plan's rule: one Starter phase takes 2.39 s for 3M car-ticks in headless Chrome on
-the default 3 workers (2.16 s on 4), so 7 s fits 9.5M here, clamped to 6M. (e) is to confirm on the reference
-desktop: 6M stays valid there if it runs at ≥ 0.7× this container's speed.
+**T fixed at 6,000,000** by the plan's rule. One Starter phase in headless Chrome: 3M car-ticks in 2.39 s on the
+default pool (3 workers here; 2.16 s on 4), so 7 s fits 9.5M, clamped to 6M. Final config: 6M in **4.51 s** on 3
+workers (4.06 s on 4, 11.2 s on 1); Node 4 workers: median 3.87 s, max 4.36 s over the 20 seeds. Chrome and Node give
+the same phase hash. (e) holds on the reference desktop if it runs at ≥ 0.65× this container's speed; to confirm
+with `/bench/` there.
 
-Lever log (seeds 1–20, Starter, budget 10):
+Final numbers (seeds 1–20, Starter, budget 10, T 6M, grip 32):
+- (a) median unseen progress: final champion 1393 m vs gen-1 champion 98 m → ×14.3 (need ×3) — pass
+- (b) final champion ≥ 80% of a lap in 30 s on 16/20 (need 15) — pass, narrowly; fails on seeds 1, 4, 5, 16
+  (pinned on a wall at the first or second corner)
+- (c) best training fitness end ≥ 2× gen 1 on 20/20 — pass
+- (d) Minimal ≥ 50% of a lap on 17/20 (need 15) — pass
+- (f) same seed twice → same hash; 1 vs 4 workers → same hash on all 20 seeds; Node = Chrome — pass
+
+Lever log (each re-measured over seeds 1–20; levers in the plan's order, stopping at the first that passes):
 
 | run | (a) median final / gen 1 | (b) ≥ 80% lap | (c) | (d) Minimal ≥ 50% | (f) |
 |---|---|---|---|---|---|
 | T 3M (plan default) | 1227 / 103 m, ×11.9 | 11/20 ✗ | 20/20 | 18/20 | pass |
-| T 6M (fixed) | 1349 / 103 m, ×13.1 | 13/20 ✗ | 20/20 | 16/20 | pass |
+| T 6M (fixed by the rule) | 1349 / 103 m, ×13.1 | 13/20 ✗ | 20/20 | 16/20 | pass |
+| lever 1: 15 s episodes | 1048 / 96 m, ×10.9 | 10/20 ✗ | 20/20 | 12/20 ✗ | pass |
+| lever 1 reverted (worse); lever 2: grip 24 → 32 m/s² | 1393 / 98 m, ×14.3 | **16/20** | 20/20 | 17/20 | pass |
 
-Training fitness climbs on every seed (gen-1 best ≈ 35–225 m → 870–1100 m per 20 s episode, near the car's top
-speed), but on the unseen track the final champion often scrapes a wall or stalls: overfitting to two tracks.
+Training fitness climbs on every seed (gen-1 best ≈ 35–225 m → 930–1110 m per 20 s episode, near the car's top
+speed). The failure mode is overfitting to the two training tracks: a champion that is perfect on them can pin
+itself on an unseen corner. More grip makes corners forgiving enough to generalise; road width was not changed.
+
+Out-of-sample check (seeds 21–40, same config, not part of the criterion): (a) ×5.7, (b) 15/20, (c) 20/20,
+(d) 16/20. The criterion holds there too, but (b) sits at the line on both sets: about 1 champion in 4 still pins on
+an unseen corner. The next levers (wider road, σ schedule) are untried and would add margin if the principal wants it.
+
+Changed from the plan, and why:
+- Grip 32 m/s² (lever 2), not the proposed 24. Episode length stays 20 s.
+- `yawMax` 3 rad/s added: the grip cap (grip / v) has no bound at standstill, so a pivot turn would spin at 60 rad/s.
+- Wheels have no transfer function and no upkeep (the workbench shows none); output = clamp(sum, −1, 1).
+- The wire cost uses the plan's c_fire 0.1 × |out × w|; the mock-up's 0.05 per wire is kept as the workbench's
+  static estimate (`cost.wireEstimate`). "Energy left" costs 0.3 (mock-up).
+- Over-budget noise is drawn per (car seed, node, tick), not from one sequential stream, so adding a node never shifts
+  another node's noise.
+- `Trainer.step` is async (worker pools answer asynchronously); trainers take `{start: fresh | carry}`.
+- A generation runs only if its worst case fits what is left of T (whole generations).
+- Minimal keeps the one (empty) hidden line the workbench always shows, so its car → wheel wires span 2 (+50%).
+- Deep preset left for S2 (the plan does not define it; nothing in S1 uses it).

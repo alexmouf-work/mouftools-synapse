@@ -43,7 +43,7 @@ export const CONFIG = {
     accel: 14, // m/s², speeding up
     brake: 30, // m/s², slowing down
     trackWidth: 2.0, // m between left and right wheels: yaw rate = (vR − vL) / trackWidth
-    grip: 24, // m/s² lateral: |yaw rate × v| is capped by this
+    grip: 32, // m/s² lateral: |yaw rate × v| is capped by this (S1 lever 2 "more grip"; plan proposal was 24)
     yawMax: 3.0, // rad/s: cap on spin rate at low speed (not in the plan's sketch; the grip cap is unbounded at v = 0)
     scrub: 10, // m/s² of drag per unit of front/rear mismatch on a side (mean of |FL−RL|, |FR−RR|)
     wall: 12.5, // m from centre to wall

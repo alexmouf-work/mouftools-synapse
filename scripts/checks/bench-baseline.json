@@ -1,7 +1,7 @@
 {
-  "nodeMs": 3860,
+  "nodeMs": 4015,
   "T": 6000000,
   "workers": 4,
   "machine": "Intel(R) Xeon(R) Processor @ 2.10GHz × 4, Node v22.22.0",
-  "hash": "5764a88b"
+  "hash": "ffc10848"
 }

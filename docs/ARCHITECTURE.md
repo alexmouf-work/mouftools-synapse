@@ -53,7 +53,7 @@ left is unwired**. A new neuron's upkeep changes the energy used, and those two 
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws
-at (vR − vL) / 2 m capped by 24 m/s² lateral grip and by `yawMax` 3 rad/s (the grip cap alone is unbounded at
+at (vR − vL) / 2 m capped by 32 m/s² lateral grip (S1 lever 2; the plan proposed 24) and by `yawMax` 3 rad/s (the grip cap alone is unbounded at
 standstill), and loses speed to front/rear mismatch on a side (`scrub`). Walls at 12.5 m clamp the car centre to
 11.5 m, keep 60% of speed, ease the heading halfway to the tangent and count one wall tick per tick. Boost pads:
 +10 m/s (cap 72) once per pad per lap, not sensed. Every tick asserts the state is finite.
