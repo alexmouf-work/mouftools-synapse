@@ -24,3 +24,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   backprop (copy a teacher), actor-critic, A_RP.
 - "make sure that you work on the \"main\" branch and commit there the whole way through. let's mock up the builder
   menu before we continue."
+- On the first builder mock-up (race-HUD styled): "this isn't what I wanted. It's way too \"racing game\". The game isn't
+  a racing game as a base, it's a sandbox game. the racing part is one aspect. make it more simple, more plain, more
+  sandbox." → the builder is a plain workbench; racing styling stays in the racing arena.

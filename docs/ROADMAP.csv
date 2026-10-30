@@ -1,5 +1,5 @@
 id,item,status,notes
-M1-0,Builder menu mock-up,built,reference/builder-mockup.html; awaiting the principal's look before step 1
+M1-0,Builder menu mock-up,built,reference/builder-mockup.html (v2: plain sandbox workbench); awaiting the principal's look
 M1-1,Headless sim + evolution benchmark (go/no-go),planned,plan step 1
 M1-2,Race view (renderer port) + Vercel,planned,plan step 2
 M1-3,Brain editor,planned,plan step 3; follows the approved builder mock-up
