@@ -1,0 +1,588 @@
+<title>Synapse Builder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;1,700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: garage screen. Top bar (phase, energy, lock in) over three bays: sensors + trainer | the network | inspector + energy ledger.
+   Single committed look: the race HUD's dark glass, on a blueprint-dark floor. */
+:root {
+  --ink: #070b18;
+  --floor: #0b1124;
+  --glass: rgba(16, 22, 44, 0.78);
+  --edge: rgba(150, 180, 255, 0.16);
+  --text: #f1f5ff;
+  --muted: #95a2c6;
+  --dim: #5d6a8f;
+  --volt: #ffc21a;
+  --plus: #2fe6ff;
+  --minus: #ff3d7f;
+  --skip: #ffb547;
+  --f-step: #ff8a3d;
+  --f-relu: #8be04e;
+  --f-sigmoid: #b69cff;
+  --f-tanh: #6cc4ff;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background:
+    linear-gradient(rgba(120,150,255,.045) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(120,150,255,.045) 1px, transparent 1px) 0 0 / 32px 32px,
+    radial-gradient(1200px 600px at 50% -10%, #142046 0%, var(--floor) 55%, var(--ink) 100%);
+  background-color: var(--ink);
+  color: var(--text); font-family: var(--display);
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--volt); outline-offset: 2px; }
+
+.app { display: grid; grid-template-rows: auto 1fr auto; gap: 12px; min-height: 100vh;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px; }
+
+/* top bar */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.logo { font-weight: 700; font-style: italic; font-size: 24px; letter-spacing: 0.02em; line-height: 1; }
+.logo b { color: var(--ink); background: var(--volt); padding: 1px 12px 1px 9px; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%); }
+.phase { display: inline-flex; background: var(--glass); border: 1px solid var(--edge); }
+.phase span { padding: 7px 11px; display: flex; align-items: center; white-space: nowrap; }
+.phase .name { background: var(--volt); color: var(--ink); font-weight: 700; letter-spacing: .08em; font-size: 13px; text-transform: uppercase; }
+.phase .name.up { background: var(--text); }
+.phase .meta { color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.phase .time { font-family: var(--mono); font-size: 15px; border-left: 1px solid var(--edge); font-variant-numeric: tabular-nums; }
+.phase .time.low { color: var(--minus); }
+.meter { flex: 1 1 320px; min-width: 0; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; background: var(--glass); border: 1px solid var(--edge); padding: 8px 12px; }
+.meter .lbl { font-size: 11px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+.bar { position: relative; height: 10px; background: rgba(255,255,255,.07); }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--plus); transition: width .2s, background .2s; }
+.bar i.over { background: linear-gradient(90deg, var(--plus) 0 var(--cut, 50%), var(--minus) var(--cut, 50%) 100%); }
+.bar em { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); left: 50%; }
+.bar em::after { content: "budget"; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); font: 500 9px var(--mono); color: var(--muted); letter-spacing: .06em; }
+.meter .val { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter .val.over { color: var(--minus); }
+.static-chip { font: 600 11px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; padding: 5px 7px; background: var(--minus); color: var(--ink); white-space: nowrap; }
+.lock { background: var(--volt); color: var(--ink); border: 0; font-weight: 700; font-style: italic; font-size: 16px; letter-spacing: .06em; text-transform: uppercase; padding: 10px 18px; cursor: pointer; clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%); }
+.lock:hover { filter: brightness(1.08); }
+.lock.done { background: var(--text); }
+.mockswitch { display: inline-flex; border: 1px dashed var(--edge); }
+.mockswitch span { font-size: 10px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; padding: 0 8px; display: flex; align-items: center; }
+.mockswitch button { background: none; border: 0; padding: 6px 9px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; color: var(--muted); }
+.mockswitch button[aria-pressed="true"] { color: var(--ink); background: var(--muted); }
+
+/* bays */
+.bays { display: grid; grid-template-columns: 290px minmax(0, 1fr) 310px; gap: 12px; align-items: start; min-height: 0; }
+.panel { background: var(--glass); border: 1px solid var(--edge); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel + .panel { margin-top: 0; }
+.col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ph { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ph h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.ph .sub { font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.note { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin: 0; }
+
+/* sensor dial */
+#dial { width: 100%; height: auto; display: block; touch-action: manipulation; }
+.chips { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.chip { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 7px 9px; background: rgba(255,255,255,.04); border: 1px solid var(--edge); cursor: pointer; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-align: left; }
+.chip small { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 500; }
+.chip[aria-pressed="true"] { border-color: var(--plus); background: rgba(47,230,255,.1); }
+.chip:hover { border-color: rgba(150,180,255,.4); }
+.presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.preset { padding: 8px 6px; background: rgba(255,255,255,.04); border: 1px solid var(--edge); cursor: pointer; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.preset b { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+.preset small { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.preset:hover { border-color: var(--volt); }
+.trainers { display: flex; flex-direction: column; gap: 6px; }
+.trainer { display: grid; grid-template-columns: 14px 1fr; gap: 3px 10px; padding: 8px 10px; border: 1px solid var(--edge); background: rgba(255,255,255,.03); text-align: left; cursor: pointer; }
+.trainer .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--muted); margin-top: 3px; grid-row: span 2; }
+.trainer b { font-size: 14px; letter-spacing: .04em; }
+.trainer small { font-size: 12px; color: var(--muted); }
+.trainer[aria-checked="true"] { border-color: var(--volt); }
+.trainer[aria-checked="true"] .dot { border-color: var(--volt); background: var(--volt); box-shadow: inset 0 0 0 2px var(--ink); }
+.trainer[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
+.tag { font: 600 10px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; padding: 3px 5px; border: 1px solid var(--edge); color: var(--muted); margin-left: 6px; vertical-align: 2px; }
+
+/* network */
+.net { padding-bottom: 10px; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tool { background: rgba(255,255,255,.05); border: 1px solid var(--edge); padding: 7px 10px; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.tool:hover { border-color: rgba(150,180,255,.45); }
+.tool[aria-pressed="true"] { background: var(--text); color: var(--ink); }
+.tool:disabled { opacity: .4; cursor: not-allowed; }
+.legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.canvas { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--edge); background: rgba(5,8,20,.55); }
+#net { display: block; width: 100%; min-width: 680px; height: auto; user-select: none; -webkit-user-select: none; touch-action: none; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.carry { border-left: 3px solid var(--plus); padding: 8px 10px; background: rgba(47,230,255,.07); font-size: 13px; line-height: 1.45; }
+.carry b { color: var(--plus); }
+
+/* svg classes */
+.node { cursor: grab; }
+.node:active { cursor: grabbing; }
+.wire { fill: none; stroke-linecap: round; }
+.wire-hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+.wire-hit:hover + .wire, .wire.hot { stroke: var(--text) !important; opacity: 1 !important; }
+.lhead { cursor: pointer; }
+.lhead:hover rect { stroke: rgba(150,180,255,.6); }
+.lhead.drop rect { stroke: var(--volt); }
+
+/* inspector */
+.fx { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.fxb { padding: 6px 4px 5px; border: 1px solid var(--edge); background: rgba(255,255,255,.03); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.fxb small { font-family: var(--mono); font-size: 10.5px; color: var(--muted); font-weight: 500; text-transform: none; }
+.fxb[aria-pressed="true"] { border-color: currentColor; }
+.fxb svg { width: 34px; height: 20px; }
+#plot { width: 100%; height: auto; display: block; background: rgba(5,8,20,.5); border: 1px solid var(--edge); }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.kv .total { border-top: 1px solid var(--edge); padding-top: 6px; color: var(--text); font-weight: 600; }
+.kv dd.total { color: var(--text); }
+.kv dd.over { color: var(--minus); }
+.danger { background: none; border: 1px solid rgba(255,61,127,.5); color: var(--minus); padding: 7px 10px; cursor: pointer; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; align-self: flex-start; }
+.nick { font-style: italic; color: var(--muted); font-size: 12.5px; }
+.locked-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--dim); border: 1px dashed var(--edge); padding: 7px 10px; }
+
+.foot { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--muted); letter-spacing: .03em; }
+.foot kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--edge); padding: 1px 5px; color: var(--text); }
+
+#tip { position: fixed; pointer-events: none; background: #0b1226; border: 1px solid var(--edge); padding: 6px 9px; font-size: 12px; line-height: 1.4; max-width: 260px; z-index: 10; }
+#toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text); color: var(--ink); padding: 10px 16px; font-weight: 600; letter-spacing: .04em; z-index: 11; max-width: calc(100% - 32px); }
+
+@media (max-width: 1180px) {
+  .bays { grid-template-columns: 270px minmax(0, 1fr); }
+  .col.right { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 820px) {
+  .bays { grid-template-columns: minmax(0, 1fr); }
+  .col.left { order: 2; } .col.mid { order: 1; } .col.right { order: 3; grid-template-columns: minmax(0, 1fr); }
+  .meter { flex-basis: 100%; }
+  .legend { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="logo"><b>SYNAPSE</b></div>
+    <div class="phase" aria-live="polite">
+      <span class="name" id="phName">Build</span>
+      <span class="meta" id="phMeta">Round 1 / 5</span>
+      <span class="time" id="phTime">1:00</span>
+    </div>
+    <div class="meter" aria-label="Energy per tick">
+      <span class="lbl">Energy</span>
+      <div class="bar"><i id="eFill"></i><em></em></div>
+      <span class="val" id="eVal">0 / 10 E/tick</span>
+    </div>
+    <span class="static-chip" id="staticChip" hidden>Static 0%</span>
+    <button class="lock" type="button" id="lock">Lock in</button>
+    <div class="mockswitch" role="group" aria-label="Mock-up state">
+      <span>Mock state</span>
+      <button type="button" id="m-r1" data-mode="r1" aria-pressed="true">R1 build</button>
+      <button type="button" id="m-r3" data-mode="r3" aria-pressed="false">R3 upgrade</button>
+    </div>
+  </header>
+
+  <main class="bays">
+    <div class="col left">
+      <section class="panel" aria-labelledby="h-sensors">
+        <div class="ph"><h2 id="h-sensors">Sensors</h2><span class="sub" id="sensSub"></span></div>
+        <svg id="dial" viewBox="0 0 260 150" role="group" aria-label="Eye angles: tap a mark to add or remove an eye"></svg>
+        <div class="chips">
+          <button type="button" class="chip" id="s-speed" data-sens="speed" aria-pressed="true">Speed <small>0.3</small></button>
+          <button type="button" class="chip" id="s-angle" data-sens="angle" aria-pressed="true">Track dir <small>0.6</small></button>
+          <button type="button" class="chip" id="s-bias" data-sens="bias" aria-pressed="true">Bias <small>free</small></button>
+        </div>
+        <p class="note">Each eye reads the distance to the wall along its angle. Eyes cost 0.6 E/tick each, up to 11.</p>
+      </section>
+      <section class="panel" aria-labelledby="h-presets">
+        <div class="ph"><h2 id="h-presets">Presets</h2><span class="sub">replace your brain</span></div>
+        <div class="presets">
+          <button type="button" class="preset" id="p-starter" data-preset="starter"><b>Starter</b><small id="pc-starter"></small></button>
+          <button type="button" class="preset" id="p-minimal" data-preset="minimal"><b>Minimal</b><small id="pc-minimal"></small></button>
+          <button type="button" class="preset" id="p-deep" data-preset="deep"><b>Deep</b><small id="pc-deep"></small></button>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="h-trainer">
+        <div class="ph"><h2 id="h-trainer">Trainer</h2><span class="sub">how it learns</span></div>
+        <div class="trainers" role="radiogroup" aria-labelledby="h-trainer">
+          <button type="button" class="trainer" role="radio" aria-checked="true" id="t-evo"><span class="dot"></span><b>Evolution</b><small>64 clones race, the best breed. 3M ticks of driving per phase.</small></button>
+          <button type="button" class="trainer" role="radio" aria-checked="false" aria-disabled="true" id="t-bp"><span class="dot"></span><b>Backprop<span class="tag">With the Lab</span></b><small>Copies a teacher driver; errors flow backwards.</small></button>
+          <button type="button" class="trainer" role="radio" aria-checked="false" aria-disabled="true" id="t-ac"><span class="dot"></span><b>Actor-critic<span class="tag">Later</span></b><small>A critic predicts the future; surprise teaches.</small></button>
+          <button type="button" class="trainer" role="radio" aria-checked="false" aria-disabled="true" id="t-arp"><span class="dot"></span><b>A<sub>RP</sub><span class="tag">Later</span></b><small>Reward or penalty every tick, delta rule.</small></button>
+        </div>
+      </section>
+    </div>
+
+    <div class="col mid">
+      <section class="panel net" aria-labelledby="h-net">
+        <div class="ph"><h2 id="h-net">Your brain</h2><span class="sub" id="netSub"></span></div>
+        <div class="tools">
+          <button type="button" class="tool" id="addLayer">+ Hidden layer</button>
+          <button type="button" class="tool" id="bundle" aria-pressed="false">Bundle wiring</button>
+          <button type="button" class="tool" id="fullAll">Wire all layers</button>
+          <button type="button" class="tool" id="clearW">Clear wires</button>
+          <div class="legend" aria-hidden="true">
+            <span><i style="background:var(--f-step)"></i>Step</span><span><i style="background:var(--f-relu)"></i>ReLU</span>
+            <span><i style="background:var(--f-sigmoid)"></i>Sigmoid</span><span><i style="background:var(--f-tanh)"></i>Tanh</span>
+          </div>
+        </div>
+        <div class="carry" id="carry" hidden><b>Weights carried from round 2.</b> Wire colour shows what each connection learned: cyan pushes, pink pulls. New wires start at 0, so adding is safe. Deleting a wire forgets what it learned.</div>
+        <div class="canvas"><svg id="net" aria-label="Network editor: drag from one neuron to another to connect them"></svg></div>
+        <div class="stats" id="stats"></div>
+      </section>
+    </div>
+
+    <div class="col right">
+      <section class="panel" aria-labelledby="h-insp" id="insp"></section>
+      <section class="panel" aria-labelledby="h-ledger">
+        <div class="ph"><h2 id="h-ledger">Energy ledger</h2><span class="sub">per tick</span></div>
+        <dl class="kv" id="ledger"></dl>
+        <p class="note" id="ledgerNote"></p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Drag neuron → neuron to wire</span>
+    <span>Drop on a layer header to wire to the whole layer</span>
+    <span><kbd>Shift</kbd>-drag or Bundle wiring: layer to layer</span>
+    <span>Click a wire to cut it</span>
+    <span>Click a neuron to inspect it</span>
+  </footer>
+</div>
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---- rules (same numbers as the plan) ----
+const COST = { ray: 0.6, speed: 0.3, angle: 0.6, bias: 0, fire: 0.1, skip: 0.5 };
+const UP_H = { step: 0.2, relu: 0.25, sigmoid: 0.5, tanh: 0.5 };
+const UP_O = { step: 0.1, relu: 0.15, sigmoid: 0.3, tanh: 0.3 };
+const BUDGET = { r1: 10, r3: 20 };
+const CAPS = { rays: 11, layers: 3, perLayer: 12 };
+const RAY_STEPS = [-90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90];
+const FX = {
+  step: { name: 'Step', col: 'var(--f-step)', f: (x) => (x > 0 ? 1 : 0), d: 'Fires 1 or stays 0. The cheapest neuron, but it has no slope, so gradient training (backprop) cannot learn through it. Evolution can.' },
+  relu: { name: 'ReLU', col: 'var(--f-relu)', f: (x) => clamp(x, 0, 4), d: 'Zero below 0, a straight line above (capped at 4 here). Cheap to compute: the modern default.' },
+  sigmoid: { name: 'Sigmoid', col: 'var(--f-sigmoid)', f: (x) => 1 / (1 + Math.exp(-x)), d: 'Smooth from 0 to 1. Small weight changes make small output changes, which is what gradient descent needs. Dearer to compute.' },
+  tanh: { name: 'Tanh', col: 'var(--f-tanh)', f: (x) => Math.tanh(x), d: 'Smooth from −1 to 1 and centred on zero, so it can push steering either way. Dearer to compute.' },
+};
+const GLYPH = { step: 'M-7 4 H0 V-4 H7', relu: 'M-7 3 H0 L7 -5', sigmoid: 'M-7 4 C-1 4 1 -4 7 -4', tanh: 'M-7 5 C-2 5 2 -5 7 -5' };
+const NICKS = ['Gerald', 'Old Reliable', 'Mildred', 'The Intern', 'Sir Brakes-a-Lot', 'Doubtful Dave', 'Wobbles', 'Nervous Nigel', 'Big Ideas', 'Kevin', 'Second Guess', 'Panic Button', 'Quiet Carl', 'Apex Annie', 'Flicker'];
+
+// ---- state ----
+const S = { mode: 'r1', rays: new Set(), speed: true, angle: true, bias: true, hidden: [], outs: [{ id: 'o:steer', act: 'tanh', label: 'Steer' }, { id: 'o:thr', act: 'tanh', label: 'Throttle' }], conns: new Map(), sel: null, bundle: false, locked: false };
+let nextId = 1;
+const newNeuron = (act = 'relu') => ({ id: 'h' + (nextId++), act });
+
+function inputs() {
+  const a = [...S.rays].sort((x, y) => x - y).map((d) => ({ id: 'r:' + d, label: `Eye ${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d)}°`, kind: 'ray', deg: d }));
+  if (S.speed) a.push({ id: 's:speed', label: 'Speed', kind: 'speed' });
+  if (S.angle) a.push({ id: 's:angle', label: 'Track dir', kind: 'angle' });
+  if (S.bias) a.push({ id: 's:bias', label: 'Bias', kind: 'bias' });
+  return a;
+}
+function layers() { return [inputs(), ...S.hidden, S.outs]; }
+function layerIndex() { const m = new Map(); layers().forEach((L, i) => L.forEach((n) => m.set(n.id, i))); return m; }
+function findNode(id) { for (const L of layers()) for (const n of L) if (n.id === id) return n; return null; }
+function prune() { const li = layerIndex(); for (const [k] of S.conns) { const [a, b] = k.split('|'); if (!li.has(a) || !li.has(b) || li.get(a) >= li.get(b)) S.conns.delete(k); } }
+function hashW(key) { let h = 2166136261; for (const c of key) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } const u = ((h >>> 0) % 10000) / 10000, v = (((h >>> 8) * 2654435761 >>> 0) % 10000) / 10000; return clamp(Math.sqrt(-2 * Math.log(u + 1e-4)) * Math.cos(2 * Math.PI * v) * 1.1, -3.5, 3.5); }
+function connect(a, b) {
+  const li = layerIndex(); if (!li.has(a) || !li.has(b)) return 0;
+  if (li.get(a) === li.get(b)) return 0;
+  if (li.get(a) > li.get(b)) [a, b] = [b, a];
+  const k = a + '|' + b; if (S.conns.has(k)) return 0;
+  S.conns.set(k, S.mode === 'r3' ? { w: 0, fresh: true } : { w: null, fresh: false });
+  return 1;
+}
+function connectLayers(i, j) { const L = layers(); if (i === j) return 0; if (i > j) [i, j] = [j, i]; let n = 0; for (const a of L[i]) for (const b of L[j]) n += connect(a.id, b.id); return n; }
+
+// ---- energy ----
+function energy() {
+  const li = layerIndex();
+  let sens = S.rays.size * COST.ray + (S.speed ? COST.speed : 0) + (S.angle ? COST.angle : 0);
+  let neur = 0; for (const L of S.hidden) for (const n of L) neur += UP_H[n.act]; for (const n of S.outs) neur += UP_O[n.act];
+  let fire = 0, skip = 0;
+  for (const [k, c] of S.conns) {
+    const [a, b] = k.split('|'); const span = li.get(b) - li.get(a);
+    const act = c.w === null ? 0.5 : 0.6 * Math.abs(c.w);
+    fire += COST.fire * act; skip += COST.fire * act * COST.skip * (span - 1);
+  }
+  const total = sens + neur + fire + skip, budget = BUDGET[S.mode];
+  return { sens, neur, fire, skip, total, budget, a: clamp(total / budget - 1, 0, 1) };
+}
+
+// ---- presets ----
+function preset(name) {
+  S.conns.clear(); S.sel = null;
+  const full = () => { for (let i = 0; i < layers().length - 1; i++) connectLayers(i, i + 1); };
+  if (name === 'starter') { S.rays = new Set([-60, -30, 0, 30, 60]); S.speed = S.angle = S.bias = true; S.hidden = [Array.from({ length: 6 }, () => newNeuron('relu'))]; S.outs.forEach((o) => (o.act = 'tanh')); full(); }
+  if (name === 'minimal') { S.rays = new Set([-45, 0, 45]); S.speed = false; S.angle = true; S.bias = false; S.hidden = []; S.outs.forEach((o) => (o.act = 'tanh')); full(); }
+  if (name === 'deep') { S.rays = new Set([-90, -60, -30, 0, 30, 60, 90]); S.speed = S.angle = S.bias = true; S.hidden = [Array.from({ length: 8 }, () => newNeuron('relu')), Array.from({ length: 6 }, () => newNeuron('tanh'))]; S.outs.forEach((o) => (o.act = 'tanh')); full(); }
+  if (S.mode === 'r3') for (const c of S.conns.values()) { c.w = 0; c.fresh = true; }
+}
+function presetCost(name) { const snap = JSON.stringify({ rays: [...S.rays], speed: S.speed, angle: S.angle, bias: S.bias, hidden: S.hidden, outs: S.outs, conns: [...S.conns], nextId, sel: S.sel }); preset(name); const e = energy(); const o = JSON.parse(snap); S.rays = new Set(o.rays); S.speed = o.speed; S.angle = o.angle; S.bias = o.bias; S.hidden = o.hidden; S.outs = o.outs; S.conns = new Map(o.conns); nextId = o.nextId; S.sel = o.sel; return e.total; }
+
+// ---- sensor dial ----
+const dial = $('dial');
+function drawDial() {
+  dial.innerHTML = '';
+  const cx = 130, cy = 132, R = 104;
+  el('path', { d: `M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`, fill: 'rgba(47,230,255,.04)', stroke: 'rgba(150,180,255,.18)' }, dial);
+  for (const d of RAY_STEPS) {
+    const on = S.rays.has(d); const t = (d - 90) * Math.PI / 180;
+    const x = cx + Math.cos(t) * R, y = cy + Math.sin(t) * R;
+    if (on) {
+      el('line', { x1: cx, y1: cy - 8, x2: x, y2: y, stroke: 'var(--plus)', 'stroke-width': 2, opacity: .85 }, dial);
+      el('circle', { cx: x, cy: y, r: 9, fill: 'var(--plus)', opacity: .18 }, dial);
+    } else el('line', { x1: cx + Math.cos(t) * (R - 10), y1: cy + Math.sin(t) * (R - 10), x2: x, y2: y, stroke: 'rgba(150,180,255,.35)', 'stroke-width': 1.5 }, dial);
+    const g = el('g', { tabindex: 0, role: 'button', 'aria-pressed': String(on), 'aria-label': `Eye at ${d} degrees`, style: 'cursor:pointer' }, dial);
+    el('circle', { cx: x, cy: y, r: 11, fill: 'transparent' }, g);
+    el('circle', { cx: x, cy: y, r: on ? 5.5 : 4, fill: on ? 'var(--plus)' : 'var(--ink)', stroke: on ? 'none' : 'var(--muted)', 'stroke-width': 1.5 }, g);
+    const lx = cx + Math.cos(t) * (R + 14), ly = cy + Math.sin(t) * (R + 14) + 3;
+    if (d % 30 === 0) el('text', { x: lx, y: Math.min(ly, cy + 3), 'text-anchor': 'middle', fill: 'var(--dim)', 'font-size': 9, 'font-family': 'IBM Plex Mono, monospace' }, dial).textContent = d;
+    const toggle = () => { if (S.rays.has(d)) S.rays.delete(d); else if (S.rays.size < CAPS.rays) { S.rays.add(d); if (S.mode === 'r3') autoWireNew('r:' + d); } else toast(`Eleven eyes is the limit.`); prune(); render(); };
+    g.addEventListener('click', toggle);
+    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  }
+  // little car, nose up
+  el('path', { d: `M ${cx - 7} ${cy + 6} L ${cx - 5} ${cy - 10} L ${cx} ${cy - 15} L ${cx + 5} ${cy - 10} L ${cx + 7} ${cy + 6} Z`, fill: 'var(--volt)' }, dial);
+  for (const [x, y] of [[-9, -6], [9, -6], [-9, 4], [9, 4]]) el('rect', { x: cx + x - 2, y: cy + y - 3, width: 4, height: 6, fill: '#14161d' }, dial);
+}
+function autoWireNew() { /* new sensors in an upgrade arrive unwired: the player decides */ }
+
+// ---- network ----
+const net = $('net'), tip = $('tip');
+let pos = new Map(), drag = null, geo = null;
+function render() {
+  prune();
+  const L = layers(); const li = layerIndex(); const e = energy();
+  const W = 760, top = 64, dy = 38, maxN = Math.max(...L.map((x) => x.length), 4);
+  const H = top + maxN * dy + 46;
+  net.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  net.innerHTML = '';
+  const x0 = 128, x1 = W - 120, n = L.length;
+  pos = new Map();
+  L.forEach((layer, i) => {
+    const x = n === 1 ? x0 : x0 + (x1 - x0) * i / (n - 1);
+    const h = (layer.length - 1) * dy; const y0 = top + (maxN - 1) * dy / 2 - h / 2;
+    layer.forEach((nd, j) => pos.set(nd.id, { x, y: y0 + j * dy, layer: i }));
+  });
+  geo = { W, H, x0, x1, n, top, dy, maxN };
+  // layer headers
+  L.forEach((layer, i) => {
+    const x = n === 1 ? x0 : x0 + (x1 - x0) * i / (n - 1);
+    const label = i === 0 ? 'Inputs' : i === n - 1 ? 'Outputs' : `Hidden ${i}`;
+    const g = el('g', { class: 'lhead', 'data-layer': i }, net);
+    el('rect', { x: x - 52, y: 10, width: 104, height: 26, fill: 'rgba(255,255,255,.04)', stroke: 'rgba(150,180,255,.2)' }, g);
+    el('text', { x, y: 27, 'text-anchor': 'middle', fill: 'var(--text)', 'font-size': 11.5, 'font-weight': 700, 'letter-spacing': '1.4', 'font-family': 'Chakra Petch, sans-serif' }, g).textContent = `${label.toUpperCase()} · ${layer.length}`;
+    g.addEventListener('mouseenter', (ev) => showTip(ev, i === 0 ? 'Inputs: your sensors. Add eyes on the dial.' : `Drop a wire here to connect to every neuron in ${label}.`));
+    g.addEventListener('mouseleave', hideTip);
+    if (i > 0 && i < n - 1) {
+      const add = el('g', { style: 'cursor:pointer', role: 'button', tabindex: 0, 'aria-label': `Add neuron to ${label}` }, net);
+      const yb = top + maxN * dy - 6;
+      el('rect', { x: x - 34, y: yb, width: 68, height: 22, fill: 'transparent', stroke: 'rgba(150,180,255,.35)', 'stroke-dasharray': '3 3' }, add);
+      el('text', { x, y: yb + 15, 'text-anchor': 'middle', fill: 'var(--muted)', 'font-size': 11, 'font-family': 'Chakra Petch, sans-serif', 'font-weight': 600 }, add).textContent = '+ NEURON';
+      const doAdd = () => { const Lh = S.hidden[i - 1]; if (Lh.length >= CAPS.perLayer) return toast('Twelve neurons per layer is the limit.'); const nn = newNeuron('relu'); Lh.push(nn); S.sel = nn.id; render(); };
+      add.addEventListener('click', doAdd); add.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') doAdd(); });
+      const del = el('g', { style: 'cursor:pointer', role: 'button', 'aria-label': `Remove ${label}` }, net);
+      el('circle', { cx: x + 52, cy: 10, r: 8, fill: 'var(--ink)', stroke: 'rgba(255,61,127,.6)' }, del);
+      el('path', { d: `M ${x + 49} 7 L ${x + 55} 13 M ${x + 55} 7 L ${x + 49} 13`, stroke: 'var(--minus)', 'stroke-width': 1.5 }, del);
+      del.addEventListener('click', () => { S.hidden.splice(i - 1, 1); S.sel = null; render(); });
+    }
+  });
+  // wires
+  const wg = el('g', {}, net);
+  for (const [k, c] of S.conns) {
+    const [a, b] = k.split('|'); const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
+    const span = q.layer - p.layer; const mx = (p.x + q.x) / 2;
+    const d = `M ${p.x + 13} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x - 13} ${q.y}`;
+    let stroke = 'rgba(160,180,230,.55)', width = 1.2, dash = null, op = 0.55;
+    if (span > 1) { stroke = 'var(--skip)'; dash = '5 4'; op = 0.7; }
+    if (c.w !== null && !c.fresh) { stroke = c.w >= 0 ? 'var(--plus)' : 'var(--minus)'; width = 0.6 + Math.abs(c.w) * 0.9; op = 0.35 + Math.min(0.6, Math.abs(c.w) * 0.25); dash = span > 1 ? '5 4' : null; }
+    if (c.fresh) { stroke = 'var(--text)'; dash = '2 4'; op = 0.8; width = 1.2; }
+    const sel = S.sel && (a === S.sel || b === S.sel);
+    const hit = el('path', { d, class: 'wire-hit', 'data-k': k }, wg);
+    const w = el('path', { d, class: 'wire' + (sel ? ' hot' : ''), stroke, 'stroke-width': width, opacity: S.sel && !sel ? op * 0.35 : op }, wg);
+    if (dash) w.setAttribute('stroke-dasharray', dash);
+    hit.addEventListener('click', () => { S.conns.delete(k); hideTip(); render(); });
+    hit.addEventListener('mousemove', (ev) => {
+      const na = findNode(a), nb = findNode(b);
+      const act = c.w === null ? 0.5 : 0.6 * Math.abs(c.w);
+      const cost = COST.fire * act * (1 + COST.skip * (span - 1));
+      showTip(ev, `<b>${na.label || 'Neuron'} → ${nb.label || 'Neuron'}</b><br>${c.fresh ? 'New: weight 0 until trained' : c.w === null ? 'Untrained' : 'Learned weight ' + c.w.toFixed(2)}<br>≈${cost.toFixed(3)} E/tick${span > 1 ? ` · skips ${span - 1} layer${span > 2 ? 's' : ''} (+${(COST.skip * (span - 1) * 100).toFixed(0)}%)` : ''}<br><span style="color:var(--muted)">Click to cut</span>`);
+    });
+    hit.addEventListener('mouseleave', hideTip);
+  }
+  el('path', { id: 'dragLine', d: '', fill: 'none', stroke: 'var(--volt)', 'stroke-width': 2, 'stroke-dasharray': '4 3', 'pointer-events': 'none' }, net);
+  // nodes
+  L.forEach((layer, i) => layer.forEach((nd) => {
+    const p = pos.get(nd.id); const isIn = i === 0, isOut = i === n - 1;
+    const g = el('g', { class: 'node', 'data-node': nd.id, tabindex: 0, role: 'button', 'aria-label': (nd.label || FX[nd.act].name + ' neuron') }, net);
+    const col = isIn ? (nd.kind === 'bias' ? 'var(--muted)' : 'var(--plus)') : FX[nd.act].col;
+    if (S.sel === nd.id) el('circle', { cx: p.x, cy: p.y, r: 19, fill: 'none', stroke: 'var(--text)', 'stroke-width': 2 }, g);
+    el('circle', { cx: p.x, cy: p.y, r: 13, fill: '#0b1226', stroke: col, 'stroke-width': 2.2 }, g);
+    if (isIn) {
+      el('circle', { cx: p.x, cy: p.y, r: 5, fill: col }, g);
+      el('text', { x: p.x - 22, y: p.y + 4, 'text-anchor': 'end', fill: 'var(--text)', 'font-size': 11.5, 'font-family': 'IBM Plex Mono, monospace' }, g).textContent = nd.label.toUpperCase();
+    } else {
+      el('path', { d: GLYPH[nd.act], transform: `translate(${p.x} ${p.y})`, fill: 'none', stroke: col, 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
+      if (isOut) el('text', { x: p.x + 22, y: p.y + 4, fill: 'var(--volt)', 'font-size': 12, 'font-weight': 700, 'letter-spacing': '1.2', 'font-family': 'Chakra Petch, sans-serif' }, g).textContent = nd.label.toUpperCase();
+    }
+    g.addEventListener('pointerdown', (ev) => startDrag(ev, nd.id));
+    g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); S.sel = nd.id; render(); } });
+    g.addEventListener('mouseenter', (ev) => { if (!drag) showTip(ev, nodeTip(nd, i, n)); });
+    g.addEventListener('mouseleave', hideTip);
+  }));
+  // stats + header
+  const neurons = S.hidden.reduce((a, x) => a + x.length, 0) + 2;
+  $('netSub').textContent = `${S.hidden.length} hidden layer${S.hidden.length === 1 ? '' : 's'}`;
+  const skips = [...S.conns.keys()].filter((k) => { const [a, b] = k.split('|'); return li.get(b) - li.get(a) > 1; }).length;
+  $('stats').innerHTML = `<span>${L[0].length} inputs</span><span>${neurons} neurons</span><span>${S.conns.size} wires</span><span>${skips} skip wire${skips === 1 ? '' : 's'}</span>`;
+  drawDial(); drawEnergy(e); drawInspector(); drawPresets();
+  $('sensSub').textContent = `${S.rays.size} / ${CAPS.rays} eyes`;
+  for (const k of ['speed', 'angle', 'bias']) $('s-' + k).setAttribute('aria-pressed', String(S[k]));
+  $('addLayer').disabled = S.hidden.length >= CAPS.layers;
+}
+function nodeTip(nd, i, n) {
+  if (i === 0) return `<b>${nd.label}</b><br>${sensorText(nd.kind)}`;
+  return `<b>${i === n - 1 ? nd.label : 'Hidden neuron'}</b> · ${FX[nd.act].name}<br>Drag to another neuron to wire. Click to inspect.`;
+}
+function sensorText(kind) {
+  return { ray: 'Distance to the wall along this angle, 80 m range. 1 = touching, 0 = nothing in range. 0.6 E/tick.', speed: 'Your speed, 0–60 m/s scaled to 0–1. 0.3 E/tick.', angle: 'Which way the road bends 30 m ahead, −1 to 1. 0.6 E/tick.', bias: 'Always 1. Lets a neuron fire with no input at all. Free.' }[kind];
+}
+
+function svgPt(ev) { const pt = net.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; return pt.matrixTransform(net.getScreenCTM().inverse()); }
+function startDrag(ev, id) {
+  ev.preventDefault(); hideTip();
+  drag = { id, x: ev.clientX, y: ev.clientY, moved: false, bundle: S.bundle || ev.shiftKey };
+  window.addEventListener('pointermove', moveDrag); window.addEventListener('pointerup', endDrag, { once: true });
+}
+function moveDrag(ev) {
+  if (!drag) return;
+  if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) > 4) drag.moved = true;
+  if (!drag.moved) return;
+  drag.bundle = S.bundle || ev.shiftKey;
+  const p = pos.get(drag.id), q = svgPt(ev);
+  const line = $('dragLine'); const mx = (p.x + q.x) / 2;
+  line.setAttribute('d', `M ${p.x} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x} ${q.y}`);
+  line.setAttribute('stroke', drag.bundle ? 'var(--text)' : 'var(--volt)');
+  line.setAttribute('stroke-width', drag.bundle ? 4 : 2);
+  net.querySelectorAll('.lhead').forEach((h) => h.classList.remove('drop'));
+  const t = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-layer]'); if (t) t.classList.add('drop');
+}
+function endDrag(ev) {
+  window.removeEventListener('pointermove', moveDrag);
+  const d = drag; drag = null;
+  if (!d) return;
+  if (!d.moved) { S.sel = S.sel === d.id ? null : d.id; render(); return; }
+  const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-node],[data-layer]');
+  const li = layerIndex(); let made = 0;
+  if (target) {
+    const fromL = li.get(d.id);
+    const toL = target.dataset.node ? li.get(target.dataset.node) : +target.dataset.layer;
+    if (d.bundle) made = connectLayers(fromL, toL);
+    else if (target.dataset.node) made = connect(d.id, target.dataset.node);
+    else for (const nd of layers()[toL]) made += connect(d.id, nd.id);
+    if (fromL === toL) toast('Wires run between layers, never within one.');
+  }
+  if (made > 1) toast(`${made} wires added.`);
+  render();
+}
+
+// ---- energy views ----
+function drawEnergy(e) {
+  const pct = e.total / e.budget;
+  const fill = $('eFill'); fill.style.width = `${clamp(pct / 2, 0, 1) * 100}%`;
+  fill.classList.toggle('over', pct > 1); fill.style.setProperty('--cut', `${(1 / Math.max(pct, 1)) * 100}%`);
+  $('eVal').textContent = `${e.total.toFixed(1)} / ${e.budget.toFixed(0)} E/tick`; $('eVal').classList.toggle('over', pct > 1);
+  const chip = $('staticChip'); chip.hidden = e.a <= 0; chip.textContent = `Static ${Math.round(e.a * 100)}%`;
+  const rows = [['Sensors', e.sens], ['Neuron upkeep', e.neur], ['Firing (est.)', e.fire], ['Skip surcharge', e.skip]];
+  $('ledger').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v.toFixed(2)}</dd>`).join('') +
+    `<dt class="total">Total</dt><dd class="total ${pct > 1 ? 'over' : ''}">${e.total.toFixed(2)} / ${e.budget}</dd>`;
+  $('ledgerNote').textContent = pct > 1
+    ? `${Math.round(e.a * 100)}% of every signal will be noise. At double the budget it is all noise.`
+    : `${(e.budget - e.total).toFixed(1)} E/tick spare. Firing is an estimate until the brain has driven.`;
+}
+function drawPresets() { for (const p of ['starter', 'minimal', 'deep']) $('pc-' + p).textContent = `${presetCost(p).toFixed(1)} E`; }
+
+// ---- inspector ----
+function drawInspector() {
+  const box = $('insp'); const nd = S.sel && findNode(S.sel);
+  if (!nd) { box.innerHTML = `<div class="ph"><h2 id="h-insp">Inspector</h2></div><p class="note">Click a neuron to choose its transfer function, or a sensor to see what it reads.</p>`; return; }
+  const li = layerIndex(); const i = li.get(nd.id), n = layers().length;
+  let inC = 0, outC = 0; for (const k of S.conns.keys()) { const [a, b] = k.split('|'); if (b === nd.id) inC++; if (a === nd.id) outC++; }
+  if (i === 0) {
+    box.innerHTML = `<div class="ph"><h2 id="h-insp">${nd.label}</h2><span class="sub">sensor</span></div><p class="note">${sensorText(nd.kind)}</p>
+      <dl class="kv"><dt>Feeds</dt><dd>${outC} wire${outC === 1 ? '' : 's'}</dd></dl><button type="button" class="danger" id="rmSens">Remove sensor</button>`;
+    $('rmSens').onclick = () => { if (nd.kind === 'ray') S.rays.delete(nd.deg); else S[nd.kind] = false; S.sel = null; render(); };
+    return;
+  }
+  const isOut = i === n - 1; const up = isOut ? UP_O : UP_H;
+  const idx = isOut ? S.outs.indexOf(nd) : S.hidden[i - 1].indexOf(nd);
+  const nick = NICKS[(parseInt(nd.id.slice(1), 10) || 0) % NICKS.length];
+  box.innerHTML = `<div class="ph"><h2 id="h-insp">${isOut ? nd.label : `Hidden ${i} · neuron ${idx + 1}`}</h2><span class="sub">${inC} in · ${outC} out</span></div>
+    ${isOut ? '' : `<div class="nick">“${nick}”</div>`}
+    <div class="fx" role="group" aria-label="Transfer function">${Object.keys(FX).map((k) => `<button type="button" class="fxb" id="fx-${k}" data-fx="${k}" aria-pressed="${nd.act === k}" style="color:${FX[k].col}"><svg viewBox="-9 -8 18 16"><path d="${GLYPH[k]}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span style="color:var(--text)">${FX[k].name}</span><small>${up[k].toFixed(2)} E</small></button>`).join('')}</div>
+    <svg id="plot" viewBox="0 0 280 120" aria-label="${FX[nd.act].name} curve"></svg>
+    <p class="note">${FX[nd.act].d}${isOut ? ' Outputs are read from −1 to 1; step, ReLU and sigmoid are stretched to fit.' : ''}</p>
+    <div class="locked-row"><span>Dropout</span><span class="tag">In the Lab</span></div>
+    ${isOut ? '' : '<button type="button" class="danger" id="rmNeur">Remove neuron</button>'}`;
+  box.querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => { nd.act = b.dataset.fx; render(); }));
+  if (!isOut) $('rmNeur').onclick = () => { const L = S.hidden[i - 1]; L.splice(L.indexOf(nd), 1); if (!L.length) S.hidden.splice(i - 1, 1); S.sel = null; render(); };
+  drawPlot(nd.act);
+}
+function drawPlot(act) {
+  const svg = $('plot'); const X = (x) => 20 + (x + 4) / 8 * 250, Y = (y) => 100 - (y + 1.2) / 3.2 * 90;
+  for (let gx = -4; gx <= 4; gx += 2) el('line', { x1: X(gx), x2: X(gx), y1: 8, y2: 100, stroke: 'rgba(150,180,255,.08)' }, svg);
+  for (const gy of [-1, 0, 1, 2]) el('line', { x1: 20, x2: 270, y1: Y(gy), y2: Y(gy), stroke: gy === 0 ? 'rgba(150,180,255,.35)' : 'rgba(150,180,255,.1)' }, svg);
+  el('line', { x1: X(0), x2: X(0), y1: 8, y2: 100, stroke: 'rgba(150,180,255,.35)' }, svg);
+  for (const gy of [-1, 1, 2]) el('text', { x: 15, y: Y(gy) + 3, 'text-anchor': 'end', fill: 'var(--dim)', 'font-size': 8.5, 'font-family': 'IBM Plex Mono, monospace' }, svg).textContent = gy;
+  let d = ''; for (let k = 0; k <= 200; k++) { const x = -4 + 8 * k / 200; const y = clamp(FX[act].f(x), -1.2, 2.0); d += (k ? ' L ' : 'M ') + X(x).toFixed(1) + ' ' + Y(y).toFixed(1); }
+  if (act === 'step') d = `M ${X(-4)} ${Y(0)} L ${X(0)} ${Y(0)} M ${X(0)} ${Y(1)} L ${X(4)} ${Y(1)}`;
+  el('path', { d, fill: 'none', stroke: FX[act].col, 'stroke-width': 2.4, 'stroke-linecap': 'round' }, svg);
+  if (act === 'step') { el('circle', { cx: X(0), cy: Y(0), r: 3, fill: '#0b1226', stroke: FX[act].col, 'stroke-width': 1.5 }, svg); el('circle', { cx: X(0), cy: Y(1), r: 3, fill: FX[act].col }, svg); }
+  el('text', { x: 268, y: Y(0) - 4, 'text-anchor': 'end', fill: 'var(--dim)', 'font-size': 8.5, 'font-family': 'IBM Plex Mono, monospace' }, svg).textContent = 'input';
+}
+
+// ---- tips, toast ----
+function showTip(ev, html) { tip.innerHTML = html; tip.hidden = false; const r = tip.getBoundingClientRect(); tip.style.left = Math.min(ev.clientX + 14, innerWidth - r.width - 8) + 'px'; tip.style.top = Math.min(ev.clientY + 14, innerHeight - r.height - 8) + 'px'; }
+function hideTip() { tip.hidden = true; }
+let toastT; function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2200); }
+
+// ---- controls ----
+for (const k of ['speed', 'angle', 'bias']) $('s-' + k).addEventListener('click', () => { S[k] = !S[k]; render(); });
+document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => { preset(b.dataset.preset); toast(`${b.querySelector('b').textContent} loaded.`); render(); }));
+$('addLayer').addEventListener('click', () => { if (S.hidden.length >= CAPS.layers) return; const L = Array.from({ length: 4 }, () => newNeuron('relu')); S.hidden.push(L); S.sel = L[0].id; render(); });
+$('bundle').addEventListener('click', () => { S.bundle = !S.bundle; $('bundle').setAttribute('aria-pressed', String(S.bundle)); });
+$('fullAll').addEventListener('click', () => { let n = 0; for (let i = 0; i < layers().length - 1; i++) n += connectLayers(i, i + 1); toast(n ? `${n} wires added.` : 'Every neighbouring layer is already fully wired.'); render(); });
+$('clearW').addEventListener('click', () => { S.conns.clear(); render(); });
+document.querySelectorAll('.trainer').forEach((b) => b.addEventListener('click', () => { if (b.getAttribute('aria-disabled') === 'true') toast(`${b.querySelector('b').firstChild.textContent.trim()} isn't built yet.`); }));
+$('lock').addEventListener('click', () => { S.locked = !S.locked; const b = $('lock'); b.classList.toggle('done', S.locked); b.textContent = S.locked ? 'Locked · edit' : 'Lock in'; toast(S.locked ? 'Locked in. Waiting for 4 bots; training starts when the timer ends.' : 'Unlocked.'); });
+let timeLeft = 60;
+function setMode(m) {
+  S.mode = m; document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  $('phName').textContent = m === 'r1' ? 'Build' : 'Upgrade'; $('phName').classList.toggle('up', m === 'r3');
+  $('phMeta').textContent = m === 'r1' ? 'Round 1 / 5' : 'Round 3 / 5';
+  $('carry').hidden = m !== 'r3';
+  for (const [k, c] of S.conns) { c.fresh = false; c.w = m === 'r3' ? hashW(k) : null; }
+  timeLeft = m === 'r1' ? 60 : 30; render();
+}
+document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+addEventListener('keydown', (e) => { if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel && !(e.target instanceof HTMLInputElement)) { const nd = findNode(S.sel); if (nd && nd.id.startsWith('h')) { for (const L of S.hidden) { const j = L.indexOf(nd); if (j >= 0) L.splice(j, 1); } S.hidden = S.hidden.filter((L) => L.length); S.sel = null; render(); } } });
+setInterval(() => { timeLeft = timeLeft <= 0 ? (S.mode === 'r1' ? 60 : 30) : timeLeft - 1; const t = $('phTime'); t.textContent = `${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, '0')}`; t.classList.toggle('low', timeLeft <= 10); }, 1000);
+
+preset('starter');
+S.sel = S.hidden[0][2].id;
+render();
+</script>
