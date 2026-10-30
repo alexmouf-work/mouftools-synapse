@@ -1,5 +1,6 @@
 // THE energy cost function. The sim, the trainer and the workbench all call these; there is no second copy.
-// used per tick = Σ wired sensor cost + Σ neuron upkeep + Σ wires fire × |sender output × w| × (1 + skip × (span − 1)).
+// used per tick = Σ wired sensor cost + Σ neuron upkeep + Σ wires fire × |sender output × w| × (1 + skip × (span − 1)),
+// where span counts only hidden lines that hold neurons (wireSpan).
 // Over budget, every signal is mixed with noise: a = clamp(used_prev / budget − 1, 0, 1) (ruling 2026-10-30).
 import { CONFIG, type Act } from '../config';
 import { depthOf, INPUTS, inputIdx, type BrainSpec, type InputKind } from './spec';
@@ -30,10 +31,26 @@ export function staticCost(spec: BrainSpec): { sensors: number; upkeep: number; 
   return { sensors, upkeep, total: sensors + upkeep };
 }
 
+/**
+ * Layers a wire spans for the surcharge: only hidden lines that hold neurons count, so crossing an empty line is free
+ * (review call 2026-10-30). Car = 0, each non-empty line up to and including a neuron's own adds 1, wheels = all
+ * non-empty lines + 1.
+ */
+export function wireSpan(spec: BrainSpec, from: string, to: string): number {
+  const filled = new Set(spec.nodes.map((n) => n.layer));
+  const eff = (id: string): number => {
+    const d = depthOf(spec, id); // throws on an unknown id
+    let k = 0;
+    for (const L of filled) if (L <= d) k++;
+    return d > spec.layers ? filled.size + 1 : d === 0 ? 0 : k;
+  };
+  return eff(to) - eff(from);
+}
+
 /** Per-wire factors aligned to spec.conns. */
 export function wireFactors(spec: BrainSpec): Float64Array {
   const f = new Float64Array(spec.conns.length);
-  spec.conns.forEach((c, k) => { f[k] = wireFactor(depthOf(spec, c.to) - depthOf(spec, c.from)); });
+  spec.conns.forEach((c, k) => { f[k] = wireFactor(wireSpan(spec, c.from, c.to)); });
   return f;
 }
 

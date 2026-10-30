@@ -106,6 +106,7 @@ Changed from the plan, and why:
 - `Trainer.step` is async (worker pools answer asynchronously); trainers take `{start: fresh | carry}`.
 - A generation runs only if its worst case fits what is left of T (whole generations).
 - Minimal keeps the one (empty) hidden line the workbench always shows, so its car → wheel wires span 2 (+50%).
+  Superseded by the review call of 2026-10-30 (empty lines are free to cross); (d) re-measured in the S3 notes.
 - Deep preset left for S2 (the plan does not define it; nothing in S1 uses it).
 
 ## S2 notes (2026-10-30)
@@ -113,7 +114,7 @@ Built as planned; checks green (edit-op unit tests, save parsing, `scripts/check
 Reviewer notes followed: the workbench shows energy only through `energy.ts` (`estimate`, with the mock-up's 0.05 per
 wire as `cost.estimateActivity` 0.5 × fire, labelled "est."); the board is checked at the caps (3 × 10) and empty
 (no hidden neurons, car wired straight to the wheels: the one hidden line stays on the board, empty, as in the
-mock-up); a corrupt save gives Starter and a toast. Deep preset: five front eyes, road and speed → 4 ReLU → 3 tanh →
+mock-up; since the review call, crossing it costs nothing); a corrupt save gives Starter and a toast. Deep preset: five front eyes, road and speed → 4 ReLU → 3 tanh →
 wheels, 90% est. Additions beyond the mock-up, desktop unchanged: "Start from" presets in the side panel, rename,
 and narrow-board rules (one shared "HIDDEN LAYERS" heading when lines are close, no ⊕ on a full line, ⊕ kept clear of
 the palette, a colliding front-eye label moves above its pin). The mock-up itself, opened on a phone, renders zoomed

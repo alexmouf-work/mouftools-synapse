@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import { compile, evalNet, starterSpec } from '../../src/common/sim/brain';
-import { energyLeft, noiseLevel, percentOfBudget, staticCost, wireFactor } from '../../src/common/sim/energy';
+import { energyLeft, noiseLevel, percentOfBudget, staticCost, wireFactor, wireFactors } from '../../src/common/sim/energy';
 import { Runner } from '../../src/common/sim/race';
 import type { BrainSpec } from '../../src/common/sim/spec';
 import { generateTrack } from '../../src/common/sim/track';
@@ -21,9 +21,9 @@ describe('energy maths', () => {
     expect(() => wireFactor(0)).toThrow();
   });
   it('per-tick use = static + Σ factor·|out·w| (hand-computed)', () => {
-    // layers 2: speed → n1 (span 1), n1 → wheel (span 2), bias → wheel (span 3)
+    // layers 3, line 2 empty: speed → n1 (span 1), n1 → wheel (span 2: line 3 only), bias → wheel (span 3)
     const spec: BrainSpec = {
-      v: 1, layers: 2, nodes: [{ id: 'n1', layer: 1, act: 'tanh', dropout: 0 }],
+      v: 1, layers: 3, nodes: [{ id: 'n1', layer: 1, act: 'tanh', dropout: 0 }, { id: 'n2', layer: 3, act: 'step', dropout: 0 }],
       conns: [{ from: 'i:spd', to: 'n1' }, { from: 'n1', to: 'o:fr' }, { from: 'i:bias', to: 'o:fl' }],
     };
     const net = compile({ spec, w: [2, -1.5, 0.5] });
@@ -31,8 +31,17 @@ describe('energy maths', () => {
     const vals = new Float64Array(net.nNodes);
     const used = evalNet(net, inputs, vals, 0, 0, 0);
     const h = Math.tanh(0.5);
-    const expected = 0.3 + 0.5 + 0.1 * Math.abs(0.25 * 2) + 0.15 * Math.abs(h * -1.5) + 0.2 * Math.abs(1 * 0.5);
+    const expected = 0.3 + 0.5 + 0.2 + 0.1 * Math.abs(0.25 * 2) + 0.15 * Math.abs(h * -1.5) + 0.2 * Math.abs(1 * 0.5);
     expect(used).toBeCloseTo(expected, 13);
+  });
+  it('empty hidden lines are free to cross (review call 2026-10-30)', () => {
+    const spec: BrainSpec = {
+      v: 1, layers: 3, nodes: [{ id: 'n1', layer: 2, act: 'tanh', dropout: 0 }],
+      conns: [{ from: 'i:f', to: 'n1' }, { from: 'n1', to: 'o:fl' }, { from: 'i:f', to: 'o:fr' }],
+    };
+    expect([...wireFactors(spec)].map((f) => Math.round(f * 1000))).toEqual([100, 100, 150]);
+    // car → wheels with only the empty line on the board: span 1, no surcharge
+    expect([...wireFactors({ v: 1, layers: 1, nodes: [], conns: [{ from: 'i:f', to: 'o:fl' }] })]).toEqual([0.1]);
   });
   it('overage → noise level a, and Energy left', () => {
     expect(noiseLevel(5, 10)).toBe(0);

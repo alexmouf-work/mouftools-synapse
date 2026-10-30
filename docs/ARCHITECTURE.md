@@ -40,8 +40,9 @@ Pins are always on the board; an input is computed and charged only while wired.
 10 inputs (`i:l, i:fl, i:f, i:fr, i:r, i:b, i:road, i:energy, i:spd, i:bias`), hidden neurons by (layer, spec
 order), then the wheels (`o:fl, o:fr, o:rl, o:rr`). Each node sums its incoming wires in spec order, so a new wire
 with w = 0 adds an exact +0. Hidden transfer functions: step, ReLU (cap 4), sigmoid, tanh. Wheels have no transfer
-function: output = clamp(sum, −1, 1), and no upkeep (as the workbench shows them). Layers are 1..3; an empty line
-still counts for span, so a car → wheel wire with one (empty) hidden line spans 2.
+function: output = clamp(sum, −1, 1), and no upkeep (as the workbench shows them). Layers are 1..3. A wire's span for the skip
+surcharge counts only hidden lines that hold neurons (`wireSpan`; review call 2026-10-30), so the empty line the
+board always shows is free to cross.
 
 Over budget, every signal (inputs, neurons, wheels) is mixed after its transfer function:
 `(1 − a)·clean + a·U(−1, 1)`, with `a = clamp(last tick's use / budget − 1, 0, 1)`. The noise value is a pure

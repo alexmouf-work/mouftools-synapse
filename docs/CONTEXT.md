@@ -45,3 +45,9 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - On the car-as-input-layer builder: "looks excellent."
 - Milestone 1 is the sandbox loop (build → train → drive, no timers); the timed match comes after. "build the plan end
   to end".
+
+## Calls made in review (2026-10-30; the principal can overturn any of them)
+- The skip surcharge counts only hidden layers that contain neurons: an empty hidden line is free to cross, so a
+  brain wired car → wheels pays no phantom +50%. The one empty line stays on the board as the place to add neurons.
+- The bench time check takes the best of 3 runs (limit still 1.3 × baseline): a check that fails on noise trains
+  people to ignore it.
