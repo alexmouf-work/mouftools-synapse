@@ -12,6 +12,7 @@ import { makeCar, type CarModel } from './car';
 import { DriveRig, type DrivePose } from './drive';
 import { buildStadium, type Stadium } from './stadium';
 import { Swarm } from './ghosts';
+import { fadeNear } from './glow';
 import { assertFiniteArray } from './guard';
 import { buildScenery, type Scenery } from './scenery';
 import { makeTextures, stadiumTextures, type StadiumTextures, type Textures } from './textures';
@@ -87,7 +88,8 @@ export class Stage {
     const rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: high ? 4 : 0 });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.45, BLOOM_THRESHOLD);
+    // radius 0.32 (mock-up 0.45): glows stay lines instead of spreading into haze near the camera
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(2, 2), 0.7, 0.32, BLOOM_THRESHOLD);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.disposables.push(rt, this.bloom);
@@ -125,7 +127,7 @@ export class Stage {
 
     this.tex = makeTextures(this.renderer.capabilities.getMaxAnisotropy());
     const vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.45 });
-    const strip = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.9, 2.5), side: THREE.DoubleSide });
+    const strip = fadeNear(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.9, 2.5), side: THREE.DoubleSide }));
     this.mats = {
       road: new THREE.MeshStandardMaterial({ map: this.tex.road, roughness: 0.78, metalness: 0, side: THREE.DoubleSide }),
       kerb: vc, runoff: vc, wall: vc, wallTop: vc, skirt: vc, strip,
@@ -243,6 +245,18 @@ export class Stage {
     this.sun.position.copy(this.look).addScaledVector(SUN_DIR, 400);
     this.tex.boost.offset.y -= dt * 1.6;
     this.composer.render();
+  }
+
+  /**
+   * Training view: seek what is on screen to t seconds, snap the camera there and audit that frame (deterministic for
+   * a given run, so a pass means pass).
+   */
+  auditTrainAt(t: number): { over: number; max: number; mask?: string } {
+    if (this.mode !== 'train') throw new Error('stage: auditTrainAt outside the training view');
+    this.swarm.seek(t);
+    this.snap = true;
+    this.frame(0, 0);
+    return this.bloomAudit();
   }
 
   /**

@@ -70,7 +70,7 @@ async function main() {
     await page.goto(base + query);
     return page;
   }
-  const drive = (page: Page) => page.evaluate(() => { const d = window.__drive; return d ? { ...d, probe: undefined, bloomAudit: undefined, seek: undefined, setCam: undefined, camPos: undefined } : null; });
+  const drive = (page: Page) => page.evaluate(() => { const d = window.__drive; return d ? { ...d, probe: undefined, bloomAudit: undefined, seek: undefined, setCam: undefined, camPos: undefined, auditAt: undefined } : null; });
   const waitFrames = (page: Page, n = 3) => page.waitForFunction((x) => (window.__drive?.frames ?? 0) > x, n, { timeout: 120_000 });
 
   try {
@@ -90,14 +90,16 @@ async function main() {
     check((d?.distance ?? 0) > d0 + 1, `distance shown increases (${d0.toFixed(0)} → ${(d?.distance ?? 0).toFixed(0)} m)`);
     const pr = await page.evaluate(() => window.__drive!.probe!());
     check(pr.mean > 30 && pr.sd > 5, `render smoke: mean luminance ${pr.mean.toFixed(1)}, spread ${pr.sd.toFixed(1)}`);
-    const au = await page.evaluate(() => window.__drive!.bloomAudit!());
-    check(au.over === 0, `bloom audit: ${(au.over * 100).toFixed(3)}% of non-glow pixels over the threshold (max ${au.max.toFixed(2)})`);
+    // bloom audit on fixed frames (seek + snapped camera), so a pass means pass
+    const aus = await page.evaluate(() => [2, 8, 14, 20, 30, 45, 58].map((t) => window.__drive!.auditAt(t)));
+    check(aus.every((a) => a.over === 0), `bloom audit at 2/8/14/20/30/45/58 s: over ${aus.map((a) => (a.over * 100).toFixed(3) + '%').join(' ')} (max ${Math.max(...aus.map((a) => a.max)).toFixed(2)})`);
     // chase mid-corner, broadcast, showroom
     await page.evaluate((s) => window.__drive!.seek(s), corner / 20 - 0.6);
     await page.waitForTimeout(1200);
     await page.screenshot({ path: `${OUT}/chase-corner.png` });
-    for (const [cam, file] of [['tv', 'broadcast'], ['orbit', 'showroom']] as const) {
+    for (const [cam, file, at] of [['tv', 'broadcast', 13], ['orbit', 'showroom', 18]] as const) {
       await page.click(`#driveOverlay [data-cam="${cam}"]`);
+      await page.evaluate((s) => window.__drive!.seek(s), at);
       await page.waitForTimeout(1800);
       check((await drive(page))?.cam === cam, `camera switches to ${cam}`);
       await page.screenshot({ path: `${OUT}/${file}.png` });

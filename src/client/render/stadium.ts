@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { Rng } from '../../common/rng';
 import type { Track } from '../../common/sim/track';
+import { fadeNear } from './glow';
 import { assertCapacity, assertFiniteGeometry, setInstance } from './guard';
 import { at, trackCentre, WALL_H, WALL_OUT } from './trackMesh';
 
@@ -38,7 +39,7 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
     return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
   };
   const glow = <T extends THREE.Object3D>(o: T) => { o.userData.glow = true; return o; };
-  const litMat = M(new THREE.MeshBasicMaterial({ color: LIT }));
+  const litMat = M(fadeNear(new THREE.MeshBasicMaterial({ color: LIT })));
 
   // grandstand on the outside of the start straight
   {
@@ -82,7 +83,7 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
   // gates: start and checkpoints
   {
     const pillarMat = M(new THREE.MeshStandardMaterial({ color: '#121a33', roughness: 0.4, metalness: 0.3, flatShading: true }));
-    const bigLit = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.7, 0.2) }));
+    const bigLit = M(fadeNear(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.7, 0.2) })));
     t.gates.forEach((gi, k) => {
       const big = k === 0, H = big ? 10 : 8.5, span = WALL_OUT + 1.2;
       const g = new THREE.Group();

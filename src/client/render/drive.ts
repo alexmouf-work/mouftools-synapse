@@ -65,6 +65,9 @@ export class DriveRig {
     this.controls.addEventListener('start', () => { this.controls.autoRotate = false; });
   }
 
+  /** Put the camera exactly where it wants to be on the next update (no easing). */
+  snapNow(): void { this.snap = true; this.tvIdx = -1; this.swing = 0; }
+
   setTrack(t: Track, tvSpots: { i: number; p: THREE.Vector3 }[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; }
 
   setMode(m: CamMode, reduceMotion: boolean): void {

@@ -38,6 +38,8 @@ export class Swarm {
   private readonly guess: Int32Array;
   private readonly prog: Float64Array;
   private carGuess = 0;
+  /** After a seek: find every car on the whole track once (not near its last position). */
+  private fullSearch = false;
   private readonly progs: number[] = [];
   /** Track sample the camera follows: the pack's median progress (story) or the champion (finale). */
   focusIdx = 0;
@@ -90,6 +92,9 @@ export class Swarm {
     if (!this.cur) this.next();
   }
 
+  /** Jump to t real seconds into what is on screen (deterministic: the result does not depend on earlier frames). */
+  seek(t: number): void { this.t = t; this.fullSearch = true; }
+
   /** The champion's lap for the finale; it starts once the story has shown the final generation. */
   setLap(lap: Lap): void { this.lap = lap; }
 
@@ -118,6 +123,7 @@ export class Swarm {
     }
     this.drawGhosts(this.finaleOn ? tau - FINALE_TRAIL_TICKS : tau, time);
     this.drawCar(tau, dt * speed * TICK_HZ);
+    this.fullSearch = false;
   }
 
   private drawGhosts(tau: number, time: number): void {
@@ -148,10 +154,11 @@ export class Swarm {
       this.c.multiplyScalar(faint);
       this.mesh.setColorAt(i, this.c);
       // progress along the track, for the camera's median
-      const idx = locate(t, pose.x, pose.y, this.guess[i], 40);
-      let step = idx - this.guess[i];
+      const idx = locate(t, pose.x, pose.y, this.fullSearch ? t.startIdx : this.guess[i], this.fullSearch ? t.n >> 1 : 40);
+      let step = idx - (this.fullSearch ? t.startIdx : this.guess[i]);
       if (step > t.n / 2) step -= t.n; else if (step < -t.n / 2) step += t.n;
-      this.prog[i] += step; this.guess[i] = idx;
+      if (this.fullSearch) this.prog[i] = step; else this.prog[i] += step;
+      this.guess[i] = idx;
       allProgs.push(this.prog[i]);
       if (!ended) this.progs.push(this.prog[i]);
     }
@@ -173,7 +180,7 @@ export class Swarm {
       x = L.x[j] + (L.x[j1] - L.x[j]) * u; y = L.y[j] + (L.y[j1] - L.y[j]) * u;
       let dh = L.hdg[j1] - L.hdg[j]; dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
       hdg = L.hdg[j] + dh * u; v = L.v[j];
-      const idx = locate(t, x, y, this.carGuess, 40);
+      const idx = locate(t, x, y, this.carGuess, this.fullSearch ? t.n >> 1 : 40);
       this.carGuess = idx;
       this.focusIdx = idx;
     } else {

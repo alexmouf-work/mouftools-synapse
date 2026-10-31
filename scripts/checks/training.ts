@@ -126,8 +126,9 @@ async function main() {
     await page.waitForFunction(() => window.__training?.shownGen === 1, null, { timeout: 120_000 });
     await page.waitForTimeout(1300); // gen 1 a little way in: the first crashes
     await page.screenshot({ path: `${OUT}/gen1-crashes.png` });
-    let audit = await page.evaluate(() => window.__training!.bloomAudit!());
-    check(audit.over === 0, `bloom audit at gen 1: ${(audit.over * 100).toFixed(2)}% of scenery over the threshold (max ${audit.max.toFixed(2)})`);
+    // bloom audit on fixed frames (seek + snapped camera), so a pass means pass
+    const a1 = await page.evaluate(() => window.__training!.auditAt!(1.0));
+    check(a1.over === 0, `bloom audit, gen ${a1.gen} at 1.0 s: ${(a1.over * 100).toFixed(3)}% of non-glow pixels over the threshold (max ${a1.max.toFixed(2)})`);
     await page.waitForFunction(() => { const s = window.__training!; return s.shownGen > 1 && !s.finale && s.shownGen < s.gen; }, null, { timeout: 300_000 });
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${OUT}/story-mid.png` });
@@ -136,8 +137,8 @@ async function main() {
     await page.waitForFunction(() => window.__training?.finale === true, null, { timeout: 300_000 });
     await page.waitForTimeout(3500);
     await page.screenshot({ path: `${OUT}/champion-loop.png` });
-    audit = await page.evaluate(() => window.__training!.bloomAudit!());
-    check(audit.over === 0, `bloom audit in the finale: ${(audit.over * 100).toFixed(2)}% over (max ${audit.max.toFixed(2)})`);
+    const fin = await page.evaluate(() => [1, 4, 8, 12, 16, 20].map((t) => window.__training!.auditAt!(t)));
+    check(fin.every((a) => a.finale && a.over === 0), `bloom audit, finale at 1/4/8/12/16/20 s: over ${fin.map((a) => (a.over * 100).toFixed(3) + '%').join(' ')} (max ${Math.max(...fin.map((a) => a.max)).toFixed(2)})`);
     clearInterval(watch);
     s = await status(page);
     const story = s?.story ?? [];

@@ -41,6 +41,8 @@ export interface TrainingStatus {
   frames: number; frameMs: number;
   probe?: () => { mean: number; sd: number; w: number; h: number };
   bloomAudit?: (mask?: boolean) => { over: number; max: number; mask?: string };
+  /** Seek what is on screen to t s, snap the camera, audit that frame (deterministic). */
+  auditAt?: (t: number) => { over: number; max: number; gen: number; finale: boolean };
 }
 declare global { interface Window { __training?: TrainingStatus } }
 
@@ -100,6 +102,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     state: 'running', seed, phase, start, workers, T, gen: 0, ticksUsed: 0, shownGen: 0, finale: false, story: [], frames: 0, frameMs: 0,
     ghostCapacity: stage?.swarm.capacity ?? 0, webgl, quality: stage?.quality,
     probe: stage ? () => (stage as Stage).probe() : undefined, bloomAudit: stage ? (m?: boolean) => (stage as Stage).bloomAudit(m) : undefined,
+    auditAt: stage ? (t: number) => { const st = stage as Stage; const a = st.auditTrainAt(t); return { ...a, gen: st.swarm.shownGen, finale: st.swarm.finale }; } : undefined,
   };
   window.__training = status;
   const gens: GenStat[] = [];

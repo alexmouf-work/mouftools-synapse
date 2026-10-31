@@ -26,10 +26,12 @@ export function makeCar(primary: string, trimHex: string, glowTex: THREE.Texture
   const rimGeo = G(new THREE.CylinderGeometry(0.31, 0.31, 0.6, 7).rotateZ(Math.PI / 2));
   const rimGeoR = G(new THREE.CylinderGeometry(0.33, 0.33, 0.66, 7).rotateZ(Math.PI / 2));
   const tyreMat = M(new THREE.MeshStandardMaterial({ color: '#15171d', roughness: 0.85, flatShading: true }));
-  const carbonMat = M(new THREE.MeshStandardMaterial({ color: '#171a22', roughness: 0.45, metalness: 0.35, flatShading: true }));
-  const glassMat = M(new THREE.MeshPhysicalMaterial({ color: '#0a1124', roughness: 0.05, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.03, flatShading: true }));
-  const paint = M(new THREE.MeshPhysicalMaterial({ color: primary, metalness: 0.2, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.08, flatShading: true, envMapIntensity: 0.7 }));
-  const trim = M(new THREE.MeshPhysicalMaterial({ color: trimHex, metalness: 0.35, roughness: 0.3, clearcoat: 0.6, flatShading: true }));
+  const carbonMat = M(new THREE.MeshStandardMaterial({ color: '#171a22', roughness: 0.5, metalness: 0.35, flatShading: true }));
+  // Satin, not mirror: a sharp clearcoat throws sun glints far over the bloom threshold at some poses (found by the
+  // bloom audit: max 3.6 at some finale poses), so every coat has roughness ≥ 0.45 and the paint a half coat.
+  const glassMat = M(new THREE.MeshPhysicalMaterial({ color: '#0a1124', roughness: 0.45, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.45, flatShading: true }));
+  const paint = M(new THREE.MeshPhysicalMaterial({ color: primary, metalness: 0.2, roughness: 0.5, clearcoat: 0.5, clearcoatRoughness: 0.45, flatShading: true, envMapIntensity: 0.6 }));
+  const trim = M(new THREE.MeshPhysicalMaterial({ color: trimHex, metalness: 0.35, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.45, flatShading: true }));
   const tail = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 0.15, 0.3) }));
   const led = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.7, 3.0) }));
   const exhaust = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.2, 0.2) }));

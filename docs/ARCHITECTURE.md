@@ -146,8 +146,12 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   (finite-geometry and finite-matrix asserts, instance capacity asserts — all throw). Quality: `low` (pixel ratio 1,
   no shadows, no MSAA; bloom kept) is picked for software rasterisers (SwiftShader, llvmpipe), `high` otherwise.
   Bloom: threshold 1.3; all scene light is scaled by 0.6 and the exposure by 1/0.6, so lit scenery (max ≈ 1.17) stays
-  under it and only glow-tagged things (wall strips, boost pads, lamps, sun disc) bloom; `bloomAudit` renders the
-  scene without them to a float target and counts pixels over.
+  under it and only glow-tagged things (wall strips, boost pads, lamps, gate bands, sun disc) bloom; `bloomAudit`
+  renders the scene without them to a float target and counts pixels over. The checks audit fixed frames
+  (`auditTrainAt` / the drive view's `auditAt`: seek, snap the camera, draw, audit), so a pass means pass. The car's
+  coats are satin (roughness ≥ 0.45, half clearcoat): mirror-sharp coats threw sun glints up to 3.6 at some poses.
+  Bloom radius 0.32 (mock-up 0.45), and `glow.ts` fades strips and gate bands near the camera (25% at ≤ 6 m, full
+  from 60 m), so near glows read as lines, not haze, while mid-distance glow keeps the mock-up's look.
 - `ui/drive/` — the drive view. `runDrive(genome, trackSeed)` computes the whole 60 s run first (noise seed derived
   from the track seed), then it plays back in real time and loops. First track: the unseen track of the brain's
   last training run; New track draws a fresh seed. Overlay (plain): time, distance and laps, best lap, energy % (and

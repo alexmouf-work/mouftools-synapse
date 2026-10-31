@@ -163,3 +163,13 @@ equals the Node replay (seed 7, T 1M: 23a2ba9c), bloom audit 0% (max 1.17).
 - Seen in the stuck shot: the car body pokes ~0.4 m into the wall when pinned (sim clamps the centre at 11.5 m; the
   model is 2.9 m wide). Left as is; a render-only inset is an option for S5.
 
+### S4 fixes (review 2026-10-30)
+- Flaky "bloom audit in the finale" (reviewer saw 0.02%, max 3.03): reproduced by sampling 70 frames of the 6M
+  finale (12 over, max 3.58); the mask put every over pixel on the champion car: sun glints off mirror-sharp coats
+  (trim clearcoat roughness 0). Coats are satin now (roughness ≥ 0.45, half clearcoat on the paint): 1 of 70 random
+  frames at 1.31 after the first change, then the half coat. The audit now runs on fixed frames (seek + snapped
+  camera; repeated frames give identical numbers), 1 in gen 1 and 6 in the finale, 7 in the drive.
+- Near-field bloom: strips and gate bands fade near the camera (25% at ≤ 6 m, full from 60 m), bloom radius
+  0.45 → 0.32. Before/after: `out/s4/chase-corner-before.png` / `chase-corner.png`, `broadcast-before.png` /
+  `broadcast.png`.
+

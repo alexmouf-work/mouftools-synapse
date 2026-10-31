@@ -31,6 +31,8 @@ export interface DriveStatus {
   probe?: () => { mean: number; sd: number; w: number; h: number };
   bloomAudit?: (mask?: boolean) => { over: number; max: number; mask?: string };
   seek(seconds: number): void;
+  /** Seek, snap the camera, draw that frame and run the bloom audit on it (deterministic). */
+  auditAt(seconds: number): { over: number; max: number };
   camPos(): number[];
   setCam(m: CamMode): void;
 }
@@ -83,6 +85,14 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     bloomAudit: stage ? (m?: boolean) => stage.bloomAudit(m) : undefined,
     seek: (sec) => { playT = Math.max(0, Math.min(sec, ticks / HZ - 0.01)); guess = locate(track, rec.x[Math.floor(playT * HZ)], rec.y[Math.floor(playT * HZ)], track.startIdx, track.n); },
     setCam: (m) => setCam(m),
+    auditAt: (sec) => {
+      if (!stage) return { over: 0, max: 0 };
+      playT = sec; guess = locate(track, rec.x[Math.floor(sec * HZ)], rec.y[Math.floor(sec * HZ)], track.startIdx, track.n >> 1);
+      poseAt(playT);
+      stage.drive.snapNow();
+      stage.frame(0, 0, pose);
+      return stage.bloomAudit();
+    },
     camPos: () => (stage ? stage.camera.position.toArray() : []),
   };
   window.__drive = status;
@@ -105,6 +115,22 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, wheels, eyesUsed, noise: 0, stuck: false };
   let last = performance.now();
   const t0 = last;
+  /** Fill `pose` for playback time pt; returns the tick and whether the run has ended. */
+  function poseAt(pt: number): { k: number; ended: boolean } {
+    const kf = Math.min(pt * HZ, ticks - 1), k = Math.floor(kf), k1 = Math.min(k + 1, ticks - 1), u = kf - k;
+    pose.x = rec.x[k] + (rec.x[k1] - rec.x[k]) * u;
+    pose.y = rec.y[k] + (rec.y[k1] - rec.y[k]) * u;
+    let dh = rec.hdg[k1] - rec.hdg[k]; dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
+    pose.hdg = rec.hdg[k] + dh * u;
+    pose.v = rec.v[k];
+    const ended = pt * HZ >= ticks;
+    for (let o = 0; o < 4; o++) wheels[o] = ended ? 0 : rec.act[k * nN + net.outStart + o];
+    pose.noise = ended ? 0 : noiseAt(k);
+    pose.stuck = !ended && stuckSince[k] >= 0;
+    guess = locate(track, pose.x, pose.y, guess, 40);
+    pose.idx = guess;
+    return { k, ended };
+  }
   const tick = (now: number) => {
     raf = requestAnimationFrame(tick);
     // a rAF timestamp can be earlier than the performance.now() taken before it: never step backwards
@@ -112,18 +138,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     last = now;
     playT += dt;
     if (playT >= ticks / HZ + END_PAUSE_S) { playT = 0; guess = track.startIdx; } // loop the run
-    const kf = Math.min(playT * HZ, ticks - 1), k = Math.floor(kf), k1 = Math.min(k + 1, ticks - 1), u = kf - k;
-    pose.x = rec.x[k] + (rec.x[k1] - rec.x[k]) * u;
-    pose.y = rec.y[k] + (rec.y[k1] - rec.y[k]) * u;
-    let dh = rec.hdg[k1] - rec.hdg[k]; dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
-    pose.hdg = rec.hdg[k] + dh * u;
-    pose.v = rec.v[k];
-    const ended = playT * HZ >= ticks;
-    for (let o = 0; o < 4; o++) wheels[o] = ended ? 0 : rec.act[k * nN + net.outStart + o];
-    pose.noise = ended ? 0 : noiseAt(k);
-    pose.stuck = !ended && stuckSince[k] >= 0;
-    guess = locate(track, pose.x, pose.y, guess, 40);
-    pose.idx = guess;
+    const { k, ended } = poseAt(playT);
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; }
     status.tick = k; status.frames = frames; status.stuck = pose.stuck; status.noise = pose.noise;
     status.distance = rec.prog[k];
