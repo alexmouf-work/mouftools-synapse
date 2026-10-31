@@ -70,7 +70,7 @@ async function main() {
     await page.goto(base + query);
     return page;
   }
-  const drive = (page: Page) => page.evaluate(() => { const d = window.__drive; return d ? { ...d, probe: undefined, bloomAudit: undefined, seek: undefined, setCam: undefined, camPos: undefined, auditAt: undefined } : null; });
+  const drive = (page: Page) => page.evaluate(() => { const d = window.__drive; return d ? { ...d, probe: undefined, bloomAudit: undefined, seek: undefined, setCam: undefined, camPos: undefined, auditAt: undefined, spikes: undefined, resetSpikes: undefined, beamCheck: undefined } : null; });
   const waitFrames = (page: Page, n = 3) => page.waitForFunction((x) => (window.__drive?.frames ?? 0) > x, n, { timeout: 120_000 });
 
   try {
@@ -93,6 +93,29 @@ async function main() {
     // bloom audit on fixed frames (seek + snapped camera), so a pass means pass
     const aus = await page.evaluate(() => [2, 8, 14, 20, 30, 45, 58].map((t) => window.__drive!.auditAt(t)));
     check(aus.every((a) => a.over === 0), `bloom audit at 2/8/14/20/30/45/58 s: over ${aus.map((a) => (a.over * 100).toFixed(3) + '%').join(' ')} (max ${Math.max(...aus.map((a) => a.max)).toFixed(2)})`);
+    // beams: each eye's beam leaves the car along exactly that eye's sim direction (a few poses)
+    let worst = 0;
+    for (const at of [3, 11, 27]) {
+      await page.evaluate((x) => window.__drive!.seek(x), at);
+      await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
+      const bc = await page.evaluate(() => window.__drive!.beamCheck());
+      bc.beams.forEach((b, e) => { worst = Math.max(worst, Math.abs(b[0] - bc.sim[e][0]), Math.abs(b[1] + bc.sim[e][1])); });
+    }
+    check(worst < 1e-4, `6 beams point along the sim's eye directions at 3 poses (worst component error ${worst.toExponential(1)})`);
+    // spikes: a near-wall eye spikes more often than a far one, at about SPIKE_MAX_HZ × reading
+    await page.evaluate(() => { window.__drive!.seek(4); window.__drive!.resetSpikes(); });
+    await page.waitForTimeout(5000);
+    const sp = await page.evaluate(() => window.__drive!.spikes());
+    const eyes = [0, 1, 2, 3, 4, 5].filter((e) => sp.used[e]);
+    const near = eyes.reduce((a, e) => (sp.mean[e] > sp.mean[a] ? e : a)), far = eyes.reduce((a, e) => (sp.mean[e] < sp.mean[a] ? e : a));
+    check(sp.mean[near] - sp.mean[far] > 0.15 && sp.counts[near] > sp.counts[far],
+      `near eye ${near} (mean reading ${sp.mean[near].toFixed(2)}) spiked ${sp.counts[near]}×, far eye ${far} (${sp.mean[far].toFixed(2)}) ${sp.counts[far]}× in ${sp.seconds.toFixed(1)} s`);
+    const expect14 = (e: number) => 14 * sp.mean[e] * sp.seconds;
+    check(eyes.every((e) => Math.abs(sp.counts[e] - expect14(e)) <= 2 + 0.1 * expect14(e)), 'spike counts match 14 Hz × reading for every wired eye');
+    check(sp.counts[9] === 0 || sp.used[9] === 1, 'unwired inputs stay silent');
+    mkdirSync('out/s6', { recursive: true });
+    await page.screenshot({ path: 'out/s6/drive-chase.png' });
+    await page.locator('.dv-brain').screenshot({ path: 'out/s6/panel.png' });
     // chase mid-corner, broadcast, showroom
     await page.evaluate((s) => window.__drive!.seek(s), corner / 20 - 0.6);
     await page.waitForTimeout(1200);

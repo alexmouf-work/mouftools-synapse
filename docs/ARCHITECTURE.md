@@ -28,7 +28,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/brain.ts` | Spec → compiled net, evaluation, presets (Starter, Minimal, Deep), pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
-| `sim/sensors.ts` | The 10 input readings (only wired inputs are computed). |
+| `sim/sensors.ts` | The 10 input readings (only wired inputs are computed); `eyeDirection`, the one eye-angle rule the drive view's beams also use. |
 | `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training; `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry. |
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
@@ -153,14 +153,20 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   coats are satin (roughness ≥ 0.45, half clearcoat): mirror-sharp coats threw sun glints up to 3.6 at some poses.
   Bloom radius 0.32 (mock-up 0.45), and `glow.ts` fades strips and gate bands near the camera (25% at ≤ 6 m, full
   from 60 m), so near glows read as lines, not haze, while mid-distance glow keeps the mock-up's look.
+- `ui/weights.ts` — how a wire's weight looks everywhere (principal, 2026-10-31): red at −1, black at 0, green at +1
+  (clamped beyond ±1); width 1→4 px and opacity 0.3→1 grow with √(|w| / 4). The workbench draws each wire in its
+  weight colour over a faint neutral halo (`--wire-halo`, stronger in dark mode, so a w = 0 wire stays visible and
+  clickable); a selected pin's or neuron's wires get an accent halo and the flow dashes, never a recolour.
 - `ui/drive/` — the drive view. `runDrive(genome, trackSeed)` computes the whole 60 s run first (noise seed derived
   from the track seed), then it plays back in real time and loops. First track: the unseen track of the brain's
   last training run; New track draws a fresh seed. Overlay (plain): time, distance and laps, best lap, energy % (and
   static %), track seed, cameras (Chase / Broadcast / Showroom, keys 1–3), New track, Back to workbench. A stall
   (the training rule: < 5 m of new progress in 3 s) shows "Stuck against the wall since m:ss" (or "Not moving"), and
   the chase camera swings slowly round the car, whose wheels keep turning at their outputs. `brainPanel.ts` draws
-  the workbench board scaled down on a canvas from the recorded node outputs and the `signal` channel
-  (`brain.signalOf`, the same function as the trainer's probe), with static over budget. The workbench shows Drive
+  the workbench board scaled down on a canvas: wires in their weight colours (`weights.ts`), input cells spiking at
+  14 Hz × |reading| from the recorded per-tick inputs (`spikes.ts`; a short amber flash; steady glow under reduced
+  motion), hidden and wheel cells filled with their outputs, static over budget. The drive rig's six beams take
+  their directions from `sensors.eyeDirection` (checked against the sim at several poses). The workbench shows Drive
   once the brain has trained weights; the finished training view has Drive too.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.

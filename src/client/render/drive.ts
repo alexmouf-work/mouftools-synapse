@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CONFIG } from '../../common/config';
 import { EYE_COUNT } from '../../common/sim/spec';
-import { eyeDistance } from '../../common/sim/sensors';
+import { eyeDirection, eyeDistance } from '../../common/sim/sensors';
 import type { CarState } from '../../common/sim/car';
 import type { Track } from '../../common/sim/track';
 import { makeCar, type CarModel } from './car';
@@ -68,6 +68,12 @@ export class DriveRig {
   /** Put the camera exactly where it wants to be on the next update (no easing). */
   snapNow(): void { this.snap = true; this.tvIdx = -1; this.swing = 0; }
 
+  /** World unit direction of each eye's beam as drawn (for the beam-direction check). */
+  beamDirs(): number[][] {
+    const v = new THREE.Vector3();
+    return this.beams.map((b) => b.beam.getWorldDirection(v).toArray());
+  }
+
   setTrack(t: Track, tvSpots: { i: number; p: THREE.Vector3 }[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; }
 
   setMode(m: CamMode, reduceMotion: boolean): void {
@@ -97,10 +103,13 @@ export class DriveRig {
       const d = eyeDistance(this.probe, t, e);
       this.rayDist[e] = d;
       const b = this.beams[e];
-      const deg = [-90, -45, 0, 45, 90, 180][e];
-      const jitter = p.noise > 0 ? (Math.random() - 0.5) * 0.7 * p.noise : 0; // display only
-      const a = yawOf(p.hdg) - deg * Math.PI / 180 + jitter;
-      const dx = Math.sin(a), dz = Math.cos(a);
+      // the eye's own direction, from the sim's rule (sensors.eyeDirection), sim (x, y) → world (x, −y)
+      const dir = eyeDirection(p.hdg, e);
+      let dx = dir.dx, dz = -dir.dy;
+      if (p.noise > 0) { // over budget: the beam shakes (display only)
+        const j = (Math.random() - 0.5) * 0.7 * p.noise, cj = Math.cos(j), sj = Math.sin(j);
+        [dx, dz] = [dx * cj + dz * sj, -dx * sj + dz * cj];
+      }
       b.beam.position.set(car.position.x, oy, car.position.z);
       this.v.set(car.position.x + dx * d, oy, car.position.z + dz * d);
       b.beam.lookAt(this.v); b.beam.scale.set(1, 1, Math.max(d, 0.01));

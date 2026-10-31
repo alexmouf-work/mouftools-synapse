@@ -46,8 +46,19 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - Milestone 1 is the sandbox loop (build → train → drive, no timers); the timed match comes after. "build the plan end
   to end".
 
+## 2026-10-31
+- After playing milestone 1: "the light beams should point to the direction of the eye cells. the eye cells spike
+  faster when they're close to their wall, and less when far away. the energy remaining cell spikes slower as energy
+  drains."
+- "show the weights on each connection using colour, from red being -1 to green being +1, with black in the middle
+  at 0. change thickness and brightness of connections with magnitude."
+
 ## Calls made in review (2026-10-30; the principal can overturn any of them)
 - The skip surcharge counts only hidden layers that contain neurons: an empty hidden line is free to cross, so a
   brain wired car → wheels pays no phantom +50%. The one empty line stays on the board as the place to add neurons.
 - The bench time check takes the best of 3 runs (limit still 1.3 × baseline): a check that fails on noise trains
   people to ignore it.
+- (2026-10-31) Rate coding uses one rule for every input, not only the eyes and Energy left: a cell fires at
+  14 Hz × |reading| (speed by its value, road ahead by magnitude, bias steadily at the top rate). With
+  prefers-reduced-motion the cells glow as bright as their reading instead of flashing.
+

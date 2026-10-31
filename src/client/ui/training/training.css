@@ -52,3 +52,6 @@ body.training #rotate { display: none !important; }
   .dv-brain { width: 290px; padding: 8px 10px; }
   #dvBrain { height: 112px; }
 }
+.tv-legend .sw.wneg { background: rgb(225,45,55); }
+.tv-legend .sw.wzero { background: #000; box-shadow: 0 0 0 1px var(--wire-halo); }
+.tv-legend .sw.wpos { background: rgb(45,200,85); }

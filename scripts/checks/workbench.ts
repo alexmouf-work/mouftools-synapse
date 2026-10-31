@@ -13,6 +13,9 @@ import {
 import { estimate, percentOfBudget } from '../../src/common/sim/energy';
 import { INPUTS, OUTPUTS } from '../../src/common/sim/spec';
 import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/workbench/store';
+import { weightStyle } from '../../src/client/ui/weights';
+import { InlineExecutor } from '../../src/common/train/episodes';
+import { runPhase } from '../../src/common/train/phase';
 
 const OUT = 'out/s2';
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -231,6 +234,24 @@ async function main() {
     page = await open({ w: 1440, h: 900, save: '{"v":1,"name":"x","genome":' });
     check(genomeHash((await savedDraft(page)).genome) === genomeHash(starter.genome), 'corrupt save → Starter (and the Starter is saved over it)');
     check((await toastText(page)).includes('couldn’t be read'), `toast: "${await toastText(page)}"`);
+    await page.context().close();
+
+    // weights as colours (principal, 2026-10-31): a trained brain, light and dark
+    mkdirSync('out/s6', { recursive: true });
+    const trained = draftOf((await runPhase(new InlineExecutor(), starterSpec(), 7, { T: 300_000 })).final);
+    for (const dark of [false, true]) {
+      page = await open({ w: 1440, h: 900, dark, save: trained });
+      const wires = await page.evaluate(() => [...document.querySelectorAll<SVGPathElement>('#net path.wire')].map((p) => ({
+        stroke: getComputedStyle(p).stroke, width: Number(p.getAttribute('stroke-width')) }))); // document order = wire order
+      const hits = await page.evaluate(() => [...document.querySelectorAll<SVGPathElement>('#net path[data-hit]')].map((p) => Number(p.dataset.w)));
+      const ok = wires.length === hits.length && wires.every((wi, k) => { const st = weightStyle(hits[k]); return wi.stroke.replace(/\s/g, '') === st.css && Math.abs(wi.width - st.width) < 1e-9; });
+      check(ok, `${dark ? 'dark' : 'light'}: every wire coloured and sized by its weight (${wires.length} wires, red −1 · black 0 · green +1)`);
+      await page.screenshot({ path: `out/s6/workbench-trained${dark ? '-dark' : ''}.png` });
+      await page.context().close();
+    }
+    page = await open({ w: 1440, h: 900, dark: true });
+    const halo = await page.evaluate(() => getComputedStyle(document.querySelector('#net path.wire')!.previousElementSibling!).stroke);
+    check(halo !== 'none' && !/rgba\(\d+, \d+, \d+, 0\)/.test(halo) && halo !== 'transparent', `dark: a zero-weight wire keeps a visible neutral halo (${halo})`);
     await page.context().close();
 
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);

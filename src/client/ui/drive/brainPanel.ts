@@ -1,9 +1,12 @@
-// The live brain panel of the drive view: the workbench's board, scaled down and drawn on a canvas each frame from
-// the recorded node outputs and the probe `signal` channel (sender output × weight, brain.signalOf). Car-shaped input
-// layer on the left (pins where they sit on the car), hidden lines, the four wheels on the right. Plain workbench
-// colours; over budget it shows static, as in the look mock-up.
+// The live brain panel of the drive view: the workbench's board, scaled down and drawn on a canvas each frame.
+// Car-shaped input layer on the left (pins where they sit on the car), hidden lines, the four wheels on the right.
+// Wires show their weights (weights.ts: red −1, black 0, green +1; thicker and brighter with |w|); input cells spike
+// at a rate set by their reading (spikes.ts), or glow steadily with it under prefers-reduced-motion; hidden and wheel
+// cells fill with their output. Over budget it shows static, as in the look mock-up.
 import type { Net } from '../../../common/sim/brain';
+import { weightStyle, type WireStyle } from '../weights';
 import { IN_UI, OUT_UI } from '../workbench/pins';
+import type { SpikeTrains } from './spikes';
 
 interface P { x: number; y: number }
 
@@ -14,7 +17,14 @@ export class BrainPanel {
   private pr = 1;
   private car = { cx: 0, cy: 0, W: 0, H: 0 };
 
-  constructor(private readonly cv: HTMLCanvasElement, private readonly net: Net) {}
+  /** Wire styles in spec order (weights do not change while driving). */
+  private readonly wires: WireStyle[];
+
+  constructor(private readonly cv: HTMLCanvasElement, private readonly net: Net) {
+    const w = new Float64Array(net.spec.conns.length);
+    for (let c = 0; c < net.w.length; c++) w[net.specIdx[c]] = net.w[c];
+    this.wires = Array.from(w, weightStyle);
+  }
 
   private layout(): void {
     const r = this.cv.getBoundingClientRect();
@@ -42,14 +52,15 @@ export class BrainPanel {
     this.pos = pos;
   }
 
-  /** vals: every node's output this tick; signal: per spec wire; noise: 0..1 over-budget level. */
-  draw(vals: ArrayLike<number>, signal: ArrayLike<number>, noise: number): void {
+  /** vals: every node's output this tick; noise: 0..1 over-budget level; spikes: the input cells' trains at `now`. */
+  draw(vals: ArrayLike<number>, noise: number, spikes: SpikeTrains, now: number, reduceMotion: boolean): void {
     this.layout();
     const g = this.cv.getContext('2d');
     if (!g) return;
     const css = getComputedStyle(document.documentElement);
     const col = (v: string, d: string) => css.getPropertyValue(v).trim() || d;
     const plus = col('--accent', '#2f6fde'), minus = col('--minus', '#d9465b'), muted = col('--muted', '#6a7385'), node = col('--node', '#fff'), carCol = col('--car', '#5b6b88'), text = col('--text', '#1d2330');
+    const halo = col('--wire-halo', 'transparent'), spike = col('--spike', '#ffb000');
     const { w, h, pr } = this;
     g.clearRect(0, 0, w, h);
     // the car, faint
@@ -58,18 +69,16 @@ export class BrainPanel {
     g.globalAlpha = 0.35; g.strokeStyle = carCol; g.lineWidth = pr; g.stroke(); g.globalAlpha = 1;
     const jit = () => (noise > 0 ? (Math.random() - 0.5) * noise * 6 * pr : 0);
     const r = 5.5 * pr;
-    // wires: colour by sign of the signal, width by its size
+    // wires: colour, width and brightness from the weight; a faint neutral halo keeps w = 0 visible on dark panels
     const s = this.net.spec;
     s.conns.forEach((c, k) => {
       const a = this.pos.get(c.from), b = this.pos.get(c.to);
       if (!a || !b) return;
-      const sig = signal[k];
-      const m = Math.min(1, Math.abs(sig));
-      g.strokeStyle = sig >= 0 ? plus : minus;
-      g.globalAlpha = 0.18 + 0.75 * m;
-      g.lineWidth = (0.6 + 2.4 * m) * pr;
+      const st = this.wires[k];
       const x0 = a.x + r, y0 = a.y + jit(), x1 = b.x - r, y1 = b.y + jit(), dx = x1 - x0;
-      g.beginPath(); g.moveTo(x0, y0); g.bezierCurveTo(x0 + dx * 0.45, y0, x1 - dx * 0.45, y1, x1, y1); g.stroke();
+      const path = () => { g.beginPath(); g.moveTo(x0, y0); g.bezierCurveTo(x0 + dx * 0.45, y0, x1 - dx * 0.45, y1, x1, y1); };
+      g.globalAlpha = 1; g.strokeStyle = halo; g.lineWidth = (st.width + 1.5) * 0.7 * pr; path(); g.stroke();
+      g.globalAlpha = st.alpha; g.strokeStyle = st.css; g.lineWidth = st.width * 0.7 * pr; path(); g.stroke();
     });
     g.globalAlpha = 1;
     // nodes: fill by value (sign colour, strength alpha)
@@ -85,7 +94,16 @@ export class BrainPanel {
       g.beginPath();
       if (isOut) g.rect(p.x - r, p.y - r, 2 * r, 2 * r); else g.arc(p.x, p.y, r, 0, Math.PI * 2);
       g.fill(); g.lineWidth = pr; g.setLineDash(used ? [] : [2 * pr, 2 * pr]); g.stroke(); g.setLineDash([]);
-      if (used) {
+      if (used && isIn) {
+        // rate coding: a short bright flash per spike (or, with reduced motion, a steady glow as bright as the reading)
+        const f = reduceMotion ? Math.min(1, Math.abs(v)) : spikes.flash(i, now);
+        if (f > 0) {
+          g.globalAlpha = f; g.fillStyle = spike;
+          g.beginPath(); g.arc(p.x, p.y, r - 1.5 * pr, 0, Math.PI * 2); g.fill();
+          g.globalAlpha = 0.45 * f; g.strokeStyle = spike; g.lineWidth = 2.5 * pr;
+          g.beginPath(); g.arc(p.x, p.y, r + 2.5 * pr, 0, Math.PI * 2); g.stroke();
+        }
+      } else if (used) {
         g.fillStyle = v >= 0 ? plus : minus;
         g.globalAlpha = Math.min(1, 0.15 + 0.85 * Math.abs(v));
         g.beginPath();

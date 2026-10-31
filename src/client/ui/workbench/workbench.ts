@@ -9,6 +9,7 @@ import {
 } from '../../../common/sim/brain';
 import { estimate, noiseLevel, percentOfBudget, sensorCost, upkeepCost } from '../../../common/sim/energy';
 import { depthOf, type BrainSpec } from '../../../common/sim/spec';
+import { weightStyle } from '../weights';
 import { ABOUT, FX, IN_UI, OUT_UI, pinOf, type InPinUi, type OutPinUi } from './pins';
 import { DEFAULT_NAME, load, NO_TRAINING, save, type Saved } from './store';
 
@@ -185,21 +186,34 @@ function render() {
   layout(); svg.replaceChildren();
   const s = spec();
   const defs = el('defs', {}, svg);
-  for (const [id, c] of [['arw', 'var(--wire)'], ['arwHot', 'var(--accent)']]) {
-    const m = el('marker', { id, viewBox: '0 0 8 8', refX: 6, refY: 4, markerWidth: 7, markerHeight: 7, orient: 'auto' }, defs);
-    el('path', { d: 'M0 0 L8 4 L0 8 Z', style: `fill:${c}` }, m);
-  }
   const bg = el('g', { 'pointer-events': 'none' }, svg); drawFrame(bg); drawCar(bg);
+  // Wires show their weights (principal, 2026-10-31): red −1, black 0, green +1, thicker and brighter with |w|. A faint
+  // neutral halo keeps a zero-weight wire visible on the dark canvas; a selected neuron's or pin's wires get an
+  // accent halo (and the flow dashes), so the weight colour is never replaced.
   const wg = el('g', {}, svg);
-  for (const c of s.conns) {
-    const p = P.get(c.from), q = P.get(c.to); if (!p || !q) continue;
+  const arrows = new Map<string, string>();
+  const arrowFor = (css: string) => {
+    let id = arrows.get(css);
+    if (!id) {
+      id = `arw${arrows.size}`; arrows.set(css, id);
+      const m = el('marker', { id, viewBox: '0 0 8 8', refX: 6, refY: 4, markerWidth: 9, markerHeight: 9, markerUnits: 'userSpaceOnUse', orient: 'auto' }, defs);
+      el('path', { d: 'M0 0 L8 4 L0 8 Z', style: `fill:${css}` }, m);
+    }
+    return id;
+  };
+  s.conns.forEach((c, k) => {
+    const p = P.get(c.from), q = P.get(c.to); if (!p || !q) return;
     const d = wirePath(p, q);
     const hot = W.sel !== null && (c.from === W.sel || c.to === W.sel);
-    const hit = el('path', { d, 'stroke-width': 12, fill: 'none', style: 'cursor:pointer;stroke:transparent', 'data-hit': 1, 'data-from': c.from, 'data-to': c.to }, wg);
-    el('path', { d, fill: 'none', style: `stroke:${hot ? 'var(--accent)' : 'var(--wire)'}`, 'stroke-width': hot ? 2.2 : 1.4, 'stroke-linecap': 'round', 'pointer-events': 'none', opacity: W.sel && !hot ? 0.3 : 0.9, 'marker-end': `url(#${hot ? 'arwHot' : 'arw'})` }, wg);
+    const st = weightStyle(W.saved.draft.genome.w[k]);
+    const dim = W.sel && !hot ? 0.3 : 1;
+    const hit = el('path', { d, 'stroke-width': 12, fill: 'none', style: 'cursor:pointer;stroke:transparent', 'data-hit': 1, 'data-from': c.from, 'data-to': c.to, 'data-w': W.saved.draft.genome.w[k] }, wg);
+    if (hot) el('path', { d, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': st.width + 5, 'stroke-linecap': 'round', 'pointer-events': 'none', opacity: 0.35, class: 'sel-halo' }, wg);
+    el('path', { d, fill: 'none', style: 'stroke:var(--wire-halo)', 'stroke-width': st.width + 2, 'stroke-linecap': 'round', 'pointer-events': 'none', opacity: dim }, wg);
+    el('path', { d, fill: 'none', style: `stroke:${st.css}`, 'stroke-width': st.width, 'stroke-linecap': 'round', 'pointer-events': 'none', opacity: hot ? 1 : st.alpha * dim, 'marker-end': `url(#${arrowFor(st.css)})`, class: 'wire' }, wg);
     if (hot && !reduce) el('path', { d, fill: 'none', style: 'stroke:var(--canvas)', 'stroke-width': 1.3, class: 'flow', 'pointer-events': 'none' }, wg);
     hit.addEventListener('click', () => commit(removeWire(W.saved.draft, c.from, c.to)));
-  }
+  });
   el('path', { id: 'ghost', d: '', fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-dasharray': '4 4', 'pointer-events': 'none' }, svg);
   // per-line controls
   for (const ln of lines) {

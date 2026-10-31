@@ -4,6 +4,7 @@ M1-1,Headless sim + evolution benchmark (go/no-go),done,GO accepted; T 6M; (e) t
 M1-2,Workbench,done,accepted; review calls logged in docs/CONTEXT.md
 M1-3,Training view,done,accepted after the story revision
 M1-4,Drive view,done,accepted; bloom audit made deterministic; near-field glow toned
+M1-6,Principal's changes after playing: beams follow the eyes; spiking inputs; weight colours,review,docs/CONTEXT.md 2026-10-31; screenshots in out/s6/
 M1-5,Ship to synapse.mouftools.com,review,S5 built: vercel.json + production check; principal connects Vercel + CNAME (README)
 M2,Match mode: 5 rounds vs 4 bots with timers,later,solo-loop plan steps 5-7
 M3,Lab + backprop trainer + trainer picker,later,

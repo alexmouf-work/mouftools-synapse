@@ -113,3 +113,9 @@ input.name { border-color: var(--line); background: var(--panel); color: var(--t
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .presets .btn { padding: 5px 10px; }
 .presets .btn.confirm { border-color: var(--minus); color: var(--minus); }
+
+/* weights and spikes (principal, 2026-10-31): a faint neutral halo keeps a zero-weight (black) wire visible on dark
+   canvases; spikes flash amber, a colour no wire uses */
+:root { --wire-halo: rgba(120, 130, 150, .12); --spike: #ffb000; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wire-halo: rgba(170, 180, 200, .32); } }
+:root[data-theme="dark"] { --wire-halo: rgba(170, 180, 200, .32); }

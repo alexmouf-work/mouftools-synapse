@@ -1,12 +1,14 @@
 // Drive view: the trained brain drives 60 s on an unseen track. The whole run is computed first (runDrive, the same
 // function a Node replay uses, so the hash matches) and then played back in real time: the yellow car with wheels at
-// their outputs, eye rays, the live brain panel, chase / broadcast / showroom cameras. Distance and best lap in a
+// their outputs, eye rays, the live brain panel (weights as colours, inputs spiking), chase / broadcast / showroom
+// cameras. Distance and best lap in a
 // plain overlay; a stall shows "Stuck against the wall" with the time while the camera stays on the car. New track
 // re-seeds; the run loops after a short pause at the end.
 import { CONFIG } from '../../../common/config';
-import { signalOf } from '../../../common/sim/brain';
 import { noiseLevel, percentOfBudget } from '../../../common/sim/energy';
 import { runDrive } from '../../../common/sim/race';
+import { eyeDirection } from '../../../common/sim/sensors';
+import { EYE_COUNT } from '../../../common/sim/spec';
 import { locate } from '../../../common/sim/track';
 import { phaseSeeds } from '../../../common/train/phase';
 import type { CamMode, DrivePose } from '../../render/drive';
@@ -14,6 +16,7 @@ import type { Stage } from '../../render/stage';
 import { getStage, hideArena, showArena } from '../arena';
 import type { Saved } from '../workbench/store';
 import { BrainPanel } from './brainPanel';
+import { SpikeTrains } from './spikes';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -34,6 +37,11 @@ export interface DriveStatus {
   /** Seek, snap the camera, draw that frame and run the bloom audit on it (deterministic). */
   auditAt(seconds: number): { over: number; max: number };
   camPos(): number[];
+  /** Spikes per input since resetSpikes, and each input's mean |reading| over that time. */
+  spikes(): { counts: number[]; mean: number[]; seconds: number; used: number[] };
+  resetSpikes(): void;
+  /** For the car's current pose: each eye's beam direction as drawn (world x, z) and the sim's eye direction (x, y). */
+  beamCheck(): { hdg: number; beams: number[][]; sim: number[][] };
   setCam(m: CamMode): void;
 }
 declare global { interface Window { __drive?: DriveStatus } }
@@ -76,8 +84,8 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   const stage: Stage | null = await getStage();
   if (stage) { await stage.setTrack(track, 'drive'); stage.drive.setMode('chase', reduce()); }
   const panel = new BrainPanel($('dvBrain') as HTMLCanvasElement, net);
-  const signal = new Float64Array(net.spec.conns.length);
-  let playT = 0, frames = 0, cam: CamMode = 'chase', guess = track.startIdx, lastUi = -1, lastPanel = -1;
+  const spikes = new SpikeTrains(net.nIn);
+  let playT = 0, frames = 0, cam: CamMode = 'chase', guess = track.startIdx, lastUi = -1;
   const status: DriveStatus = {
     trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, laps: 0, bestLap: null, stuck: false, noise: 0, cam, frames: 0,
     webgl: !!stage, finalProg: run.result.prog,
@@ -94,6 +102,13 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
       return stage.bloomAudit();
     },
     camPos: () => (stage ? stage.camera.position.toArray() : []),
+    spikes: () => ({ counts: Array.from(spikes.counts), mean: Array.from(spikes.integral, (x) => x / Math.max(spikes.elapsed, 1e-9)), seconds: spikes.elapsed, used: Array.from(net.inUsed) }),
+    resetSpikes: () => spikes.reset(),
+    beamCheck: () => ({
+      hdg: pose.hdg,
+      beams: stage ? stage.drive.beamDirs().map((v) => [v[0], v[2]]) : [],
+      sim: Array.from({ length: EYE_COUNT }, (_, e) => { const d = eyeDirection(pose.hdg, e); return [d.dx, d.dy]; }),
+    }),
   };
   window.__drive = status;
   $('dvTrack').textContent = String(trackSeed);
@@ -163,12 +178,10 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
       sc.hidden = !(pose.noise > 0);
       sc.textContent = `Static ${Math.round(pose.noise * 100)}%`;
     }
-    if (now - lastPanel > 60) {
-      lastPanel = now;
-      const vals = rec.act.subarray(k * nN, (k + 1) * nN);
-      signalOf(net, vals, signal);
-      panel.draw(vals, signal, pose.noise);
-    }
+    // the input cells spike from this tick's real readings (rate coding); the panel is drawn every frame
+    const vals = rec.act.subarray(k * nN, (k + 1) * nN);
+    spikes.update(vals, net.inUsed, ended ? 0 : dt, now / 1000);
+    panel.draw(vals, pose.noise, spikes, now / 1000, reduce());
   };
   raf = requestAnimationFrame(tick);
 }
