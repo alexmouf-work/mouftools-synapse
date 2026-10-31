@@ -1,14 +1,24 @@
 // Every tunable, one home. Numbers come from docs/plans/2026-10-30-solo-loop.md §3 and the approved workbench
 // (reference/builder-mockup.html: pins, costs, upkeep). Change them here only; tests and the bench read them from here.
 
+/** The energy period (principal, 2026-10-31): the budget is a total for one minute of driving. */
+const PERIOD_TICKS = 1200;
+
 export const CONFIG = {
   tick: {
     hz: 20, // brain ticks per second
     substeps: 2, // physics substeps per tick (dt 0.025 s)
   },
 
-  /** Energy budget per tick, by round (the sandbox trains at round 1). */
+  /**
+   * Energy anchor per tick, by round (the sandbox uses round 1). The budget is a pool: a run of N ticks gets
+   * anchor × N (energy.poolFor), so the 1-minute period gets anchor × 1200 and shorter runs a prorated share.
+   */
   budget: [10, 14, 20, 26, 32],
+
+  energy: {
+    periodTicks: PERIOD_TICKS, // the period the pool covers and % of energy budget is measured over
+  },
 
   /** Energy cost per tick. Inputs are charged only while wired (ruling 2026-10-30). */
   cost: {
@@ -109,7 +119,7 @@ export const CONFIG = {
   },
 
   drive: {
-    ticks: 1200, // the drive view's run: 60 s
+    ticks: PERIOD_TICKS, // the drive view runs exactly the energy period (review call 2026-10-31)
   },
 
   pool: {

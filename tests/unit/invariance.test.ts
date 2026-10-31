@@ -36,10 +36,10 @@ function upgraded(g: Genome, act: Act): Genome {
 function record(g: Genome, seed: number) {
   const net = compile(g);
   const rec = newRecording(net, 600);
-  new Runner().run(net, generateTrack(seed), { ticks: 600, budget: CONFIG.budget[0], noiseSeed: 99, earlyStop: false, record: rec });
+  new Runner().run(net, generateTrack(seed), { ticks: 600, pool: CONFIG.budget[0] * 600, noiseSeed: 99, earlyStop: false, record: rec });
   const wheels = new Float64Array(600 * 4);
   for (let k = 0; k < 600; k++) for (let o = 0; o < 4; o++) wheels[k * 4 + o] = rec.act[k * net.nNodes + net.outStart + o];
-  return { wheels, x: rec.x, y: rec.y, v: rec.v, energy: rec.energy };
+  return { wheels, x: rec.x, y: rec.y, v: rec.v, energy: rec.energy, used: rec.used };
 }
 
 describe('upgrade invariance', () => {
@@ -50,7 +50,7 @@ describe('upgrade invariance', () => {
         const spec = base(act);
         const g: Genome = { spec, w: spec.conns.map(() => Math.max(-4, Math.min(4, rng.normal() * 1.2))) };
         const a = record(g, seed), b = record(upgraded(g, act), seed);
-        expect(Math.max(...a.energy)).toBeLessThan(CONFIG.budget[0]); // stays under budget: no noise
+        expect(a.used[599]).toBeLessThan(CONFIG.budget[0] * 600); // the pool is never spent: no noise
         expect(Array.from(b.wheels)).toEqual(Array.from(a.wheels));
         expect(Array.from(b.x)).toEqual(Array.from(a.x));
         expect(Array.from(b.y)).toEqual(Array.from(a.y));

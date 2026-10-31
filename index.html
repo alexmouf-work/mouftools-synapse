@@ -37,7 +37,7 @@
     <aside class="side">
       <section id="sel"></section>
       <section>
-        <h2>Energy budget</h2>
+        <h2>Energy budget · per minute (est.)</h2>
         <dl class="kv" id="ledger"></dl>
       </section>
       <section>
@@ -95,6 +95,7 @@
         <dt>Energy</dt><dd id="dvEnergy"></dd>
         <dt>Track</dt><dd id="dvTrack"></dd>
       </dl>
+      <div class="tv-progress dv-energy" role="progressbar" aria-label="Energy used this minute"><i id="dvEnergyFill"></i></div>
       <p class="dv-stuck" id="dvStuck" hidden></p>
       <div class="dv-cams" role="group" aria-label="Camera">
         <button type="button" data-cam="chase" aria-pressed="true">Chase</button>

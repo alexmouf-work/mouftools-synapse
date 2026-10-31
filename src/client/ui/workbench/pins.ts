@@ -27,7 +27,7 @@ const S = CONFIG.sensors;
 export const ABOUT: Record<InputKind | 'wheel', string> = {
   eye: `Distance to the nearest wall in this direction. 1 = touching, 0 = nothing within ${S.eyeRange} m.`,
   road: `Which way the road bends ${S.roadAhead} m ahead, −1 left to +1 right.`,
-  energy: 'How much of the energy budget is left this tick, 0 to 1. Lets the brain notice it is close to static.',
+  energy: 'How much of the minute’s energy budget is left: 1 at the start, draining as the brain spends it. At 0 the brain runs on static.',
   speed: 'How fast the car is going, 0 to 1.',
   bias: 'Always 1. Lets a neuron fire with no other input.',
   wheel: 'This wheel’s speed, from −1 (full reverse) to +1 (full forward). Same speed on both sides drives straight; a difference turns.',

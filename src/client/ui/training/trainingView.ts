@@ -4,6 +4,7 @@
 // Results never depend on speed: rendering, the worker count and the path recording only change how it looks.
 import { CONFIG } from '../../../common/config';
 import { compile, genomeHash } from '../../../common/sim/brain';
+import { poolFor } from '../../../common/sim/energy';
 import { newRecording, Runner } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { generateTrack, type Track } from '../../../common/sim/track';
@@ -185,7 +186,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
 function championLap(g: Genome, t: Track, noiseSeed: number, gen: number) {
   const net = compile(g);
   const rec = newRecording(net, CONFIG.race.ticks);
-  new Runner().run(net, t, { ticks: CONFIG.race.ticks, budget: CONFIG.budget[0], noiseSeed, earlyStop: false, record: rec });
+  new Runner().run(net, t, { ticks: CONFIG.race.ticks, pool: poolFor(CONFIG.race.ticks), noiseSeed, earlyStop: false, record: rec });
   return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, ticks: rec.ticks, gen };
 }
 

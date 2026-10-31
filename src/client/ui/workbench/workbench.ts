@@ -7,13 +7,12 @@ import {
   addLayer, addNeuron, addWire, clearWires, draftOf, PRESETS, removeNeuron, removeWire, setAct, unplug, zeroGenome,
   type Draft, type EditRefusal, type PresetName,
 } from '../../../common/sim/brain';
-import { estimate, noiseLevel, percentOfBudget, sensorCost, upkeepCost } from '../../../common/sim/energy';
+import { estimate, minutePercent, runsOutAt, sensorCost, upkeepCost } from '../../../common/sim/energy';
 import { depthOf, type BrainSpec } from '../../../common/sim/spec';
 import { weightStyle } from '../weights';
 import { ABOUT, FX, IN_UI, OUT_UI, pinOf, type InPinUi, type OutPinUi } from './pins';
 import { DEFAULT_NAME, load, NO_TRAINING, save, type Saved } from './store';
 
-const BUDGET = CONFIG.budget[0];
 const MAX_LAYERS = CONFIG.brain.maxLayers;
 const NS = 'http://www.w3.org/2000/svg';
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -30,7 +29,9 @@ const el = (t: string, a: Attrs = {}, p?: Element): SVGElement => {
 };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const pct = (v: number) => `${Math.round(percentOfBudget(v, BUDGET))}%`;
+// Every figure is a per-tick cost run for the whole minute, as % of the minute's pool (energy.minutePercent).
+const pct = (v: number) => `${Math.round(minutePercent(v))}%`;
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 const REFUSED: Record<EditRefusal, string> = {
   'into-car': 'The car only sends signals.',
@@ -346,10 +347,11 @@ function side() {
   $('rm').onclick = () => doRemoveNeuron(n.id);
 }
 function meter() {
-  const e = estimate(spec()); const p = e.total / BUDGET; const over = p > 1;
+  const e = estimate(spec()); const p = minutePercent(e.total) / 100; const over = p > 1;
   $('eFill').style.width = `${clamp(p, 0, 1) * 100}%`;
   $('meter').classList.toggle('over', over);
-  $('eVal').innerHTML = `<b>${pct(e.total)}</b> of energy budget${over ? ` · ${Math.round(noiseLevel(e.total, BUDGET) * 100)}% noise` : ''}`;
+  // the budget is a pool for the minute (ruling 2026-10-31): over 100% means it runs out before the minute ends
+  $('eVal').innerHTML = `<b>${pct(e.total)}</b> of energy budget · est. per minute${over ? ` · runs out at ${mmss(runsOutAt(e.total))}, then static` : ''}`;
   $('ledger').innerHTML = `<dt>Sensors in use</dt><dd>${pct(e.sensors)}</dd><dt>Neurons</dt><dd>${pct(e.upkeep)}</dd><dt>Wires (est.)</dt><dd>${pct(e.wires)}</dd><dt class="t">Total</dt><dd class="t">${pct(e.total)}</dd>`;
 }
 

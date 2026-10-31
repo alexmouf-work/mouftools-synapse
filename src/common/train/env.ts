@@ -80,12 +80,12 @@ export class MeteredEnv implements Env {
     const net: Net = compile({ spec: this.setup.spec, w: Array.from(w) });
     setWeights(net, w);
     const state = startCar(t), runner = new Runner();
-    const noiseSeed = this.setup.noiseSeeds[trackIndex], budget = this.setup.budget;
+    const noiseSeed = this.setup.noiseSeeds[trackIndex], pool = this.setup.pool;
     return {
       state,
       step: (actionNoise) => {
         this.charge(1);
-        const wall = runner.tick(net, t, state, budget, noiseSeed, actionNoise);
+        const wall = runner.tick(net, t, state, pool, noiseSeed, actionNoise);
         this.usedTicks += 1;
         return { wall, values: runner.lastValues() };
       },

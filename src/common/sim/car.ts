@@ -24,8 +24,10 @@ export interface CarState {
   prog: number;
   maxProg: number;
   wallTicks: number;
-  /** Energy used on the previous tick (drives "Energy left" and the noise level). */
+  /** Energy used on the previous tick. */
   energyPrev: number;
+  /** Energy used so far this run, taken from the pool (drives "Energy left" and the noise level). */
+  energyUsed: number;
   noiseA: number;
   tick: number;
   /** Per pad: the lap on which it last boosted this car. */
@@ -36,7 +38,7 @@ export function startCar(t: Track): CarState {
   const i = t.startIdx;
   return {
     x: t.px[i], y: t.py[i], hdg: t.th[i], v: 0, idx: i, s: i * t.ds, off: 0, prog: 0, maxProg: 0, wallTicks: 0,
-    energyPrev: 0, noiseA: 0, tick: 0, padLap: t.pads.map(() => NO_LAP),
+    energyPrev: 0, energyUsed: 0, noiseA: 0, tick: 0, padLap: t.pads.map(() => NO_LAP),
   };
 }
 

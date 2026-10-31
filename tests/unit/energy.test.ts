@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import { compile, evalNet, starterSpec } from '../../src/common/sim/brain';
-import { energyLeft, noiseLevel, percentOfBudget, staticCost, wireFactor, wireFactors } from '../../src/common/sim/energy';
+import { energyLeft, minutePercent, minutePool, noiseLevel, percentOfBudget, poolFor, runsOutAt, staticCost, wireFactor, wireFactors } from '../../src/common/sim/energy';
+import { newRecording } from '../../src/common/sim/race';
 import { Runner } from '../../src/common/sim/race';
 import type { BrainSpec } from '../../src/common/sim/spec';
 import { generateTrack } from '../../src/common/sim/track';
@@ -75,7 +76,39 @@ describe('energy maths', () => {
     const spec = starterSpec();
     const net = compile({ spec, w: spec.conns.map(() => 4) });
     const r = new Runner(), t = generateTrack(3);
-    const res = r.run(net, t, { ticks: 100, budget: 2, noiseSeed: 5, earlyStop: false });
+    const res = r.run(net, t, { ticks: 100, pool: 2 * 100, noiseSeed: 5, earlyStop: false });
     expect(res.ticks).toBe(100);
+  });
+  it('the budget is a pool for the run (ruling 2026-10-31): used accumulates, Energy left drains, noise only once spent', () => {
+    const spec: BrainSpec = { v: 1, layers: 1, nodes: [], conns: [{ from: 'i:bias', to: 'o:fl' }, { from: 'i:energy', to: 'o:fr' }, { from: 'i:bias', to: 'o:rl' }] };
+    const net = compile({ spec, w: [1, 0.5, 1] });
+    const ticks = 200, rec = newRecording(net, ticks), t = generateTrack(3);
+    const perTick = 0.3 + 0.1 * 1 + 0.1 * 1; // energy input wired (0.3) + two bias wires firing |1 × 1| (+ the energy wire, below)
+    const pool = 0.5 * perTick * ticks; // spent about half way
+    new Runner().run(net, t, { ticks, pool, noiseSeed: 8, earlyStop: false, record: rec });
+    let sum = 0, spentAt = -1;
+    for (let k = 0; k < ticks; k++) {
+      const left = rec.act[k * net.nNodes + 7], bias = rec.act[k * net.nNodes + 9];
+      const before = sum; // used up to the previous tick
+      if (before < pool) {
+        expect(left).toBeCloseTo(energyLeft(before, pool), 12); // drains as 1 − used / pool
+        expect(bias).toBe(1); // no noise while the pool lasts
+      } else if (spentAt < 0) spentAt = k;
+      sum += rec.energy[k];
+      expect(rec.used[k]).toBeCloseTo(sum, 9);
+    }
+    expect(spentAt).toBeGreaterThan(60);
+    expect(spentAt).toBeLessThan(140);
+    const k = ticks - 1; // spent: signals are noisy now, by a = used / pool − 1
+    expect(rec.act[k * net.nNodes + 9]).not.toBe(1);
+    expect(noiseLevel(rec.used[k - 1], pool)).toBeGreaterThan(0);
+  });
+  it('pools are prorated by run length; the workbench shows the per-minute estimate', () => {
+    expect(minutePool()).toBe(CONFIG.budget[0] * 1200);
+    expect(poolFor(400)).toBe(minutePool() / 3); // a 20 s training episode
+    expect(poolFor(600)).toBe(minutePool() / 2); // the 30 s race
+    expect(minutePercent(6.3)).toBeCloseTo(63, 9); // Starter-like: 6.3 per tick → 63% of the minute
+    expect(runsOutAt(6.3)).toBe(Infinity);
+    expect(runsOutAt(12.5)).toBeCloseTo(48, 9); // 125%: the pool is spent at 0:48
   });
 });

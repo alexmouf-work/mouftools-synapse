@@ -4,9 +4,9 @@ import { CONFIG } from '../config';
 import { Hasher } from '../hash';
 import { derive, TAG } from '../rng';
 import { compile, evalNet, type Net } from './brain';
+import { noiseLevel, poolFor } from './energy';
 import type { Genome } from './spec';
 import { generateTrack } from './track';
-import { noiseLevel } from './energy';
 import { readSensors } from './sensors';
 import { startCar, stepPhysics, type CarState } from './car';
 import type { Track } from './track';
@@ -19,8 +19,10 @@ export interface Recording {
   y: Float64Array;
   hdg: Float64Array;
   v: Float64Array;
-  /** Per tick: energy used. */
+  /** Per tick: energy used that tick. */
   energy: Float64Array;
+  /** Per tick: energy used so far, after the tick (not part of recordingHash: it follows from `energy`). */
+  used: Float64Array;
   /** Per tick: 1 if the car touched a wall. */
   wall: Uint8Array;
   /** Per tick: centreline progress (m). Not part of recordingHash (it follows from x, y). */
@@ -33,13 +35,14 @@ export interface Recording {
 export function newRecording(net: Net, ticks: number): Recording {
   return {
     x: new Float64Array(ticks), y: new Float64Array(ticks), hdg: new Float64Array(ticks), v: new Float64Array(ticks),
-    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
+    energy: new Float64Array(ticks), used: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
   };
 }
 
 export interface RunOpts {
   ticks: number;
-  budget: number;
+  /** The run's energy pool (energy.poolFor(ticks)). */
+  pool: number;
   noiseSeed: number;
   /** Stop on stall / backwards (training episodes). */
   earlyStop: boolean;
@@ -63,10 +66,10 @@ export class Runner {
     const c = startCar(t);
     let mark = 0;
     for (let k = 0; k < o.ticks; k++) {
-      const wall = this.tick(net, t, c, o.budget, o.noiseSeed);
+      const wall = this.tick(net, t, c, o.pool, o.noiseSeed);
       const rec = o.record;
       if (rec) {
-        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev; rec.wall[k] = wall ? 1 : 0; rec.prog[k] = c.prog;
+        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev; rec.used[k] = c.energyUsed; rec.wall[k] = wall ? 1 : 0; rec.prog[k] = c.prog;
         rec.act.set(this.vals.subarray(0, net.nNodes), k * net.nNodes);
         rec.ticks = k + 1;
       }
@@ -85,10 +88,10 @@ export class Runner {
    * One brain tick + physics for car c. actionNoise (training-only exploration, 4 values) is added to the wheel
    * outputs before physics; races never pass it.
    */
-  tick(net: Net, t: Track, c: CarState, budget: number, noiseSeed: number, actionNoise?: ArrayLike<number>): boolean {
+  tick(net: Net, t: Track, c: CarState, pool: number, noiseSeed: number, actionNoise?: ArrayLike<number>): boolean {
     if (this.vals.length < net.nNodes) this.vals = new Float64Array(net.nNodes);
-    c.noiseA = noiseLevel(c.energyPrev, budget);
-    readSensors(c, t, net.inUsed, budget, this.inputs);
+    c.noiseA = noiseLevel(c.energyUsed, pool);
+    readSensors(c, t, net.inUsed, pool, this.inputs);
     const used = evalNet(net, this.inputs, this.vals, c.noiseA, noiseSeed, c.tick);
     if (!Number.isFinite(used)) throw new Error(`race: non-finite energy at tick ${c.tick}`);
     const o = net.outStart, v = this.vals;
@@ -97,6 +100,7 @@ export class Runner {
     }
     const wall = stepPhysics(c, t, v[o], v[o + 1], v[o + 2], v[o + 3]);
     c.energyPrev = used;
+    c.energyUsed += used; // taken from the pool
     return wall;
   }
 
@@ -120,10 +124,10 @@ export const driveNoiseSeed = (trackSeed: number): number => derive(trackSeed, T
  * The drive view's run: the brain on one track for CONFIG.drive.ticks, deterministic and recorded. The browser plays
  * it back; a Node replay of the same genome and track seed gives the same hash.
  */
-export function runDrive(g: Genome, trackSeed: number, budget: number = CONFIG.budget[0]) {
+export function runDrive(g: Genome, trackSeed: number, pool: number = poolFor(CONFIG.drive.ticks)) {
   const net = compile(g);
   const track = generateTrack(trackSeed);
   const rec = newRecording(net, CONFIG.drive.ticks);
-  const result = new Runner().run(net, track, { ticks: CONFIG.drive.ticks, budget, noiseSeed: driveNoiseSeed(trackSeed), earlyStop: false, record: rec });
+  const result = new Runner().run(net, track, { ticks: CONFIG.drive.ticks, pool, noiseSeed: driveNoiseSeed(trackSeed), earlyStop: false, record: rec });
   return { net, track, rec, result, hash: recordingHash(rec) };
 }

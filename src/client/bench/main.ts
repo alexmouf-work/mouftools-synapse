@@ -24,7 +24,7 @@ async function main() {
   const pool = new BrowserPool(workers);
   for (let k = 0; k < runs; k++) {
     const s0 = performance.now();
-    await pool.setup({ spec: starterSpec(), trackSeeds: [], noiseSeeds: [], budget: CONFIG.budget[0], episodeTicks: 1 }); // warm workers
+    await pool.setup({ spec: starterSpec(), trackSeeds: [], noiseSeeds: [], pool: CONFIG.budget[0], episodeTicks: 1 }); // warm workers
     const setupMs = performance.now() - s0;
     const r = await runPhase(pool, starterSpec(), seed, { T, now: () => performance.now() });
     res.runs.push({ ms: r.trainMs, setupMs, hash: r.hash, gens: r.gens.length, ticks: r.ticksUsed });

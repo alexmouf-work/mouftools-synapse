@@ -19,12 +19,13 @@ const SEEDS = [1, 2, 3];
 const PHASE_T = 400_000;
 const goldenPath = fileURLToPath(new URL('./golden.json', import.meta.url));
 
-function raceHash(seed: number, budget: number): string {
+/** perTick: energy anchor; the 30 s race gets perTick × its ticks as its pool. */
+function raceHash(seed: number, perTick: number): string {
   const ps = phaseSeeds(seed);
   const spec = starterSpec(), r = new Rng(seed);
   const net = compile({ spec, w: spec.conns.map(() => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
   const rec = newRecording(net, CONFIG.race.ticks);
-  new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, budget, noiseSeed: ps.raceNoise, earlyStop: false, record: rec });
+  new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, pool: perTick * CONFIG.race.ticks, noiseSeed: ps.raceNoise, earlyStop: false, record: rec });
   return recordingHash(rec);
 }
 

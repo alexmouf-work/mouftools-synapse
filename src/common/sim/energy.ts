@@ -1,7 +1,9 @@
 // THE energy cost function. The sim, the trainer and the workbench all call these; there is no second copy.
 // used per tick = Σ wired sensor cost + Σ neuron upkeep + Σ wires fire × |sender output × w| × (1 + skip × (span − 1)),
 // where span counts only hidden lines that hold neurons (wireSpan).
-// Over budget, every signal is mixed with noise: a = clamp(used_prev / budget − 1, 0, 1) (ruling 2026-10-30).
+// The budget is a pool for the run (ruling 2026-10-31: "the energy budget is a total that's assigned. the % use is
+// use over the total 1 minute period"): each tick's use is taken from it; once it is spent, every signal is mixed
+// with noise, a = clamp(used_total / pool − 1, 0, 1), from the total before this tick (all noise at 200%).
 import { CONFIG, type Act } from '../config';
 import { depthOf, INPUTS, inputIdx, type BrainSpec, type InputKind } from './spec';
 
@@ -75,17 +77,29 @@ export function fireCost(factor: Float64Array, from: Int32Array, w: Float64Array
   return s;
 }
 
-/** Noise level from last tick's use. */
-export function noiseLevel(usedPrev: number, budget: number): number {
-  const a = usedPrev / budget - 1;
+/** The energy pool for a run of `ticks` ticks: the per-tick anchor × ticks (the minute: × 1200; shorter runs prorated). */
+export const poolFor = (ticks: number, round = 0): number => CONFIG.budget[round] * ticks;
+/** The 1-minute period's pool. */
+export const minutePool = (round = 0): number => poolFor(CONFIG.energy.periodTicks, round);
+
+/** Noise level from the energy used so far (before this tick) against the run's pool. */
+export function noiseLevel(usedTotal: number, pool: number): number {
+  const a = usedTotal / pool - 1;
   return a < 0 ? 0 : a > 1 ? 1 : a;
 }
 
-/** The "Energy left" input: 1 − last tick's use / budget, clamped to 0..1. */
-export function energyLeft(usedPrev: number, budget: number): number {
-  const e = 1 - usedPrev / budget;
+/** The "Energy left" input: 1 − used so far / pool, clamped to 0..1; it drains over the run. */
+export function energyLeft(usedTotal: number, pool: number): number {
+  const e = 1 - usedTotal / pool;
   return e < 0 ? 0 : e > 1 ? 1 : e;
 }
 
-/** Energy as the player sees it: % of the budget. */
-export const percentOfBudget = (used: number, budget: number): number => (used / budget) * 100;
+/** Energy as the player sees it: % of the energy budget (used so far / the pool). */
+export const percentOfBudget = (used: number, pool: number): number => (used / pool) * 100;
+
+/** The workbench's figure: a per-tick cost run for the whole minute, as % of the minute's pool ("est. per minute"). */
+export const minutePercent = (perTick: number, round = 0): number => percentOfBudget(perTick * CONFIG.energy.periodTicks, minutePool(round));
+
+/** Seconds into the minute at which a steady per-tick cost spends the pool (Infinity if it never does). */
+export const runsOutAt = (perTick: number, round = 0): number =>
+  perTick * CONFIG.energy.periodTicks > minutePool(round) ? minutePool(round) / perTick / CONFIG.tick.hz : Infinity;

@@ -53,6 +53,10 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "show the weights on each connection using colour, from red being -1 to green being +1, with black in the middle
   at 0. change thickness and brightness of connections with magnitude."
 
+- On energy: "the energy budget is a total that's assigned. the % use is use over the total 1 minute period"
+  → energy is a pool for a 1-minute period (anchor: the old per-tick budget × 1200 ticks); % of energy budget =
+  used so far / the pool; Energy left drains; noise once the pool is spent.
+
 ## Calls made in review (2026-10-30; the principal can overturn any of them)
 - The skip surcharge counts only hidden layers that contain neurons: an empty hidden line is free to cross, so a
   brain wired car → wheels pays no phantom +50%. The one empty line stays on the board as the place to add neurons.
@@ -61,4 +65,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - (2026-10-31) Rate coding uses one rule for every input, not only the eyes and Energy left: a cell fires at
   14 Hz × |reading| (speed by its value, road ahead by magnitude, bias steadily at the top rate). With
   prefers-reduced-motion the cells glow as bright as their reading instead of flashing.
+- (2026-10-31) Training keeps 20 s episodes with the pool prorated to the episode (anchor × 400 ticks, a third of the
+  minute), so Energy left and noise behave the same per second as in the drive.
+- (2026-10-31) The drive runs exactly the 1-minute period; the planned 30 s match phase gets a half-minute share.
 

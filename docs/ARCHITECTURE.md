@@ -24,7 +24,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
 | `sim/spec.ts` | Fixed pins (10 inputs, 4 wheel outputs), `BrainSpec`, `Genome`, validation. |
-| `sim/energy.ts` | THE energy cost function (static cost, wire factors, fire cost, noise level, Energy left) and the workbench `estimate`. |
+| `sim/energy.ts` | THE energy cost function (static cost, wire factors, fire cost), the pool (`poolFor`, noise level, Energy left) and the workbench `estimate` / `minutePercent`. |
 | `sim/brain.ts` | Spec → compiled net, evaluation, presets (Starter, Minimal, Deep), pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
@@ -46,8 +46,13 @@ function: output = clamp(sum, −1, 1), and no upkeep (as the workbench shows th
 surcharge counts only hidden lines that hold neurons (`wireSpan`; review call 2026-10-30), so the empty line the
 board always shows is free to cross.
 
-Over budget, every signal (inputs, neurons, wheels) is mixed after its transfer function:
-`(1 − a)·clean + a·U(−1, 1)`, with `a = clamp(last tick's use / budget − 1, 0, 1)`. The noise value is a pure
+Energy is a pool (ruling 2026-10-31): a run of N ticks gets `energy.poolFor(N)` = per-tick anchor (`CONFIG.budget`,
+10 in round 1) × N, so the 1-minute period (`CONFIG.energy.periodTicks` = 1200, the drive) gets 12 000, a 20 s training
+episode a third of that and the 30 s race half (review calls). Each tick's cost (sensors in use + upkeep + firing
+with the skip surcharge, unchanged) is taken from it (`CarState.energyUsed`). Energy left = clamp(1 − used / pool,
+0, 1), draining over the run. Once the pool is spent, every signal (inputs, neurons, wheels) is mixed after its
+transfer function: `(1 − a)·clean + a·U(−1, 1)`, with `a = clamp(used / pool − 1, 0, 1)` from the total before the
+tick (all noise at 200%). The noise value is a pure
 function of (car noise seed, node key, tick) — `hashU` — so it does not depend on how many other nodes there are,
 and every policy in a generation sees the same noise (common random numbers).
 
@@ -65,8 +70,11 @@ and later lines move down; wires whose ends are gone are dropped. Caps: 3 lines 
 ### Energy as the workbench shows it
 `energy.estimate(spec)` = exact static cost (wired sensors + upkeep) + every wire at `wireFactor(span) ×
 CONFIG.cost.estimateActivity` (0.5, so a span-1 wire shows 0.05 per tick, the mock-up's figure). The meter, the
-ledger ("Wires (est.)"), the per-function and per-sensor costs and the noise figure all come from `energy.ts`, shown
-as % of the round-1 budget. The client has no cost table of its own.
+ledger ("Wires (est.)"), the per-function and per-sensor costs all come from `energy.ts`, shown as the estimate of a
+full minute's use against the minute's pool (`minutePercent`: "63% of energy budget · est. per minute"); over 100%
+the meter says when the pool runs out (`runsOutAt`, "runs out at 0:48, then static"). The client has no cost table
+of its own. The drive view's meter starts at 0 and climbs to the minute's actual use (used and left shown); static
+appears only once the pool is spent.
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws

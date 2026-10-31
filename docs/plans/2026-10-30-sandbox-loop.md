@@ -14,8 +14,9 @@ watch it drive → change it → retrain**. Racing is the first arena.
 - Workbench = `reference/builder-mockup.html` ("looks excellent"): plain sandbox look, light and dark, landscape phones.
 - The car is the input layer; hidden neurons sit in flat lines; the four wheels are the output line.
 - Inputs (always on the board; charged only while wired): 6 eyes (left, front-left, front, front-right, right, back),
-  road ahead, energy left (1 − last tick's use / budget), speed, bias. Outputs: wheel speeds FL, FR, RL, RR, −1..+1.
-- Energy shown as "% of energy budget", meter to 100%; over budget → noise in every signal, all noise at 200%.
+  road ahead, energy left (1 − energy used so far / the pool), speed, bias. Outputs: wheel speeds FL, FR, RL, RR, −1..+1.
+- Energy is a pool for the 1-minute period (ruling 2026-10-31); shown as "% of energy budget" = used so far / the
+  minute's pool, meter to 100%; once the pool is spent → noise in every signal, all noise at 200%.
 - Cars are ghosts to each other. Weights carry over on retrain; new wires start at 0.
 - Commits to `main` as the principal; no AI references anywhere.
 
@@ -183,4 +184,22 @@ equals the Node replay (seed 7, T 1M: 23a2ba9c), bloom audit 0% (max 1.17).
 - Bundle: app ~70 kB JS (27 kB gz) + fonts; three.js stage chunk ~570 kB (150 kB gz), loaded on first Train/Drive.
 - Left for the principal: connect the repo in Vercel, add `synapse.mouftools.com` and the CNAME; check in desktop
   Firefox and Safari; run `/bench/` and a Train on the reference desktop for (e) and the view-open phase time.
+
+## Energy as a pool (ruling 2026-10-31)
+Energy is a pool for the 1-minute period (anchor 10 per tick × 1200); training episodes and the 30 s race get a
+prorated share (review calls). S1 criterion re-run, seeds 1–20, Starter, T 6M (`npm run bench`, `out/bench/`):
+
+| run | (a) median final / gen 1 | (b) ≥ 80% lap | (c) | (d) Minimal ≥ 50% | (f) |
+|---|---|---|---|---|---|
+| per-tick budget (before) | 1393 / 98 m, ×14.3 | 16/20 | 20/20 | 17/20 | pass |
+| pool, prorated (as built) | 1171 / 133 m, ×8.8 | **12/20 ✗** | 20/20 | 17/20 | pass (1 vs 4 workers, all 20) |
+| pool, the minute's pool in every run (experiment, not built) | 1194 / 175 m, ×6.8 | 17/20 | 20/20 | 17/20 | (not run) |
+
+Why (b) drops: Starter wires Energy left into its cruise neuron. With prorated pools Energy left falls from 1 to
+about 0.4 over the length of each run — 20 s in training, 30 s in the race, 60 s in the drive — so the cue the
+champion learned stretches differently when it is tested; prorating keeps the share of the run equal, not the
+behaviour per second. With the minute's pool everywhere, Energy left drains at the same rate per second in every run
+and (b) passes again; the trade-off is that a 20 s training episode then never reaches noise unless a brain uses
+more than 3× its share, so training would barely penalise over-budget designs. For the principal and reviewer to
+choose; the build follows the call as given.
 

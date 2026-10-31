@@ -10,7 +10,7 @@ const T = 200_000;
 describe('training view plumbing', () => {
   it('recording track-0 paths changes no result', () => {
     const s = phaseSeeds(3), spec = starterSpec();
-    const core = new EpisodeCore({ spec, trackSeeds: s.trainTracks, noiseSeeds: s.trainNoise, budget: CONFIG.budget[0], episodeTicks: CONFIG.train.episodeTicks });
+    const core = new EpisodeCore({ spec, trackSeeds: s.trainTracks, noiseSeeds: s.trainNoise, pool: CONFIG.budget[0] * CONFIG.train.episodeTicks, episodeTicks: CONFIG.train.episodeTicks });
     const r = new Rng(1), n = 6, w = new Float64Array(n * spec.conns.length).map(() => r.normal());
     const a = core.run(w, n, false), b = core.run(w, n, true), c = core.run(w, n, false);
     expect(Array.from(b.out)).toEqual(Array.from(a.out));

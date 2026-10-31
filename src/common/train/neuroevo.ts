@@ -135,7 +135,7 @@ export class Neuroevo implements Trainer {
     const t = env.track(0);
     const c = startCar(t);
     const inputs = new Float64Array(10), vals = new Float64Array(net.nNodes);
-    readSensors(c, t, net.inUsed, env.setup.budget, inputs);
+    readSensors(c, t, net.inUsed, env.setup.pool, inputs);
     evalNet(net, inputs, vals, 0, 0, 0);
     return { channels: { signal: signalOf(net, vals) } };
   }

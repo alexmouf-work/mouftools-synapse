@@ -33,7 +33,8 @@ export function eyeDistance(c: CarState, t: Track, e: number): number {
   return castRay(t.grid, c.x, c.y, dx, dy, S.eyeRange);
 }
 
-export function readSensors(c: CarState, t: Track, used: Uint8Array, budget: number, out: Float64Array): void {
+/** pool: the run's energy pool (energy.poolFor). */
+export function readSensors(c: CarState, t: Track, used: Uint8Array, pool: number, out: Float64Array): void {
   const ch = cos(c.hdg), sh = sin(c.hdg);
   for (let e = 0; e < EYE_COUNT; e++) {
     if (!used[e]) { out[e] = 0; continue; }
@@ -46,7 +47,7 @@ export function readSensors(c: CarState, t: Track, used: Uint8Array, budget: num
     // signed angle from heading to the point ahead; + = left in world terms, so negate: the input is + = right
     out[IN.road] = -atan2(ch * vy - sh * vx, ch * vx + sh * vy) / PI;
   } else out[IN.road] = 0;
-  out[IN.energy] = used[IN.energy] ? energyLeft(c.energyPrev, budget) : 0;
+  out[IN.energy] = used[IN.energy] ? energyLeft(c.energyUsed, pool) : 0;
   out[IN.speed] = used[IN.speed] ? c.v / S.speedNorm : 0;
   out[IN.bias] = used[IN.bias] ? 1 : 0;
 }

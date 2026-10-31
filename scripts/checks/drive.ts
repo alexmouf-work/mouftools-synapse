@@ -93,6 +93,14 @@ async function main() {
     // bloom audit on fixed frames (seek + snapped camera), so a pass means pass
     const aus = await page.evaluate(() => [2, 8, 14, 20, 30, 45, 58].map((t) => window.__drive!.auditAt(t)));
     check(aus.every((a) => a.over === 0), `bloom audit at 2/8/14/20/30/45/58 s: over ${aus.map((a) => (a.over * 100).toFixed(3) + '%').join(' ')} (max ${Math.max(...aus.map((a) => a.max)).toFixed(2)})`);
+    // the energy meter starts at 0 and climbs through the minute (the budget is a pool)
+    await page.evaluate(() => window.__drive!.seek(0.2));
+    await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
+    const e0 = (await drive(page))!.usedPct;
+    await page.evaluate(() => window.__drive!.seek(40));
+    await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
+    const e1 = (await drive(page))!.usedPct;
+    check(e0 < 3 && e1 > e0 + 20, `energy meter climbs with the minute: ${e0.toFixed(1)}% at 0:00 → ${e1.toFixed(0)}% at 0:40`);
     // beams: each eye's beam leaves the car along exactly that eye's sim direction (a few poses)
     let worst = 0;
     for (const at of [3, 11, 27]) {
@@ -160,7 +168,12 @@ async function main() {
     // 3. over budget
     page = await open(`?view=drive&track=${firstTrack}`, 1440, 900, false, over.genome);
     await waitFrames(page);
-    await page.evaluate(() => window.__drive!.seek(6));
+    // the pool: no static while energy lasts (≈116% per minute is spent at ≈0:52), static once it is gone
+    await page.evaluate(() => window.__drive!.seek(20));
+    await page.waitForFunction(() => (window.__drive?.tick ?? 0) >= 400, null, { timeout: 60_000 });
+    const early = await drive(page);
+    check((early?.noise ?? 1) === 0 && !(await page.locator('#dvStatic').isVisible()), `over-budget brain at ${(early!.tick / 20).toFixed(0)} s: ${early?.usedPct.toFixed(0)}% of the minute used, no static yet`);
+    await page.evaluate(() => window.__drive!.seek(55));
     await page.waitForFunction(() => (window.__drive?.noise ?? 0) > 0, null, { timeout: 60_000 });
     await page.waitForTimeout(800);
     check(await page.locator('#dvStatic').isVisible(), `over budget: static shown (${await page.locator('#dvStatic').innerText()})`);

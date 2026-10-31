@@ -5,7 +5,7 @@
 // plain overlay; a stall shows "Stuck against the wall" with the time while the camera stays on the car. New track
 // re-seeds; the run loops after a short pause at the end.
 import { CONFIG } from '../../../common/config';
-import { noiseLevel, percentOfBudget } from '../../../common/sim/energy';
+import { energyLeft, noiseLevel, percentOfBudget, poolFor } from '../../../common/sim/energy';
 import { runDrive } from '../../../common/sim/race';
 import { eyeDirection } from '../../../common/sim/sensors';
 import { EYE_COUNT } from '../../../common/sim/spec';
@@ -30,6 +30,8 @@ const fmtLap = (ticks: number) => `${(ticks / HZ).toFixed(1)} s`;
 
 export interface DriveStatus {
   trackSeed: number; hash: string; ticks: number; tick: number; distance: number; laps: number; bestLap: number | null;
+  /** Energy used so far, % of the minute's pool. */
+  usedPct: number;
   stuck: boolean; noise: number; cam: CamMode; frames: number; webgl: boolean; finalProg: number;
   probe?: () => { mean: number; sd: number; w: number; h: number };
   bloomAudit?: (mask?: boolean) => { over: number; max: number; mask?: string };
@@ -78,7 +80,9 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   for (let k = S; k < ticks; k++) {
     if (maxProg[k] - maxProg[k - S] < CONFIG.train.stallMetres) stuckSince[k] = stuckSince[k - 1] >= 0 ? stuckSince[k - 1] : k - S;
   }
-  const noiseAt = (k: number) => (k > 0 ? noiseLevel(rec.energy[k - 1], CONFIG.budget[0]) : 0);
+  // the minute's pool (ruling 2026-10-31): noise only once it is spent, from the total before the tick
+  const pool = poolFor(CONFIG.drive.ticks);
+  const noiseAt = (k: number) => (k > 0 ? noiseLevel(rec.used[k - 1], pool) : 0);
   const eyesUsed = net.inUsed.subarray(0, 6);
 
   const stage: Stage | null = await getStage();
@@ -87,7 +91,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   const spikes = new SpikeTrains(net.nIn);
   let playT = 0, frames = 0, cam: CamMode = 'chase', guess = track.startIdx, lastUi = -1;
   const status: DriveStatus = {
-    trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, laps: 0, bestLap: null, stuck: false, noise: 0, cam, frames: 0,
+    trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, usedPct: 0, laps: 0, bestLap: null, stuck: false, noise: 0, cam, frames: 0,
     webgl: !!stage, finalProg: run.result.prog,
     probe: stage ? () => stage.probe() : undefined,
     bloomAudit: stage ? (m?: boolean) => stage.bloomAudit(m) : undefined,
@@ -157,6 +161,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; }
     status.tick = k; status.frames = frames; status.stuck = pose.stuck; status.noise = pose.noise;
     status.distance = rec.prog[k];
+    status.usedPct = percentOfBudget(rec.used[k], pool);
     const done = lapAt.filter((t) => t <= k + 1);
     status.laps = done.length;
     const lapTimes = done.map((t, j) => t - (j ? done[j - 1] : 0));
@@ -166,7 +171,12 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
       $('dvTime').textContent = ended ? `${fmtT(ticks / HZ)} · done` : `${fmtT(k / HZ)} / ${fmtT(ticks / HZ)}`;
       $('dvDist').textContent = `${(rec.prog[k] / 1000).toFixed(2)} km · ${done.length} lap${done.length === 1 ? '' : 's'}`;
       $('dvLap').textContent = lapTimes.length ? fmtLap(Math.min(...lapTimes)) : `– (lap ${(track.len / 1000).toFixed(2)} km)`;
-      $('dvEnergy').textContent = `${Math.round(percentOfBudget(rec.energy[k], CONFIG.budget[0]))}% of budget${pose.noise > 0 ? ` · ${Math.round(pose.noise * 100)}% static` : ''}`;
+      const usedPct = ended || k > 0 ? percentOfBudget(rec.used[k], pool) : 0;
+      $('dvEnergy').textContent = pose.noise > 0
+        ? `${Math.round(usedPct)}% used · spent · ${Math.round(pose.noise * 100)}% static`
+        : `${Math.round(usedPct)}% used · ${Math.round(100 * energyLeft(rec.used[k], pool))}% left`;
+      $('dvEnergyFill').style.width = `${Math.min(100, usedPct)}%`;
+      $('dvEnergyFill').parentElement?.classList.toggle('over', usedPct > 100);
       const st = $('dvStuck');
       st.hidden = !pose.stuck;
       if (pose.stuck) {

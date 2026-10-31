@@ -51,6 +51,7 @@ export interface PhaseOptions {
   /** Starting genome (weights used only when start = carry). */
   genome?: Genome;
   T?: number;
+  /** Per-tick energy anchor (default round 1's); each episode's pool is anchor × episode ticks. */
   budget?: number;
   phase?: number;
   /** A clock for timing only (sim code never reads time); defaults to no timing. */
@@ -69,7 +70,7 @@ export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o:
   const seeds = phaseSeeds(seed, o.phase ?? 0);
   const setup = {
     spec, trackSeeds: seeds.trainTracks, noiseSeeds: seeds.trainNoise,
-    budget: o.budget ?? CONFIG.budget[0], episodeTicks: CONFIG.train.episodeTicks,
+    pool: (o.budget ?? CONFIG.budget[0]) * CONFIG.train.episodeTicks, episodeTicks: CONFIG.train.episodeTicks,
   };
   await exec.setup(setup);
   const env = new MeteredEnv(setup, exec, o.T ?? CONFIG.train.T);

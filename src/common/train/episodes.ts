@@ -12,7 +12,8 @@ export interface EpisodeSetup {
   spec: BrainSpec;
   trackSeeds: number[];
   noiseSeeds: number[];
-  budget: number;
+  /** Energy pool per episode (energy.poolFor(episodeTicks): the minute's budget prorated, review call 2026-10-31). */
+  pool: number;
   episodeTicks: number;
 }
 
@@ -84,7 +85,7 @@ export class EpisodeCore {
       for (let k = 0; k < nT; k++) {
         const rec = paths && k === 0 ? (this.rec as Recording) : undefined;
         const r = this.runner.run(this.net, this.tracks[k], {
-          ticks: this.s.episodeTicks, budget: this.s.budget, noiseSeed: this.s.noiseSeeds[k], earlyStop: true, record: rec,
+          ticks: this.s.episodeTicks, pool: this.s.pool, noiseSeed: this.s.noiseSeeds[k], earlyStop: true, record: rec,
         });
         const o = (p * nT + k) * RESULT_STRIDE;
         out[o] = r.prog; out[o + 1] = r.wallTicks; out[o + 2] = r.ticks;

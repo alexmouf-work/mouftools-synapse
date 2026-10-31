@@ -55,7 +55,7 @@ describe('eye directions: one rule for the sensors and the beams', () => {
     for (const hdg of [0, 0.7, -2.1, 3.0]) {
       c.hdg = hdg;
       const out = new Float64Array(10);
-      readSensors(c, tr, Uint8Array.from([1, 1, 1, 1, 1, 1, 0, 0, 0, 0]), CONFIG.budget[0], out);
+      readSensors(c, tr, Uint8Array.from([1, 1, 1, 1, 1, 1, 0, 0, 0, 0]), CONFIG.budget[0] * 1200, out);
       for (let e = 0; e < 6; e++) {
         const { dx, dy } = eyeDirection(hdg, e);
         const a = hdg - (INPUTS[e].deg as number) * Math.PI / 180; // clockwise eye angle from the nose

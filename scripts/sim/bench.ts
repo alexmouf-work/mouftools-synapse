@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { availableParallelism, cpus } from 'node:os';
 import { CONFIG } from '../../src/common/config';
 import { compile, genomeHash, minimalSpec, starterSpec } from '../../src/common/sim/brain';
+import { poolFor } from '../../src/common/sim/energy';
 import { newRecording, Runner } from '../../src/common/sim/race';
 import type { BrainSpec } from '../../src/common/sim/spec';
 import { generateTrack, type Track } from '../../src/common/sim/track';
@@ -30,7 +31,7 @@ interface Raced { prog: number; wallTicks: number; x: Float64Array; y: Float64Ar
 function race(spec: BrainSpec, w: ArrayLike<number>, t: Track, noiseSeed: number): Raced {
   const net = compile({ spec, w: Array.from(w) });
   const rec = newRecording(net, CONFIG.race.ticks);
-  const r = new Runner().run(net, t, { ticks: CONFIG.race.ticks, budget: CONFIG.budget[0], noiseSeed, earlyStop: false, record: rec });
+  const r = new Runner().run(net, t, { ticks: CONFIG.race.ticks, pool: poolFor(CONFIG.race.ticks), noiseSeed, earlyStop: false, record: rec });
   return { prog: r.prog, wallTicks: r.wallTicks, x: rec.x, y: rec.y, ticks: rec.ticks };
 }
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -107,7 +108,7 @@ async function main() {
   writeFileSync(`${outDir}/fitness.csv`, csv.join('\n') + '\n');
 
   const md: string[] = [];
-  md.push(`# S1 bench — seeds ${seeds[0]}–${seeds[seeds.length - 1]}, Starter brain, budget ${CONFIG.budget[0]}, T = ${T.toLocaleString('en')}`);
+  md.push(`# S1 bench — seeds ${seeds[0]}–${seeds[seeds.length - 1]}, Starter brain, energy pool ${CONFIG.budget[0]}/tick × run length, T = ${T.toLocaleString('en')}`);
   md.push('', `Node ${env.node}, ${env.cpus} cores (${env.cpu}), ${workers} workers. Not the reference desktop.`, '');
   md.push(`- (a) median unseen progress: final ${a.medianEnd.toFixed(0)} m vs gen 1 ${a.median1.toFixed(0)} m → ×${crit.a.ratio.toFixed(1)} (need ×3) — ${crit.a.pass ? 'PASS' : 'FAIL'}`);
   md.push(`- (b) final champion ≥ 80% of a lap on ${crit.b.count}/${n} (need 15) — ${crit.b.pass ? 'PASS' : 'FAIL'}`);

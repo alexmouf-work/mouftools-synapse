@@ -10,7 +10,7 @@ import { CONFIG } from '../../src/common/config';
 import {
   addLayer, addNeuron, addWire, deepSpec, draftOf, genomeHash, minimalSpec, starterSpec, zeroGenome, type Draft, type EditResult,
 } from '../../src/common/sim/brain';
-import { estimate, percentOfBudget } from '../../src/common/sim/energy';
+import { estimate, minutePercent, runsOutAt } from '../../src/common/sim/energy';
 import { INPUTS, OUTPUTS } from '../../src/common/sim/spec';
 import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/workbench/store';
 import { weightStyle } from '../../src/client/ui/weights';
@@ -48,7 +48,7 @@ function overBudget(): Draft { // Deep plus the back eye, bias and two more tanh
 const empty = (): Draft => draftOf(zeroGenome(minimalSpec()));
 
 // ---- page helpers ----
-const pctOf = (d: Draft) => `${Math.round(percentOfBudget(estimate(d.genome.spec).total, CONFIG.budget[0]))}%`;
+const pctOf = (d: Draft) => `${Math.round(minutePercent(estimate(d.genome.spec).total))}%`; // per-minute estimate
 async function savedDraft(page: Page): Promise<Draft> {
   const text = await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY);
   const r = parse(text);
@@ -207,7 +207,10 @@ async function main() {
     const over = overBudget();
     page = await open({ w: 1440, h: 900, save: over });
     const ev = await page.locator('#eVal').innerText();
-    check(await shownPct(page) === pctOf(over) && /noise/.test(ev) && await page.locator('#meter.over').count() === 1, `over budget: "${ev}" (energy.ts ${pctOf(over)})`);
+    const out = runsOutAt(estimate(over.genome.spec).total);
+    const outTxt = `${Math.floor(out / 60)}:${String(Math.floor(out % 60)).padStart(2, '0')}`;
+    check(await shownPct(page) === pctOf(over) && ev.includes(`runs out at ${outTxt}`) && /est\. per minute/.test(ev) && await page.locator('#meter.over').count() === 1,
+      `over budget: "${ev}" (energy.ts ${pctOf(over)}, pool spent at ${outTxt})`);
     await page.screenshot({ path: `${OUT}/over-budget.png` });
     await page.context().close();
 

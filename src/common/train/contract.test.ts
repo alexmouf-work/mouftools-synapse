@@ -14,7 +14,7 @@ const spec = starterSpec();
 
 async function makeEnv(seed: number, budgetT = T) {
   const s = phaseSeeds(seed);
-  const setup: EpisodeSetup = { spec, trackSeeds: s.trainTracks, noiseSeeds: s.trainNoise, budget: CONFIG.budget[0], episodeTicks: CONFIG.train.episodeTicks };
+  const setup: EpisodeSetup = { spec, trackSeeds: s.trainTracks, noiseSeeds: s.trainNoise, pool: CONFIG.budget[0] * CONFIG.train.episodeTicks, episodeTicks: CONFIG.train.episodeTicks };
   const exec = new InlineExecutor();
   await exec.setup(setup);
   return new MeteredEnv(setup, exec, budgetT);
