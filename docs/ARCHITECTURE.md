@@ -3,9 +3,10 @@
 What exists, updated in the same commit as the code. The intended full layout is §1 of
 `docs/plans/2026-10-30-solo-loop.md`; milestone steps are in `docs/plans/2026-10-30-sandbox-loop.md`.
 
-Built so far: **S1** (headless sim, evolution benchmark), **S2** (the workbench), **S3** (the training view: Train →
-the swarm learns on a 3-D track → the champion is saved; Train again continues) and **S4** (the drive view: the
-trained car drives 60 s on an unseen track in the stadium). Not yet: production deploy (S5).
+Milestone 1 is built: **S1** (headless sim, evolution benchmark), **S2** (the workbench), **S3** (the training view:
+Train → the swarm learns on a 3-D track → the champion is saved; Train again continues), **S4** (the drive view: the
+trained car drives 60 s on an unseen track in the stadium) and **S5** (production build and Vercel config; the
+principal connects the project and the domain).
 
 ## Stack
 Vite + TypeScript, Three.js 0.160 (training view only, loaded on first Train), Vitest, tsx for Node scripts,
@@ -180,5 +181,15 @@ wheels) for the gradient trainers to come; neuroevolution does not use it.
   after New track), render smoke, bloom audit = 0, cameras, Drive on the workbench only when trained, a pinned brain
   shows the stuck note while the camera keeps moving, an over-budget brain shows static, 844×390; screenshots to
   `out/s4/`.
+- `scripts/checks/preview.ts` — the production build: `vite build`, then `vite preview` (static with SPA fallback,
+  as on Vercel) at the real budget: workbench loads, training phase hash = Node, drive hash = Node, render smoke on
+  both views, bloom audit, `?T=` ignored, deep links fall back to the app, no `/bench` in the build, console clean.
 - `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench,
-  training and drive checks.
+  training, drive and production-build checks.
+
+## Deploy
+Static site. `vite build` → `dist/` (`index.html`, hashed `assets/`: the app ~70 kB JS, the 3-D stage chunk with
+three.js ~570 kB loaded on first Train or Drive, the training worker, self-hosted fonts). `vercel.json`: build with
+`npm ci` and `npm run build`, every unknown path rewritten to `index.html`, `assets/` cached for a year (immutable),
+`index.html` no-cache, nosniff and a referrer policy. The principal imports the repo in Vercel and adds the
+`synapse` CNAME to `cname.vercel-dns.com` (steps in README).

@@ -1,6 +1,7 @@
 # Synapse — sandbox loop (milestone 1): build plan
 
-Status: approved 2026-10-30 ("build the plan end to end"). Supersedes the match framing of
+Status: built (S1–S5), done pending the principal's check: desktop Firefox and Safari, (e) on the reference desktop,
+connecting Vercel and the `synapse` CNAME. Approved 2026-10-30 ("build the plan end to end"). Supersedes the match framing of
 `2026-10-30-solo-loop.md`. That plan still holds the shared design: stack, layout, types, numbers, trainer seam,
 checks, risks. Its timed match (steps 5–7, bots) becomes milestone 2. Where the two disagree, this file and
 `docs/CONTEXT.md` win.
@@ -172,4 +173,14 @@ equals the Node replay (seed 7, T 1M: 23a2ba9c), bloom audit 0% (max 1.17).
 - Near-field bloom: strips and gate bands fade near the camera (25% at ≤ 6 m, full from 60 m), bloom radius
   0.45 → 0.32. Before/after: `out/s4/chase-corner-before.png` / `chase-corner.png`, `broadcast-before.png` /
   `broadcast.png`.
+
+## S5 notes (2026-10-31)
+- `vite build` → `dist/`; `vercel.json` (static, SPA fallback, immutable `assets/`, no-cache `index.html`); README
+  "Run locally" and "Deploy (Vercel)".
+- `scripts/checks/preview.ts` (in `npm run check`) runs the production build under `vite preview` at the real T:
+  training phase hash = Node (seed 7: 419c1c14, 7.4 s with the view open on SwiftShader), drive hash = Node, render
+  smoke, bloom audit, SPA fallback, console clean.
+- Bundle: app ~70 kB JS (27 kB gz) + fonts; three.js stage chunk ~570 kB (150 kB gz), loaded on first Train/Drive.
+- Left for the principal: connect the repo in Vercel, add `synapse.mouftools.com` and the CNAME; check in desktop
+  Firefox and Safari; run `/bench/` and a Train on the reference desktop for (e) and the view-open phase time.
 
