@@ -65,7 +65,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - (2026-10-31) Rate coding uses one rule for every input, not only the eyes and Energy left: a cell fires at
   14 Hz × |reading| (speed by its value, road ahead by magnitude, bias steadily at the top rate). With
   prefers-reduced-motion the cells glow as bright as their reading instead of flashing.
-- (2026-10-31) Training keeps 20 s episodes with the pool prorated to the episode (anchor × 400 ticks, a third of the
-  minute), so Energy left and noise behave the same per second as in the drive.
-- (2026-10-31) The drive runs exactly the 1-minute period; the planned 30 s match phase gets a half-minute share.
+- (2026-10-31) Training episodes run the full 1-minute period with the full pool (measured: best on every
+  criterion; see the table in docs/plans/2026-10-30-sandbox-loop.md, "Energy as a pool").
 

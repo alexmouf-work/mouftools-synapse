@@ -105,7 +105,7 @@ describe('energy maths', () => {
   });
   it('pools are prorated by run length; the workbench shows the per-minute estimate', () => {
     expect(minutePool()).toBe(CONFIG.budget[0] * 1200);
-    expect(poolFor(400)).toBe(minutePool() / 3); // a 20 s training episode
+    expect(poolFor(CONFIG.train.episodeTicks)).toBe(minutePool()); // a training episode is the whole minute
     expect(poolFor(600)).toBe(minutePool() / 2); // the 30 s race
     expect(minutePercent(6.3)).toBeCloseTo(63, 9); // Starter-like: 6.3 per tick → 63% of the minute
     expect(runsOutAt(6.3)).toBe(Infinity);

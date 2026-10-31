@@ -182,11 +182,11 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
   $('tvBack').onclick = () => close(hooks);
 }
 
-/** The champion's 30 s lap on training track 0, replayed for display only (no experience is charged). */
+/** The champion's 1-minute run on training track 0 (full pool, as trained), replayed for display only (no experience charged). */
 function championLap(g: Genome, t: Track, noiseSeed: number, gen: number) {
   const net = compile(g);
-  const rec = newRecording(net, CONFIG.race.ticks);
-  new Runner().run(net, t, { ticks: CONFIG.race.ticks, pool: poolFor(CONFIG.race.ticks), noiseSeed, earlyStop: false, record: rec });
+  const rec = newRecording(net, CONFIG.drive.ticks);
+  new Runner().run(net, t, { ticks: CONFIG.drive.ticks, pool: poolFor(CONFIG.drive.ticks), noiseSeed, earlyStop: false, record: rec });
   return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, ticks: rec.ticks, gen };
 }
 

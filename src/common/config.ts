@@ -99,7 +99,7 @@ export const CONFIG = {
     T: 6_000_000,
     population: 64,
     trainTracks: 2,
-    episodeTicks: 400, // 20 s
+    episodeTicks: PERIOD_TICKS, // a training episode is the whole 1-minute period, with the whole pool (review call 2026-10-31)
     elites: 4,
     tournament: 3,
     pMutate: 0.2,
@@ -115,7 +115,7 @@ export const CONFIG = {
   },
 
   race: {
-    ticks: 600, // 30 s on the unseen track
+    ticks: 600, // 30 s: the first half of a 1-minute run, the S1 criterion's look at the unseen track (milestone 2's match phase is revisited when planned)
   },
 
   drive: {

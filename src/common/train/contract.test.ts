@@ -9,7 +9,7 @@ import { phaseSeeds, runPhase } from './phase';
 import { createTrainer, trainerIds, type TrainerEvent } from './trainer';
 import './neuroevo';
 
-const T = 160_000; // small phase: a few generations
+const T = 700_000; // small phase: a few generations (one is 64 × 2 × 1200 ticks at worst)
 const spec = starterSpec();
 
 async function makeEnv(seed: number, budgetT = T) {
@@ -29,8 +29,8 @@ describe.each(trainerIds())('trainer contract: %s', (id) => {
     let last = 0;
     while (!tr.done()) {
       const before = env.used;
-      const ev = await tr.step(60_000);
-      expect(env.used - before).toBeLessThanOrEqual(60_000);
+      const ev = await tr.step(200_000);
+      expect(env.used - before).toBeLessThanOrEqual(200_000);
       for (const e of ev) { expect(e.ticksUsed).toBeGreaterThanOrEqual(last); last = e.ticksUsed; }
       events.push(...ev);
     }

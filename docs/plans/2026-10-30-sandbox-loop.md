@@ -186,20 +186,25 @@ equals the Node replay (seed 7, T 1M: 23a2ba9c), bloom audit 0% (max 1.17).
   Firefox and Safari; run `/bench/` and a Train on the reference desktop for (e) and the view-open phase time.
 
 ## Energy as a pool (ruling 2026-10-31)
-Energy is a pool for the 1-minute period (anchor 10 per tick × 1200); training episodes and the 30 s race get a
-prorated share (review calls). S1 criterion re-run, seeds 1–20, Starter, T 6M (`npm run bench`, `out/bench/`):
+Energy is a pool for the 1-minute period (anchor 10 per tick × 1200). How training should share it was measured
+(seeds 1–20, Starter; (a)–(d) on the first 30 s of a run on the unseen track; "60 s" = the drive-length look:
+final ≥ 1.6 laps, Minimal ≥ 1 lap; phase time = median, Node, 4 workers, build container):
 
-| run | (a) median final / gen 1 | (b) ≥ 80% lap | (c) | (d) Minimal ≥ 50% | (f) |
-|---|---|---|---|---|---|
-| per-tick budget (before) | 1393 / 98 m, ×14.3 | 16/20 | 20/20 | 17/20 | pass |
-| pool, prorated (as built) | 1171 / 133 m, ×8.8 | **12/20 ✗** | 20/20 | 17/20 | pass (1 vs 4 workers, all 20) |
-| pool, the minute's pool in every run (experiment, not built) | 1194 / 175 m, ×6.8 | 17/20 | 20/20 | 17/20 | (not run) |
+| option | T | (a) 30 s / 60 s | (b) 30 s (60 s) | (c) | (d) 30 s / 60 s | generations | phase time | ≈140% design hits noise in training |
+|---|---|---|---|---|---|---|---|---|
+| per-tick budget (before the ruling) | 6M | ×14.3 / – | 16/20 (–) | 20/20 | 17 / – | ≈142 | 3.9 s | – |
+| prorated pool, 20 s episodes | 6M | ×8.8 / – | **12/20 ✗** (–) | 20/20 | 17 / – | ≈149 | 3.9 s | – |
+| A: minute's pool, 20 s episodes | 6M | ×6.8 / ×7.2 | 17/20 (10/20) | 20/20 | 17 / 17 | 147 (134–167) | 3.7 s | 0 of 1 550 episodes |
+| A | 12M | ×6.8 / ×6.1 | 15/20 (9/20) | 20/20 | 17 / 16 | 279 (269–305) | 7.4 s | 0 of 3 098 |
+| **C: 60 s episodes, minute's pool (built)** | **6M** | ×9.1 / ×11.4 | **18/20 (17/20)** | 20/20 | 19 / 18 | 58 (49–86) | 3.6 s | 681 of 690 (onset ≈ 47 s) |
+| C | 12M | ×9.1 / ×11.4 | 17/20 (17/20) | 20/20 | 19 / 19 | 111 (96–138) | 7.1 s | 1 269 of 1 278 |
 
-Why (b) drops: Starter wires Energy left into its cruise neuron. With prorated pools Energy left falls from 1 to
-about 0.4 over the length of each run — 20 s in training, 30 s in the race, 60 s in the drive — so the cue the
-champion learned stretches differently when it is tested; prorating keeps the share of the run equal, not the
-behaviour per second. With the minute's pool everywhere, Energy left drains at the same rate per second in every run
-and (b) passes again; the trade-off is that a 20 s training episode then never reaches noise unless a brain uses
-more than 3× its share, so training would barely penalise over-budget designs. For the principal and reviewer to
-choose; the build follows the call as given.
+Why the prorated pool lost (b): Starter wires Energy left into its cruise neuron, and a prorated pool drains it over
+each run's own length (20 s training, 30 s race, 60 s drive), so the cue learned in training stretches differently when
+tested. Option A fixes the drain rate but training then never reaches noise (over-budget designs cost nothing while
+learning) and its champions hold up badly over a full minute. Option C trains on exactly what the drive is: best on
+every measure at T 6M; 12M adds nothing for twice the time. **Built: C at T = 6M** (review call 2026-10-31).
+As built, `npm run bench` reproduces the C row exactly and adds (f): same seed → same hash, 1 vs 4 workers → same hash
+on all 20 seeds. GO on (a)–(d), (f). The training story with ≈58 generations picks about gen 1 → 8% → 23% → 50% →
+final (simulated on seeds 1, 7, 12 with the view's estimator; checked in the browser by `scripts/checks/training.ts`).
 

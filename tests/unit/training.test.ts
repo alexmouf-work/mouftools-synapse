@@ -5,7 +5,7 @@ import { EpisodeCore, InlineExecutor, PATH_STRIDE, pathSamples } from '../../src
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { Rng } from '../../src/common/rng';
 
-const T = 200_000;
+const T = 700_000; // a few generations of 60 s episodes
 
 describe('training view plumbing', () => {
   it('recording track-0 paths changes no result', () => {

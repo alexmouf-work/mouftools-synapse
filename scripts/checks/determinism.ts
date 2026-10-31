@@ -16,7 +16,7 @@ import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
 
 const SEEDS = [1, 2, 3];
-const PHASE_T = 400_000;
+const PHASE_T = 600_000; // a few generations of 60 s episodes
 const goldenPath = fileURLToPath(new URL('./golden.json', import.meta.url));
 
 /** perTick: energy anchor; the 30 s race gets perTick × its ticks as its pool. */

@@ -47,8 +47,9 @@ surcharge counts only hidden lines that hold neurons (`wireSpan`; review call 20
 board always shows is free to cross.
 
 Energy is a pool (ruling 2026-10-31): a run of N ticks gets `energy.poolFor(N)` = per-tick anchor (`CONFIG.budget`,
-10 in round 1) × N, so the 1-minute period (`CONFIG.energy.periodTicks` = 1200, the drive) gets 12 000, a 20 s training
-episode a third of that and the 30 s race half (review calls). Each tick's cost (sensors in use + upkeep + firing
+10 in round 1) × N, so the 1-minute period (`CONFIG.energy.periodTicks` = 1200) gets 12 000. Training episodes and
+the drive both run that whole period with the whole pool (review call, measured best); the S1 bench's 30 s look at
+the unseen track is the first half of such a run. Each tick's cost (sensors in use + upkeep + firing
 with the skip surcharge, unchanged) is taken from it (`CarState.energyUsed`). Energy left = clamp(1 − used / pool,
 0, 1), draining over the run. Once the pool is spent, every signal (inputs, neurons, wheels) is mixed after its
 transfer function: `(1 − a)·clean + a·U(−1, 1)`, with `a = clamp(used / pool − 1, 0, 1)` from the total before the
@@ -97,7 +98,8 @@ every generation's stats and champion. Executors: `InlineExecutor` (this thread)
 `EpisodeCore` on contiguous slices from `splitEven` and return results in policy order, so the worker count can never
 change a result (checked: 1 vs 4 workers, Node vs Chrome, identical hashes).
 
-Neuroevolution: population 64, both training tracks × 400-tick episodes (early stop on stall or going backwards),
+Neuroevolution: population 64, both training tracks × 1200-tick (1-minute) episodes with the minute's pool (early
+stop on stall or going backwards; about 58 generations in T = 6M),
 elitism 4, tournament 3, no crossover, Gaussian mutation p 0.2 with σ falling 0.4 → 0.08 over the phase, reset
 p 0.01, weights clamped ±4. `fresh` start draws N(0, 0.5); `carry` puts the given genome in slot 0 exactly and its
 mutants after it. It runs whole generations while the next one's worst case fits T. Probe channel: `signal`.
