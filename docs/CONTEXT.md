@@ -241,3 +241,4 @@ Rulings from the principal, verbatim where quoted. Newest last.
   fields / graphs as they learn."
 - "show me the training view when it's finished. make sure it aligns with the design we set up. I want you to adjust it
   so that we show the map in the bottom right, and the BRAIN in the bottom left, swapped for the map."
+- "we should never see the same generation twice. show the generation with a big white number in the top middle of the screen."
