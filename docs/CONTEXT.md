@@ -82,3 +82,26 @@ Rulings from the principal, verbatim where quoted. Newest last.
   5. "show the mean brain in real time during training."
   6. "create a title screen with \"sandbox mode\" and \"match mode\""
   7. "match mode should work via a room code. I can give you access to supabase if you need it for realtime natches."
+- Brain designer v2 (asked to plan, not build): "change the actual way that the brain designer works. all neurons will
+  use the same function (tanh, step, sigmoid, etc.) all neurons need a firing rate, shown with yellow flashes like the
+  input ones. add \"head direction cell\", \"grid cell\" and \"place cell\" move the car to the output side, and use 3D
+  models of symbols to represent the inputs. These symbols might be animated. … don't just build this, please plan it
+  out so that it feels logical, and show me mockups once we agree."
+- "place cells recognise landmarks such as walls, a finish line or trees. this acts to replace the current directional
+  eye input neurons." · "head direction 1 - it will use a cosine wave to represent the angle that it's looking at. grid
+  2, one for each scale. place 2, one for walls, one for finish line. can add more. adding more will automatically make
+  them choose appropriate phases." · always-running workbench brain: yes · symbols: plain matte low-poly.
+- "if we were looking at a rat brain rather than a racecar, what would the major input cells be, with regards to
+  movement?" · "let's also change the energy system so that the more energy that is used, the slower the car travels.
+  going over 100% won't be allowed. This way, a 50% energy usage car becomes the mean car, a goal. instead of being 50%
+  energy usage it becomes 50% thinking and 50% speed. it's a ratio." · "let's find a way to change the energy usage thing
+  so that instead of being \"energy usage\" it's something like an energy allocation, where on one side is speed and on
+  the other side is brain power."
+- Round 2 answers: real cell names ("Use the real names"); extras: "Whisker cells"; firing cost "Fixed by design";
+  "we will remove the road ahead, energy left and bias neuron types. the neurons become a circle with their symbol
+  inside them, and that neuron is placed on the field when it's being used."
+- "make the entire thing more easy to interact with via a touchscreen." · "all neurons in a given LAYER will have the same
+  processing." (supersedes one function for the whole brain) · wheels: "No, wheels fixed" (tanh) · training: "show
+  between 5-20 random instances of the brain when training, depending on the device being used." → "show cars on track,
+  with one of their brains at random. show the car moving at an accelerating rate, so that it slowly approaches the speed
+  of the computer's training."

@@ -1,0 +1,356 @@
+<title>Synapse Brain Designer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a nervous system read left to right. Senses (3-D symbols, their cells as dots) | cortex (lines of identical
+   neurons) | the body (the car; its wheels are motor neurons). Thin top bar: one neuron type for the whole brain, energy.
+   Narrow side panel explains whatever you click. Plain workbench look, light and dark. */
+:root {
+  --bg: #eef0f3; --canvas: #f7f8fa; --dot: #d3d8e0; --panel: #ffffff; --line: #dde1e8;
+  --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; --accent-soft: #e3ecfc;
+  --spike: #ffc21a; --node: #ffffff; --car: #5b6b88; --minus: #d9465b;
+  --shadow: 0 1px 2px rgba(20,30,50,.08), 0 2px 8px rgba(20,30,50,.06);
+  --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-soft: #24304a; --node: #232933; --car: #9fb0d0; --minus: #ff7085;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-soft: #24304a; --node: #232933; --car: #9fb0d0; --minus: #ff7085;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
+button { font: inherit; color: inherit; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 10px; padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.word { font-weight: 700; font-size: 18px; }
+.name { color: var(--muted); font-size: 15px; }
+.type { display: inline-flex; align-items: center; gap: 8px; }
+.type > span { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 2px; box-shadow: var(--shadow); }
+.seg button { border: 0; background: none; border-radius: 8px; padding: 5px 10px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.seg button svg { width: 18px; height: 12px; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.alloc { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 13px; }
+.alloc b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.alloc .split { position: relative; width: 220px; height: 12px; border-radius: 6px; background: #3fb3a3; overflow: hidden; }
+.alloc .split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .15s linear; }
+.alloc .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .6; }
+.meter { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.meter .bar { width: 150px; height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
+.meter span { font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: 9px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; min-height: 0; }
+.board { position: relative; min-height: 560px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: radial-gradient(var(--dot) 1.2px, transparent 1.3px) 0 0 / 22px 22px, var(--canvas); }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+#net { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tiles { position: absolute; left: 12px; top: 40px; bottom: 12px; width: 200px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 4; }
+#net { z-index: 3; }
+.tile { flex: 1 1 0; min-height: 0; position: relative; border: 1px solid var(--line); border-radius: 12px; background: transparent; pointer-events: none; }
+.tile .add { pointer-events: auto; }
+.tile .lab { position: absolute; left: 10px; top: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
+.tile .sub { position: absolute; left: 10px; bottom: 5px; font-size: 10.5px; color: var(--muted); font-family: var(--mono); }
+.tile .add { position: absolute; right: 34px; bottom: 4px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 14px; line-height: 1; color: var(--accent); display: grid; place-items: center; padding: 0; }
+.tile .add:disabled { opacity: .35; cursor: default; }
+.hd { position: absolute; top: 10px; font-size: 11px; letter-spacing: .1em; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow: auto; min-height: 0; }
+.side h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 6px; }
+.note { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.legend { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.legend i { display: inline-block; vertical-align: middle; margin-right: 6px; }
+.ramp { width: 70px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #d9465b, #111, #2fa84f); }
+.flash { width: 10px; height: 10px; border-radius: 50%; background: var(--spike); box-shadow: 0 0 6px var(--spike); }
+.clock { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+#rotate { display: none; }
+@media (orientation: portrait) and (max-width: 700px) {
+  body:not(.portrait-ok) #rotate { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg); padding: 24px; text-align: center; }
+}
+@media (max-height: 540px) and (orientation: landscape) {
+  .app { gap: 6px; padding-block: 6px; } .work { grid-template-columns: minmax(0, 1fr) 190px; } .name { display: none; }
+  .board { min-height: 0; } .tiles { width: 150px; top: 28px; gap: 4px; } .tile .sub { display: none; } .meter .bar { width: 80px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <span class="word">Synapse</span>
+    <span class="name">Starter brain</span>
+    <div class="type" role="group" aria-label="Neuron type for the whole brain">
+      <span>Neurons</span>
+      <div class="seg" id="types"></div>
+    </div>
+    <div class="alloc" aria-label="Energy allocation: brain power against speed">
+      <span class="side-l">Brain <b id="aBrain"></b></span>
+      <div class="split"><i id="aFill"></i><em></em></div>
+      <span class="side-r">Speed <b id="aSpeed"></b></span>
+    </div>
+    <button class="btn" type="button">Drive</button>
+    <button class="btn primary" type="button">Train</button>
+  </header>
+  <main class="work">
+    <div class="board" id="board">
+      <canvas id="gl"></canvas>
+      <svg id="net" aria-label="The brain: senses, cortex, body"></svg>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <aside class="side">
+      <section id="insp"></section>
+      <section>
+        <h2>Reading the brain</h2>
+        <div class="legend">
+          <div><i class="flash"></i>Every cell flashes at its firing rate, up to 14 a second.</div>
+          <div><i class="ramp"></i>Wire colour is its weight: red −1, black 0, green +1. Thicker is stronger.</div>
+          <div><i style="display:inline-block;width:70px;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--spike) 50%,#3fb3a3 50%);vertical-align:middle;margin-right:6px"></i>Energy is shared: what the brain uses, the wheels can't. A busier brain means a slower car.</div>
+          <div class="clock" id="clock"></div>
+        </div>
+      </section>
+      <p class="note">The brain is always running: the senses replay your last drive, so any change shows up in the firing straight away. Click any cell to see what it does.</p>
+    </aside>
+  </main>
+</div>
+<div id="rotate"><div><h1 style="margin:0 0 8px;font-size:20px">Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button" style="margin-top:12px">Continue in portrait</button></div></div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+const $ = (id) => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const el = (t, a = {}, p) => { const e = document.createElementNS(NS, t); for (const k in a) if (a[k] != null) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const MAX_HZ = 14;
+
+// ---- one neuron type for the whole brain ----
+const FX = {
+  step: { n: 'Step', g: 'M-8 4 H0 V-4 H8', f: (z) => (z > 0 ? 1 : 0), rate: (y) => y, cost: 2 },
+  relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', f: (z) => clamp(z, 0, 4), rate: (y) => clamp(y, 0, 1), cost: 2.5 },
+  sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4', f: (z) => 1 / (1 + Math.exp(-z)), rate: (y) => y, cost: 5 },
+  tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', f: (z) => Math.tanh(z), rate: (y) => (y + 1) / 2, cost: 5 },
+};
+let fn = 'tanh';
+
+// ---- senses: populations whose cells re-tune as you add them ----
+const SENSES = [
+  { id: 'walls', label: 'Place · walls', sym: 'wall', n: 3, max: 7, cost: 4, about: 'Place cells that recognise walls. Each fires more the nearer a wall is inside its field, which faces one way from the car. Adding cells spreads their fields across the front.',
+    tune: (k, n) => n === 1 ? 0 : -90 + 180 * k / (n - 1), tag: (d) => d === 0 ? 'ahead' : `${d < 0 ? 'left' : 'right'} ${Math.abs(Math.round(d))}°` },
+  { id: 'finish', label: 'Place · finish line', sym: 'flag', n: 1, max: 5, cost: 4, about: 'Place cells that recognise the finish line, the same way the wall cells recognise walls.',
+    tune: (k, n) => n === 1 ? 0 : -90 + 180 * k / (n - 1), tag: (d) => d === 0 ? 'ahead' : `${d < 0 ? 'left' : 'right'} ${Math.abs(Math.round(d))}°` },
+  { id: 'hd', label: 'Head direction', sym: 'arrow', n: 1, max: 8, cost: 2, about: 'Fires as a cosine of the car’s compass heading: cos(heading − preferred angle). One cell is ambiguous left/right; two (cosine and sine) pin the heading down. Added cells spread their preferred angles evenly.',
+    tune: (k, n) => 360 * k / Math.max(n, 1) * (n === 2 ? 0.5 : 1), tag: (d) => `prefers ${Math.round(d)}°` },
+  { id: 'grid', label: 'Grid cells', sym: 'hex', n: 2, max: 6, cost: 3, about: 'Fire at the corners of a hexagonal grid laid over the ground, like a sheet of graph paper the car drives across. The first two cells have different scales; added cells take evenly spread phases.',
+    tune: (k) => k, tag: (k) => `scale ${k % 2 ? 'large' : 'small'} · phase ${Math.floor(k / 2) + 1}` },
+  { id: 'speed', label: 'Speed', sym: 'gauge', n: 1, max: 1, cost: 2, about: 'Fires faster the faster the car goes.', tune: () => 0, tag: () => '' },
+  { id: 'road', label: 'Road ahead', sym: 'sign', n: 1, max: 1, cost: 4, about: 'Fires the more the road bends 30 m ahead, either way.', tune: () => 0, tag: () => '' },
+  { id: 'bias', label: 'Bias', sym: 'metronome', n: 1, max: 1, cost: 0, about: 'Always on. Lets a neuron fire with no other input. Free.', tune: () => 0, tag: () => '' },
+];
+const WHEELS = [['fl', 'Front-left'], ['fr', 'Front-right'], ['rl', 'Rear-left'], ['rr', 'Rear-right']].map(([id, label]) => ({ id: 'o:' + id, label }));
+const S = { layers: [5], w: new Map(), sel: null };
+
+// stable pseudo-random weights for the mock (a "trained" look)
+function hashW(key) { let h = 2166136261; for (const c of key) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (((h >>> 0) % 2001) / 1000 - 1) * 1.6; }
+function inputIds() { const out = []; for (const s of SENSES) for (let k = 0; k < s.n; k++) out.push(`i:${s.id}:${k}`); return out; }
+function layerIds(L) { return Array.from({ length: S.layers[L] }, (_, k) => `h${L}:${k}`); }
+function allLayers() { return [inputIds(), ...S.layers.map((_, L) => layerIds(L)), WHEELS.map((w) => w.id)]; }
+function wires() { const L = allLayers(), out = []; for (let i = 0; i < L.length - 1; i++) for (const a of L[i]) for (const b of L[i + 1]) { const k = a + '|' + b; if (!S.w.has(k)) S.w.set(k, hashW(k)); out.push([a, b, S.w.get(k)]); } return out; }
+
+// ---- the replay the brain runs on (a stand-in for "your last drive") ----
+function senses(t) {
+  const T = t % 60, c = Math.sin(T * 0.55) * 0.9, front = clamp(0.15 + 0.85 * Math.max(0, Math.sin(T * 0.7 - 1)) ** 2, 0, 1);
+  const heading = (T * 22) % 360, x = 40 * Math.cos(T * 0.25), y = 30 * Math.sin(T * 0.3);
+  const out = {};
+  const s = (id) => SENSES.find((q) => q.id === id);
+  for (let k = 0; k < s('walls').n; k++) { const d = s('walls').tune(k, s('walls').n) * Math.PI / 180; out[`i:walls:${k}`] = clamp(0.2 + 0.55 * c * Math.sin(d) + front * Math.cos(d) ** 4 * 0.8, 0, 1); }
+  const fin = Math.max(0, 1 - Math.abs((T % 20) - 17) / 3);
+  for (let k = 0; k < s('finish').n; k++) { const d = s('finish').tune(k, s('finish').n) * Math.PI / 180; out[`i:finish:${k}`] = clamp(fin * (0.5 + 0.5 * Math.cos(d - 0.3)), 0, 1); }
+  for (let k = 0; k < s('hd').n; k++) out[`i:hd:${k}`] = Math.cos((heading - s('hd').tune(k, s('hd').n)) * Math.PI / 180);
+  for (let k = 0; k < s('grid').n; k++) { const sc = k % 2 ? 26 : 11, ph = Math.floor(k / 2) * 2.1; let g = 0; for (let a = 0; a < 3; a++) { const th = a * Math.PI / 3; g += Math.cos((x * Math.cos(th) + y * Math.sin(th)) / sc * 2 * Math.PI + ph); } out[`i:grid:${k}`] = clamp((g + 1.5) / 4.5, 0, 1); }
+  out['i:speed:0'] = clamp(0.55 + 0.35 * Math.sin(T * 0.5 + 1), 0, 1);
+  out['i:road:0'] = Math.abs(c);
+  out['i:energy:0'] = 1 - T / 60 * 0.62;
+  out['i:bias:0'] = 1;
+  return { values: out, heading, x, y, c, speed: out['i:speed:0'], energyLeft: out['i:energy:0'] };
+}
+function forward(inp) {
+  const act = new Map(Object.entries(inp)); const L = allLayers(); const W = new Map(wires().map(([a, b, w]) => [a + '|' + b, w]));
+  for (let i = 1; i < L.length; i++) for (const b of L[i]) { let z = 0; for (const a of L[i - 1]) z += (act.get(a) ?? 0) * (W.get(a + '|' + b) ?? 0); act.set(b, FX[fn].f(z * 0.7)); }
+  return act;
+}
+const rateOf = (id, v) => id.startsWith('i:hd') ? (v + 1) / 2 : id.startsWith('i:') ? clamp(v, 0, 1) : FX[fn].rate(v);
+
+// ---- layout ----
+const svg = $('net'), board = $('board');
+let P = new Map(), box = { w: 1000, h: 600 }, car = null, tileRects = [];
+function layout() {
+  const r = board.getBoundingClientRect(); box = { w: r.width, h: r.height };
+  svg.setAttribute('viewBox', `0 0 ${box.w} ${box.h}`);
+  P = new Map(); tileRects = [];
+  const tiles = [...$('tiles').children];
+  tiles.forEach((t, i) => {
+    const tr = t.getBoundingClientRect(); const s = SENSES[i];
+    const rect = { x: tr.left - r.left, y: tr.top - r.top, w: tr.width, h: tr.height }; tileRects.push(rect);
+    const n = s.n, x = rect.x + rect.w - 16;
+    for (let k = 0; k < n; k++) P.set(`i:${s.id}:${k}`, { x, y: rect.y + rect.h * (n === 1 ? 0.55 : 0.32 + 0.48 * k / (n - 1)), kind: 'in', s, k });
+  });
+  const carW = Math.min(box.w * 0.25, 300), carH = carW * 0.5;
+  car = { cx: box.w - carW / 2 - 64, cy: box.h / 2, W: carW, H: carH };
+  const x0 = tileRects[0] ? tileRects[0].x + tileRects[0].w + 120 : 300, x1 = car.cx - carW / 2 - 110;
+  S.layers.forEach((n, L) => {
+    const x = S.layers.length === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * L / (S.layers.length - 1);
+    const step = Math.min(60, (box.h - 140) / Math.max(n - 1, 1));
+    layerIds(L).forEach((id, k) => P.set(id, { x, y: box.h / 2 + (k - (n - 1) / 2) * step, kind: 'mid', L }));
+  });
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([fx, sy], i) => P.set(WHEELS[i].id, { x: car.cx + (fx < 0 ? -1 : 1) * 0 + (i < 2 ? 0.28 : -0.28) * car.W, y: car.cy + (i % 2 === 0 ? -1 : 1) * car.H * 0.5, kind: 'out', i }));
+}
+
+const flash = new Map(), phase = new Map();
+function render() {
+  layout(); svg.innerHTML = '';
+  const g0 = el('g', { 'pointer-events': 'none' }, svg);
+  const head = (x, t) => { const e = el('text', { x, y: 22, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, 'letter-spacing': '1.3', style: 'fill:var(--muted)', 'font-family': 'Atkinson Hyperlegible, sans-serif' }, g0); e.textContent = t; };
+  head(tileRects[0] ? tileRects[0].x + tileRects[0].w / 2 : 110, 'SENSES');
+  const xs = [...new Set([...P.values()].filter((p) => p.kind === 'mid').map((p) => p.x))];
+  head(xs.length ? (xs[0] + xs[xs.length - 1]) / 2 : box.w / 2, S.layers.length > 1 ? 'CORTEX · HIDDEN LAYERS' : 'CORTEX · HIDDEN LAYER');
+  head(car.cx, 'BODY · THE CAR');
+  // car, front to the right
+  const { cx, cy, W, H } = car, w = W / 2, h = H / 2;
+  el('path', { d: `M ${cx - w} ${cy - h * .8} Q ${cx - w} ${cy - h} ${cx - w * .86} ${cy - h} L ${cx + w * .55} ${cy - h} L ${cx + w} ${cy - h * .78} Q ${cx + w * 1.08} ${cy} ${cx + w} ${cy + h * .78} L ${cx + w * .55} ${cy + h} L ${cx - w * .86} ${cy + h} Q ${cx - w} ${cy + h} ${cx - w} ${cy + h * .8} Z`, style: 'fill:var(--car);fill-opacity:.1;stroke:var(--car);stroke-opacity:.35', 'stroke-width': 1.5 }, g0);
+  el('path', { d: `M ${cx - w * .32} ${cy - h * .6} Q ${cx + w * .46} ${cy - h * .66} ${cx + w * .32} ${cy} Q ${cx + w * .46} ${cy + h * .66} ${cx - w * .32} ${cy + h * .6} Z`, style: 'fill:var(--car);fill-opacity:.12;stroke:var(--car);stroke-opacity:.25' }, g0);
+  el('path', { d: `M ${cx + w + 10} ${cy} l -8 -6 m 8 6 l -8 6`, style: 'stroke:var(--muted)', 'stroke-width': 1.6, fill: 'none', 'stroke-linecap': 'round' }, g0);
+  el('text', { x: cx + w + 16, y: cy + 4, 'font-size': 10.5, style: 'fill:var(--muted)', 'font-family': 'Atkinson Hyperlegible, sans-serif' }, g0).textContent = 'front';
+  // wires
+  const wg = el('g', {}, svg);
+  for (const [a, b, wt] of wires()) {
+    const p = P.get(a), q = P.get(b); if (!p || !q) continue;
+    const m = Math.min(1, Math.abs(wt)), col = wt >= 0 ? `rgb(${Math.round(17 + m * 30)},${Math.round(17 + m * 151)},${Math.round(17 + m * 62)})` : `rgb(${Math.round(17 + m * 200)},${Math.round(17 + m * 53)},${Math.round(17 + m * 74)})`;
+    const hot = S.sel && (a === S.sel || b === S.sel);
+    const x1 = p.x + 7, x2 = q.x - (q.kind === 'out' ? 13 : 17), dx = x2 - x1;
+    el('path', { d: `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`, fill: 'none', style: `stroke:${col}`, 'stroke-width': 0.5 + Math.abs(wt) * 1.3, opacity: S.sel && !hot ? .12 : 0.25 + m * 0.6, 'stroke-linecap': 'round' }, wg);
+  }
+  // cells
+  for (const [id, p] of P) {
+    const g = el('g', { 'data-id': id, style: 'cursor:pointer', tabindex: 0, role: 'button' }, svg);
+    const sel = S.sel === id;
+    if (p.kind === 'in') {
+      el('circle', { cx: p.x, cy: p.y, r: 7, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--muted)'}`, 'stroke-width': sel ? 2.5 : 1.3 }, g);
+      el('circle', { cx: p.x, cy: p.y, r: 5, class: 'spk', 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
+    } else if (p.kind === 'mid') {
+      el('circle', { cx: p.x, cy: p.y, r: 17, style: `fill:${sel ? 'var(--accent-soft)' : 'var(--node)'};stroke:${sel ? 'var(--accent)' : 'var(--muted)'}`, 'stroke-width': sel ? 2.5 : 1.5 }, g);
+      el('circle', { cx: p.x, cy: p.y, r: 15, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
+      el('path', { d: FX[fn].g, transform: `translate(${p.x} ${p.y})`, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    } else {
+      el('rect', { x: p.x - 13, y: p.y - 8, width: 26, height: 16, rx: 4, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--car)'}`, 'stroke-width': sel ? 2.5 : 1.5 }, g);
+      el('rect', { x: p.x - 11, y: p.y - 6, width: 22, height: 12, rx: 3, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
+      el('path', { 'data-arrow': id, d: '', style: 'stroke:var(--accent);fill:none', 'stroke-width': 2, 'stroke-linecap': 'round' }, g);
+      el('text', { x: p.x, y: p.y + (p.i % 2 === 0 ? -14 : 24), 'text-anchor': 'middle', 'font-size': 10.5, style: 'fill:var(--muted)', 'font-family': 'Atkinson Hyperlegible, sans-serif' }, g).textContent = WHEELS[p.i].label;
+    }
+    g.addEventListener('click', () => { S.sel = S.sel === id ? null : id; render(); inspect(); });
+  }
+  // per-layer add
+  S.layers.forEach((n, L) => {
+    const ids = layerIds(L), last = P.get(ids[ids.length - 1]); if (!last) return;
+    const add = el('g', { style: 'cursor:pointer', role: 'button', tabindex: 0 }, svg);
+    el('circle', { cx: last.x, cy: last.y + 36, r: 11, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
+    el('path', { d: `M ${last.x - 5} ${last.y + 36} H ${last.x + 5} M ${last.x} ${last.y + 31} V ${last.y + 41}`, style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, add);
+    add.addEventListener('click', () => { if (S.layers[L] < 8) { S.layers[L]++; render(); } });
+  });
+  energyMeter();
+}
+let baseBrain = 50;
+function showAlloc(firing) {
+  const brain = clamp(baseBrain + firing, 0, 100);
+  $('aFill').style.width = `${brain}%`;
+  $('aBrain').textContent = `${Math.round(brain)}%`;
+  $('aSpeed').textContent = `${Math.round(100 - brain)}% · top ${Math.round(60 * (100 - brain) / 100)} m/s`;
+}
+function energyMeter() {
+  let sens = 0; for (const s of SENSES) sens += s.n * s.cost;
+  const neur = S.layers.reduce((a, n) => a + n, 0) * FX[fn].cost + 4 * FX[fn].cost * 0.6;
+  const wire = wires().length * 0.12;
+  baseBrain = clamp((sens + neur + wire) * 0.62, 0, 100); // illustrative scale: the Starter sits near the 50/50 mean car
+}
+function inspect() {
+  const box2 = $('insp'), id = S.sel, p = id && P.get(id);
+  if (!p) { box2.innerHTML = `<h2>Selected</h2><p class="note">Nothing. Click a sense’s cell, a neuron or a wheel.</p>`; return; }
+  if (p.kind === 'in') { const s = p.s, d = s.tune(p.k, s.n); box2.innerHTML = `<h2>${s.label}${s.n > 1 ? ` · cell ${p.k + 1} of ${s.n}` : ''}</h2><p class="note">${s.about}</p><dl class="kv" style="margin-top:8px">${s.tag(s.id === 'grid' ? p.k : d) ? `<dt>Tuning</dt><dd>${s.tag(s.id === 'grid' ? p.k : d)}</dd>` : ''}<dt>Cost when wired</dt><dd>${s.cost ? s.cost + '%' : 'free'}</dd></dl>`; return; }
+  if (p.kind === 'mid') { box2.innerHTML = `<h2>Neuron · hidden layer ${p.L + 1}</h2><p class="note">A ${FX[fn].n} neuron, like every neuron in this brain. It adds up its inputs, each times its wire’s weight, passes the total through ${FX[fn].n.toLowerCase()} and fires at the result. Change the type for the whole brain in the top bar.</p>`; return; }
+  box2.innerHTML = `<h2>Motor neuron · ${WHEELS[p.i].label} wheel</h2><p class="note">Its firing rate sets the wheel: 0 is full reverse, half is stop, full rate is full forward. The arrow shows the wheel’s speed.</p>`;
+}
+
+// ---- tiles + type selector ----
+function buildTiles() {
+  $('tiles').innerHTML = SENSES.map((s) => `<div class="tile" data-s="${s.id}"><span class="lab">${s.label}</span><span class="sub">${s.n} cell${s.n === 1 ? '' : 's'}${s.cost ? ` · ${s.cost}% each` : ' · free'}</span>${s.max > 1 ? `<button class="add" type="button" aria-label="Add a ${s.label} cell" ${s.n >= s.max ? 'disabled' : ''}>+</button>` : ''}</div>`).join('');
+  $('tiles').querySelectorAll('.add').forEach((b) => b.addEventListener('click', () => { const s = SENSES.find((q) => q.id === b.parentElement.dataset.s); if (s.n < s.max) { s.n++; buildTiles(); render(); } }));
+}
+$('types').innerHTML = Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${k === fn}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('');
+$('types').querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => { fn = b.dataset.fx; $('types').querySelectorAll('[data-fx]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); render(); inspect(); }));
+
+// ---- 3-D symbols: one WebGL layer, one viewport per tile ----
+const gl = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const dark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.92, metalness: 0, flatShading: true });
+function scene(build) { const s = new THREE.Scene(); s.add(new THREE.HemisphereLight(0xffffff, 0x8890a0, 1.6)); const d = new THREE.DirectionalLight(0xffffff, 1.4); d.position.set(2, 3, 4); s.add(d); const g = new THREE.Group(); s.add(g); const upd = build(g) || (() => {}); return { s, g, upd }; }
+const SYM = {
+  wall: scene((g) => { const m1 = mat(0xd98a6c), m2 = mat(0xc5755a); for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.3, 0.4), (r + c) % 2 ? m1 : m2); b.position.set((c - 1.5) * 0.66 + (r % 2) * 0.33 - 0.16, r * 0.33 - 0.5, 0); g.add(b); } return (t) => { g.rotation.y = Math.sin(t * 0.6) * 0.5; g.rotation.x = 0.25; }; }),
+  flag: scene((g) => { const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), mat(0x8a8f99)); pole.position.x = -0.9; g.add(pole); const geo = new THREE.PlaneGeometry(1.6, 1, 8, 5); const cols = []; const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) { const c = (Math.floor((pos.getX(i) + 0.8) * 4) + Math.floor((pos.getY(i) + 0.5) * 4)) % 2 ? 0.95 : 0.12; cols.push(c, c, c); } geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); const flag = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, side: THREE.DoubleSide })); flag.position.set(-0.1, 0.55, 0); g.add(flag); const base = pos.array.slice(); return (t) => { for (let i = 0; i < pos.count; i++) { const x = base[i * 3]; pos.setZ(i, Math.sin(x * 3 + t * 4) * 0.12 * (x + 0.8)); } pos.needsUpdate = true; geo.computeVertexNormals(); g.rotation.y = -0.4; }; }),
+  arrow: scene((g) => { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.12, 6, 28, Math.PI * 1.6), mat(0x5b8def)); g.add(ring); const tip = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 6), mat(0x5b8def)); tip.position.set(0.85 * Math.cos(Math.PI * 1.6), 0.85 * Math.sin(Math.PI * 1.6), 0); tip.rotation.z = Math.PI * 1.6; g.add(tip); return (t, st) => { g.rotation.set(0.9, 0, -st.heading * Math.PI / 180); }; }),
+  hex: scene((g) => { const m = mat(0x3fb3a3), geo = new THREE.CylinderGeometry(0.16, 0.16, 0.12, 6); const grid = new THREE.Group(); for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) { const c = new THREE.Mesh(geo, m); c.position.set(i * 0.5 + (j % 2) * 0.25, 0, j * 0.433); grid.add(c); } g.add(grid); return (t, st) => { grid.position.set(((st.x * 0.05) % 0.5), 0, ((st.y * 0.05) % 0.866)); g.rotation.x = 0.7; }; }),
+  gauge: scene((g) => { const dial = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.15, 20, 1, false, 0, Math.PI), mat(0xb9c0cc)); dial.rotation.x = Math.PI / 2; dial.rotation.y = Math.PI / 2; g.add(dial); const needle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.85, 0.08), mat(0xe25a4a)); needle.geometry.translate(0, 0.42, 0); needle.position.z = 0.12; g.add(needle); return (t, st) => { needle.rotation.z = Math.PI / 2 - st.speed * Math.PI; g.position.y = -0.35; }; }),
+  sign: scene((g) => { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 6), mat(0x8a8f99)); post.position.y = -0.5; g.add(post); const plate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.08), mat(0x56b06b)); plate.position.y = 0.45; g.add(plate); const arrow = new THREE.Group(); const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.5, 0.06), mat(0xf6f7f9)); shaft.position.y = -0.1; arrow.add(shaft); const head = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.25, 3), mat(0xf6f7f9)); head.position.y = 0.25; arrow.add(head); arrow.position.set(0, 0.45, 0.07); g.add(arrow); return (t, st) => { arrow.rotation.z = -st.c * 0.9; g.rotation.y = Math.sin(t * 0.5) * 0.3; }; }),
+  battery: scene((g) => { const shell = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xb9c0cc, roughness: 0.9, transparent: true, opacity: 0.35, flatShading: true })); g.add(shell); const cap = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.3), mat(0x8a8f99)); cap.position.y = 0.82; g.add(cap); const fill = new THREE.Mesh(new THREE.BoxGeometry(0.76, 1.36, 0.36), mat(0x5fc070)); fill.geometry.translate(0, 0.68, 0); fill.position.y = -0.68; g.add(fill); return (t, st) => { fill.scale.y = Math.max(0.02, st.energyLeft); fill.material.color.setHSL(0.33 * st.energyLeft, 0.45, 0.55); g.rotation.y = 0.5 + Math.sin(t * 0.4) * 0.3; }; }),
+  metronome: scene((g) => { const body = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.7, 4), mat(0xb98a5a)); body.rotation.y = Math.PI / 4; g.add(body); const arm = new THREE.Group(); const rod = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 0.06), mat(0x40444c)); rod.position.y = 0.55; arm.add(rod); const wgt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.12), mat(0x40444c)); wgt.position.y = 0.85; arm.add(wgt); arm.position.set(0, -0.5, 0.42); g.add(arm); return (t) => { arm.rotation.z = Math.sin(t * Math.PI * 2 * 1.2) * 0.45; }; }),
+};
+const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 50); cam.position.set(0, 0.2, 5.2); cam.lookAt(0, 0, 0);
+function drawSymbols(t, st) {
+  const r = board.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
+  renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
+  SENSES.forEach((s, i) => {
+    const rect = tileRects[i]; if (!rect) return;
+    const size = Math.min(rect.h - 18, rect.w - 70), x = rect.x + 18, y = r.height - (rect.y + rect.h / 2 + size / 2) + 4;
+    if (size < 10) return;
+    renderer.setViewport(x, y, size * 1.25, size); renderer.setScissor(x, y, size * 1.25, size);
+    cam.aspect = 1.25; cam.updateProjectionMatrix();
+    const sym = SYM[s.sym]; sym.upd(t, st); renderer.render(sym.s, cam);
+  });
+}
+
+// ---- the always-running loop ----
+let last = performance.now(), simT = 8;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; simT += dt;
+  const st = senses(simT); const act = forward(st.values);
+  for (const [id, v] of act) {
+    const rate = rateOf(id, v); const node = svg.querySelector(`[data-spk="${CSS.escape(id)}"]`); if (!node) continue;
+    if (reduce) { node.setAttribute('opacity', (rate * 0.85).toFixed(2)); continue; }
+    let ph = (phase.get(id) ?? Math.random()) + rate * MAX_HZ * dt; let fl = flash.get(id) ?? 0;
+    if (ph >= 1) { ph -= Math.floor(ph); fl = 1; }
+    fl = Math.max(0, fl - dt * 9); phase.set(id, ph); flash.set(id, fl);
+    node.setAttribute('opacity', fl.toFixed(2));
+    if (id.startsWith('o:')) { const p = P.get(id); const sp = FX[fn].rate(v) * 2 - 1; const a = svg.querySelector(`[data-arrow="${CSS.escape(id)}"]`); if (a && p) { const L = 22 * sp, x0 = p.x + 15 * Math.sign(sp || 1); a.setAttribute('d', Math.abs(sp) < 0.05 ? '' : `M ${x0} ${p.y} h ${L} m 0 0 l ${-5 * Math.sign(sp)} -4 m ${5 * Math.sign(sp)} 4 l ${-5 * Math.sign(sp)} 4`); } }
+  }
+  let busy = 0, cnt = 0; for (const [id, v] of act) if (!id.startsWith('i:')) { busy += rateOf(id, v); cnt++; }
+  showAlloc(cnt ? (busy / cnt - 0.5) * 12 : 0);
+  drawSymbols(simT, st);
+  $('clock').textContent = `Replaying your last drive · ${Math.floor(simT % 60)} s of 60`;
+  requestAnimationFrame(frame);
+}
+$('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
+addEventListener('resize', render);
+buildTiles(); S.sel = 'h0:2'; render(); inspect(); requestAnimationFrame(frame);
+</script>
