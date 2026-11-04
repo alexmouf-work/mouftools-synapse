@@ -197,3 +197,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   highlighted in blue, vs CPU in yellow, sandbox will look more boring."
 - Music rights: asked "Do you have the artist's permission (or a licence) to use it in Synapse?" → "Yes, I have
   permission". · "music sounds really good to me, across the board. please implement it all." → builder.
+- "here's some more music, named appropriately." (sandbox music: "Airport Lounge", Kevin MacLeod; winner music) ·
+  winner music rights: "I have a licence for it" · when it plays: "When you win a race (Recommended)".
