@@ -76,7 +76,7 @@ function icon(k: InPinUi['k'], g: Element, deg = 0) {
   if (k === 'speed') { el('path', { d: 'M-6 3 A6.5 6.5 0 1 1 6 3', ...s }, g); el('path', { d: 'M0 1 L4 -3', ...s }, g); }
   if (k === 'road') el('path', { d: 'M-5 6 C-5 0 0 -2 5 -6 M1 -6 H5 V-2', ...s }, g);
   if (k === 'energy') el('path', { d: 'M1 -7 L-4 1 H0 L-1 7 L4 -1 H0 Z', ...s }, g);
-  if (k === 'bias') el('text', { y: 4.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, style: 'fill:currentColor', 'font-family': 'IBM Plex Mono, monospace' }, g).textContent = '1';
+  if (k === 'bias') el('text', { y: 4.5, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, style: 'fill:currentColor', 'font-family': 'Arial, Helvetica, sans-serif' }, g).textContent = '1';
 }
 function wheelIcon(g: Element, at: [number, number]) { // tiny car with this wheel lit
   el('rect', { x: -3.5, y: -7.5, width: 7, height: 15, rx: 2.5, style: 'fill:none;stroke:currentColor', 'stroke-width': 1.2, opacity: 0.5 }, g);
@@ -152,7 +152,7 @@ function drawCar(g: Element) {
   for (const [sx, sy] of [[-1, -0.56], [1, -0.56], [-1, 0.56], [1, 0.56]]) el('rect', { x: cx + sx * w - Wd * 0.13, y: cy + sy * h - H * 0.11, width: Wd * 0.26, height: H * 0.22, rx: Wd * 0.06, style: 'fill:var(--car);fill-opacity:.22;stroke:var(--car);stroke-opacity:.35' }, g);
 }
 function heading(g: Element, x: number, y: number, text: string) {
-  el('text', { x, y, 'text-anchor': 'middle', 'font-size': 11, 'letter-spacing': '1.2', style: 'fill:var(--muted)', 'font-weight': 700, 'font-family': 'Atkinson Hyperlegible, sans-serif' }, g).textContent = text;
+  el('text', { x, y, 'text-anchor': 'middle', 'font-size': 11, 'letter-spacing': '1.2', style: 'fill:var(--muted)', 'font-weight': 700, 'font-family': 'Arial, Helvetica, sans-serif' }, g).textContent = text;
 }
 function drawFrame(g: Element) {
   const top = 20;
@@ -251,7 +251,7 @@ function render() {
       if (!isIn) { lx = p.x + r + 8; ly = p.y + 4.5; anchor = 'start'; }
       if (p.side === 'in' && p.pin.ring === 0) ly = p.y - r - 7;
       if (p.side === 'in' && p.pin.at) { lx = p.x + r + 6; ly = p.y + 4.5; anchor = 'start'; }
-      const label = el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'lbl', style: `fill:${on ? 'var(--text)' : 'var(--muted)'}`, 'font-size': 11.5, 'font-family': 'Atkinson Hyperlegible, sans-serif', 'pointer-events': 'none' }, g);
+      const label = el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'lbl', style: `fill:${on ? 'var(--text)' : 'var(--muted)'}`, 'font-size': 11.5, 'font-family': 'Arial, Helvetica, sans-serif', 'pointer-events': 'none' }, g);
       label.textContent = p.side === 'out' ? p.pin.short : p.pin.label;
       labels.set(id, label as SVGTextElement);
       g.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter') { W.sel = id; render(); } });

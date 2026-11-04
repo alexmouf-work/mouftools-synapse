@@ -1,13 +1,7 @@
-// App entry: fonts (self-hosted), styles, then the workbench. Train opens the training view and Drive the drive view,
+// App entry: styles (one font site-wide: Arial, 400 and 700), then the workbench. Train opens the training view and Drive the drive view,
 // both in the same page (no reload) over one shared 3-D stage. `?view=train` / `?view=drive` open them on load.
 // Sound: the lounge plays on the (sandbox) workbench and the race music in the training and drive views, once the
 // first tap or key has unlocked audio; its files are fetched after first paint.
-import '@fontsource/atkinson-hyperlegible/400.css';
-import '@fontsource/atkinson-hyperlegible/700.css';
-import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
-import '@fontsource/chakra-petch/600.css';
-import '@fontsource/chakra-petch/700-italic.css';
 import './ui/workbench/workbench.css';
 import './ui/training/training.css';
 import { audio, initAudio, isMuted } from './audio/audio';

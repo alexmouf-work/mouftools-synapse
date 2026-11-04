@@ -266,7 +266,7 @@ function drawGraph(gens: GenStat[], T: number) {
   hi = Math.ceil(hi / 100) * 100;
   const X = (t: number) => padL + (w - padL - 4 * pr) * (t / T);
   const Y = (v: number) => padT + (h - padT - padB) * (1 - (v - lo) / (hi - lo));
-  g.font = `${11 * pr}px "IBM Plex Mono", ui-monospace, monospace`;
+  g.font = `${11 * pr}px Arial, Helvetica, sans-serif`;
   g.fillStyle = col('--muted'); g.strokeStyle = col('--line'); g.lineWidth = pr;
   g.textAlign = 'right'; g.textBaseline = 'middle';
   for (const v of [lo, (lo + hi) / 2, hi]) {

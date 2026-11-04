@@ -113,7 +113,7 @@ export class BrainPanel {
       g.globalAlpha = 1;
     }
     // wheel labels with their speed
-    g.font = `${10 * pr}px "IBM Plex Mono", ui-monospace, monospace`; g.textBaseline = 'middle'; g.textAlign = 'left';
+    g.font = `${10 * pr}px Arial, Helvetica, sans-serif`; g.textBaseline = 'middle'; g.textAlign = 'left';
     OUT_UI.forEach((o, k) => {
       const p = this.pos.get(o.id); if (!p) return;
       g.fillStyle = text;

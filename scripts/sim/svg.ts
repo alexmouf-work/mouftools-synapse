@@ -17,7 +17,7 @@ export function trackSvg(t: Track, lines: PathLine[], title: string): string {
   const pad = 30, legendH = 22 * lines.length + 34;
   const vb = `${(x0 - pad).toFixed(0)} ${(y0 - pad - legendH).toFixed(0)} ${(x1 - x0 + 2 * pad).toFixed(0)} ${(y1 - y0 + 2 * pad + legendH).toFixed(0)}`;
   const out: string[] = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" font-family="system-ui, sans-serif" font-size="14">`);
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" font-family="Arial, Helvetica, sans-serif" font-size="14">`);
   out.push(`<rect x="${x0 - pad}" y="${y0 - pad - legendH}" width="${x1 - x0 + 2 * pad}" height="${y1 - y0 + 2 * pad + legendH}" fill="#f7f8fa"/>`);
   out.push(`<polygon points="${L.join(' ')}" fill="#e3e7ee" stroke="#5b6b88" stroke-width="1.2"/>`);
   out.push(`<polygon points="${R.join(' ')}" fill="#f7f8fa" stroke="#5b6b88" stroke-width="1.2"/>`);

@@ -49,7 +49,7 @@ export function makeTextures(aniso: number): Textures {
   return { road, checker, boost, glow, dispose: () => { road.dispose(); checker.dispose(); boost.dispose(); glow.dispose(); } };
 }
 
-/** Text and sign textures for the drive view's stadium (Chakra Petch, as the look mock-up). */
+/** Text and sign textures for the drive view's stadium (Arial bold, the site's one font). */
 export interface StadiumTextures {
   banner(text: string, sub: string, a: string, b: string, fg?: string): THREE.Texture;
   gate(label: string): THREE.Texture;
@@ -58,12 +58,8 @@ export interface StadiumTextures {
   dispose(): void;
 }
 
-/** Waits for the display font so canvas text does not fall back (2.5 s at most). */
+/** Arial is a system font, so there is nothing to wait for. */
 export async function stadiumTextures(aniso: number): Promise<StadiumTextures> {
-  await Promise.race([
-    Promise.all([document.fonts.load('italic 700 64px "Chakra Petch"'), document.fonts.load('600 64px "Chakra Petch"')]),
-    new Promise((r) => setTimeout(r, 2500)),
-  ]).catch(() => {});
   const made: THREE.Texture[] = [];
   const keep = <T extends THREE.Texture>(t: T) => { made.push(t); return t; };
   const lamp = keep(canvasTex(256, 128, (g) => {
@@ -85,14 +81,14 @@ export async function stadiumTextures(aniso: number): Promise<StadiumTextures> {
       const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, a); gr.addColorStop(1, b);
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
       g.fillStyle = 'rgba(255,255,255,.08)'; for (let x = -h; x < w; x += 48) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.lineTo(x + h + 16, 0); g.lineTo(x + 16, h); g.fill(); }
-      g.fillStyle = fg; g.font = 'italic 700 150px "Chakra Petch", "Arial Narrow", sans-serif'; g.textBaseline = 'middle';
+      g.fillStyle = fg; g.font = '700 150px Arial, Helvetica, sans-serif'; g.textBaseline = 'middle';
       g.fillText(text, 48, sub ? 128 : 160);
-      if (sub) { g.font = '600 52px "Chakra Petch", "Arial Narrow", sans-serif'; g.globalAlpha = 0.85; g.fillText(sub, 54, 248); g.globalAlpha = 1; }
+      if (sub) { g.font = '700 52px Arial, Helvetica, sans-serif'; g.globalAlpha = 0.85; g.fillText(sub, 54, 248); g.globalAlpha = 1; }
     }, aniso)),
     gate: (label) => keep(canvasTex(1024, 128, (g, w, h) => {
       g.fillStyle = '#0d1020'; g.fillRect(0, 0, w, h);
       const s = 16; for (let y = 0; y < 2; y++) for (let x = 0; x < w / s; x++) { g.fillStyle = (x + y) % 2 ? '#0d1020' : '#f6f8ff'; g.fillRect(x * s, y * s, s, s); g.fillRect(x * s, h - (2 - y) * s, s, s); }
-      g.fillStyle = '#ffc21a'; g.font = 'italic 700 64px "Chakra Petch", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#ffc21a'; g.font = '700 64px Arial, Helvetica, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(label, w / 2, h / 2 + 2);
     }, aniso)),
     lamp, chevron,

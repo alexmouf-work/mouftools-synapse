@@ -150,8 +150,9 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 
 
 ## src/client
-- `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono; Chakra
-  Petch for the stadium's signs), the workbench, the training view and the drive view in the same page (no reload),
+- `index.html` + `main.ts` — the app: one font site-wide, Arial (Helvetica, sans-serif), weights 400 and 700, no
+  italics, no web fonts (principal 2026-11-04), in CSS, SVG text, canvas text and the stadium's sign textures alike;
+  tabular figures where numbers change. The workbench, the training view and the drive view in the same page (no reload),
   over one shared 3-D stage (`ui/arena.ts`). `?view=train` / `?view=drive` open them on load (`?track=` picks the
   drive's track);
   `?seed=` and `?workers=` override; `?T=` (dev server only) shrinks the budget for the browser checks;
@@ -267,7 +268,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 
 ## Deploy
 Static site. `vite build` → `dist/` (`index.html`, hashed `assets/`: the app ~70 kB JS, the 3-D stage chunk with
-three.js ~570 kB loaded on first Train or Drive, the training worker, self-hosted fonts, the music: lounge 3.8 MB, ten
+three.js ~570 kB loaded on first Train or Drive, the training worker, the music: lounge 3.8 MB, ten
 race phrases 3.3 MB, winner 1.0 MB, fetched after first paint). `vercel.json`: build with
 `npm ci` and `npm run build`, every unknown path rewritten to `index.html`, `assets/` cached for a year (immutable),
 `index.html` no-cache, nosniff and a referrer policy. The principal imports the repo in Vercel and adds the
