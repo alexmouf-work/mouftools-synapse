@@ -9,7 +9,7 @@
   background: var(--accent, #2f6fde); color: #fff; font: 700 14px Arial, Helvetica, sans-serif; cursor: pointer; }
 #notice button:focus-visible, #notice a:focus-visible { outline: 2px solid var(--accent, #2f6fde); outline-offset: 2px; }
 /* while the notice shows, the app and the full-screen views stop above it */
-body.notice-open .app { padding-bottom: var(--notice-h, 0px); }
+/* the designer scales itself into the room above the notice (designer.ts fit), and the title lifts its rail */
 body.notice-open .tv { bottom: var(--notice-h, 0px); }
 .legal-links { margin: auto 0 0; font: 12px Arial, Helvetica, sans-serif; color: var(--muted, #6a7385); }
 .legal-links a { color: inherit; }

@@ -16,9 +16,22 @@
   <meta name="theme-color" content="#15181e" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-<div class="app">
+<div id="title" hidden>
+  <canvas id="titleNet" aria-hidden="true"></canvas>
+  <span class="sounds ti-sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTi" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTi" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
+  <main class="card">
+    <h1>Synapse</h1>
+    <p class="tag">Build a brain. Train it. Race it.</p>
+    <button class="tbtn primary" type="button" id="toMatch" disabled>Multiplayer <span class="soon">soon</span></button>
+    <button class="tbtn cpu" type="button" id="toCpu" disabled>vs CPU <span class="soon">soon</span></button>
+    <button class="tbtn plain" type="button" id="toSandbox">Sandbox</button>
+  </main>
+  <footer class="rail"><span class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a></span>
+    <span class="credits">Music: DM DOKURO · “Airport Lounge” Kevin MacLeod (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)</span></footer>
+</div>
+<div class="app" hidden>
   <header class="top">
-    <span class="word">Synapse</span>
+    <button class="word" type="button" id="toTitle" aria-label="Synapse: back to the title">Synapse</button>
     <div class="tr" id="trainers" role="group" aria-label="Trainer"></div>
     <div class="alloc" aria-label="Energy split: brain power against speed">
       <span>Brain <b id="aBrain"></b></span>
@@ -27,9 +40,9 @@
     </div>
     <button class="btn" type="button" id="reset">Reset</button>
     <button class="btn primary" type="button" id="train">Train</button>
-    <button class="btn sound" id="soundWb" type="button" aria-label="Sound" aria-pressed="true"></button>
+    <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicWb" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxWb" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
   </header>
-  <div class="rulebar"><div class="eq" id="eq" aria-label="Learning rule"></div><p class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a> · Music: DM DOKURO, Kevin MacLeod</p></div>
+  <div class="rulebar"><div class="eq" id="eq" aria-label="Learning rule"></div></div>
   <main class="work">
     <div class="board" id="board">
       <div class="tray" id="tray"></div>
@@ -63,7 +76,7 @@
       <button class="btn primary" id="tvBack" type="button" hidden>Back to workbench</button>
       <button class="btn" id="tvAgain" type="button" hidden>Train again</button>
       <button class="btn" id="tvDrive" type="button" hidden>Drive</button>
-      <button class="btn sound" id="soundTv" type="button" aria-label="Sound" aria-pressed="true"></button>
+      <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
     </div>
   </section>
   <section class="tv-panel tv-graph" aria-label="Fitness per generation">
@@ -93,7 +106,7 @@
       <div class="tv-actions">
         <button class="btn" id="dvNew" type="button">New track</button>
         <button class="btn primary" id="dvBack" type="button">Back to workbench</button>
-        <button class="btn sound" id="soundDv" type="button" aria-label="Sound" aria-pressed="true"></button>
+        <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicDv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxDv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
       </div>
     </section>
     <section class="tv-panel dv-brain" aria-label="Live brain">

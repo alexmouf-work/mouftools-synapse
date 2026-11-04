@@ -2,6 +2,7 @@
 // its own overlay). The stage is created on first use (three.js loads then) and kept; if WebGL is unavailable the
 // views carry on without it and say so.
 import type { Stage } from '../render/stage';
+import { stopRacingSounds } from '../audio/racing';
 
 let stage: Stage | null = null;
 let failed = false;
@@ -31,7 +32,9 @@ export async function getStage(): Promise<Stage | null> {
   return stage;
 }
 
+/** Every change of race view (training ↔ drive, a new run, a new track) starts from silence: no leftover effects. */
 export function showArena(which: 'train' | 'drive'): void {
+  stopRacingSounds();
   document.body.classList.add('training');
   el('arena').hidden = false;
   el('trainOverlay').hidden = which !== 'train';
@@ -39,7 +42,9 @@ export function showArena(which: 'train' | 'drive'): void {
   stage?.resize();
 }
 
+/** Leaving the race views for good (Back, the title): their effects stop; the music carries on. */
 export function hideArena(): void {
+  stopRacingSounds();
   el('arena').hidden = true;
   document.body.classList.remove('training');
 }

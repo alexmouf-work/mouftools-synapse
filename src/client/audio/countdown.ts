@@ -1,7 +1,7 @@
-// The race countdown "5, 4, 3, 2, 1, Go" (docs/plans/2026-11-04-sound.md). With sound on, it follows the music: the
-// numbers come every two beats and Go lands on the drop (music.startRace). Locked or muted, the same spacing runs on a
-// plain timer. Times are performance.now() milliseconds of when each is heard and shown.
-import { audible, ctxToPerf } from './audio';
+// The race countdown "5, 4, 3, 2, 1, Go" (docs/plans/2026-11-04-sound.md). Once audio is unlocked it follows the music
+// clock, whichever toggles are off: the numbers come every two beats and Go lands on the drop (music.startRace). Locked
+// (no gesture yet), the same spacing runs on a plain timer. Times are performance.now() milliseconds of when each is heard and shown.
+import { ctxToPerf, running } from './audio';
 import { BEAT, setMode, startRace } from './music';
 
 export interface Countdown {
@@ -16,7 +16,7 @@ export interface Countdown {
 const LEAD_MS = 300; // plain timer: 5 shows this soon after the request
 
 export function raceCountdown(): Countdown {
-  if (audible()) {
+  if (running()) {
     const r = startRace();
     if (r) return { at: r.ticks.map(ctxToPerf), go: ctxToPerf(r.go), music: true };
   }

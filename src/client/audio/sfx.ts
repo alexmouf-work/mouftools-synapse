@@ -4,6 +4,10 @@
 // the other's (skid-steer cornering). Every parameter moves with setTargetAtTime, so nothing clicks.
 import { audio } from './audio';
 
+/** Every countdown blip scheduled or sounding (so leaving a race can cancel them), and every live engine. */
+const blips: { g: GainNode; osc: OscillatorNode[]; end: number }[] = [];
+const engines = new Set<Engine>();
+
 /** A countdown blip at context time t (Go: the chord). */
 export function blip(t: number, go: boolean): void {
   const b = audio();
@@ -13,6 +17,8 @@ export function blip(t: number, go: boolean): void {
   const g = ctx.createGain();
   g.connect(sfx);
   const len = go ? 0.6 : 0.14;
+  const rec = { g, osc: [] as OscillatorNode[], end: t + len + 0.05 };
+  blips.push(rec);
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(go ? 0.32 : 0.45, t + 0.006);
   g.gain.exponentialRampToValueAtTime(0.001, t + len);
@@ -23,7 +29,33 @@ export function blip(t: number, go: boolean): void {
       og.gain.value = mul === 1 ? 1 / f.length : 0.25 / f.length;
       o.connect(og).connect(g);
       o.start(t); o.stop(t + len + 0.05);
+      rec.osc.push(o);
     }
+  }
+}
+
+/** Racing effects still sounding or scheduled: live engines plus blips not yet over. */
+export function liveSfx(): number {
+  const b = audio();
+  if (!b) return 0;
+  const now = b.ctx.currentTime;
+  for (let i = blips.length - 1; i >= 0; i--) if (blips[i].end <= now) blips.splice(i, 1);
+  return engines.size + blips.length;
+}
+
+/**
+ * Silence every racing effect now: engines fade out (no click) and every countdown blip still to come is cancelled
+ * (a source stopped before it starts never sounds). The music is not touched.
+ */
+export function stopAllSfx(): void {
+  const b = audio();
+  for (const e of [...engines]) e.stop();
+  if (!b) { blips.length = 0; return; }
+  const t = b.ctx.currentTime;
+  for (const r of blips.splice(0)) {
+    r.g.gain.cancelScheduledValues(t);
+    r.g.gain.setTargetAtTime(0, t, 0.01);
+    for (const o of r.osc) { try { o.stop(t + 0.05); } catch { /* already stopped */ } }
   }
 }
 
@@ -70,6 +102,7 @@ export class Engine {
     src.forEach((n) => n.start());
     out.gain.setTargetAtTime(this.level, ctx.currentTime, 0.1);
     this.nodes = { out, whine, whine2, lp, rg, bp, sg, src };
+    engines.add(this);
     return true;
   }
 
@@ -91,6 +124,7 @@ export class Engine {
   stop(): void {
     const n = this.nodes, b = audio();
     this.nodes = null;
+    engines.delete(this);
     if (!n || !b) return;
     const t = b.ctx.currentTime;
     n.out.gain.setTargetAtTime(0, t, 0.08);

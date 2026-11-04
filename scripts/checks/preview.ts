@@ -39,7 +39,9 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`${base}?seed=${SEED}&T=500000`);
-    check(await page.locator('#net').isVisible(), 'the designer loads from the production build');
+    check(await page.locator('#title').isVisible(), 'the production build opens on the title');
+    await page.click('#toSandbox');
+    check(await page.locator('#net').isVisible(), 'Sandbox opens the designer');
     await page.click('#train');
     await page.click(`#gens [data-g="${GENS}"]`);
     await page.click('#tdGo');
@@ -63,7 +65,7 @@ async function main() {
     const aus = await page.evaluate(() => [2, 20, 45].map((t) => window.__drive!.auditAt(t)));
     check(aus.every((a) => a.over === 0), `bloom audit on fixed frames: max ${Math.max(...aus.map((a) => a.max)).toFixed(2)}`);
     await page.goto(`${base}some/deep/link`);
-    check(await page.locator('#net').isVisible(), 'unknown path falls back to the app (SPA)');
+    check(await page.locator('#title').isVisible(), 'unknown path falls back to the app (SPA)');
     await page.close();
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {

@@ -115,7 +115,7 @@ const rowR = () => { const hw = Math.min(...regions.slice(1, -1).map((r) => r.x1
 
 // ---- drawing ----
 function render(): void {
-  if (!active) return;
+  if (!active || !board().clientWidth) return; // hidden (the title shows): nothing to lay out
   layout();
   const g0 = svg(), s = spec();
   g0.innerHTML = '';

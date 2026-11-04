@@ -1,16 +1,18 @@
 // The music (docs/plans/2026-11-04-sound.md; reference implementation of the phrase engine: reference/sound-test.html).
 // Three tracks, each on its own gain (levels from music.json, all measured to the same loudness):
-// - lounge: the sandbox workbench's music ("Airport Lounge", 130 BPM), a 128-bar loop joined on itself with the same
+// - lounge: the sandbox designer's music ("Airport Lounge", 130 BPM), a 128-bar loop joined on itself with the same
 //   one-beat cross-fade the phrase engine uses.
 // - race (and build): one 152 BPM track cut into ten 8-bar phrases, scheduled on the bar grid about a second ahead.
 //   Neighbours in the original join seamlessly (a short splice); jumps cross-fade over one beat on the downbeat. Build
-//   (intro ↔ breakdown) is kept for the match lobbies to come; race runs drive → lift → push → soar and round again.
+//   (intro ↔ breakdown) plays on the title screen; race runs drive → lift → push → soar and round again.
 //   A race start jumps into the intro's build-up (bar 4) and gets back the time of the drop (Go), with the countdown
 //   every two beats before it.
 // - winner: plays once when the player wins (win(); nothing calls it until matches exist), then back to the mode's music.
-// Lounge → race: the tracks differ in tempo and key, so no beat-matching: the intro starts at bar 4 at once and the
-// lounge fades out over 1.5 s. Race → lounge: at the next bar line, a 2 s cross-fade into the lounge's loop start.
-// The lounge is fetched first (the workbench needs it), the rest after it; decoding waits for the first gesture.
+// Between tracks (principal 2026-11-04: "smoothly but quickly transitioning between tracks"): an equal-power
+// cross-fade of about 0.6 s, centred on the next beat of the outgoing track; a race start from the lounge starts the
+// intro's build-up (bar 4) on that beat, so Go still lands on the drop. Same-track joins stay as they are.
+// The title's quiet pool is fetched first, then the lounge, then the rest; decoding waits for the first gesture, and
+// the music never stops after that.
 import meta from '../../assets/music/music.json';
 import { audio, whenReady, type Buses } from './audio';
 import { blip } from './sfx';
@@ -31,7 +33,7 @@ export const BEAT = meta.beat, BAR = meta.bar, PRE = meta.pre;
 const PHRASE_BARS = meta.bars;
 const L = meta.tracks.lounge;
 const LOUNGE_LOOP = L.bars * 4 * L.beat; // s
-const TO_RACE_FADE = 1.5, TO_LOUNGE_FADE = 2, WIN_FADE = 0.5;
+const XFADE = 0.6, WIN_FADE = XFADE; // s: a cross-fade between different tracks
 // what follows what; "natural" pairs were next to each other in the original, so they join seamlessly
 const NEXT: Record<'build' | 'race', Record<string, string>> = {
   build: { intro: 'breakdown', breakdown: 'intro' },
@@ -42,30 +44,34 @@ const NEXT: Record<'build' | 'race', Record<string, string>> = {
 };
 const NATURAL = new Set(['breakdown>intro', 'intro>drive-a', 'drive-a>drive-b', 'drive-b>lift-a', 'lift-a>lift-b', 'lift-b>push-a', 'push-a>push-b', 'push-b>soar-a', 'soar-a>soar-b']);
 
-let mode: Mode = 'lounge';
+let mode: Mode = 'build';
 /** The phrase engine: current and queued phrase (null while the lounge or the winner has the floor). */
 let cur: Playing | null = null, nxt: Playing | null = null;
 /** The lounge loop: current copy and when it ends (null when not playing). */
-let lounge: (Voice & { end: number }) | null = null;
+let lounge: (Voice & { start: number; end: number }) | null = null;
 let winner: (Voice & { end: number }) | null = null;
 let race: RaceStart | null = null;
 const files = new Map<string, Promise<ArrayBuffer>>();
 const buffers = new Map<string, AudioBuffer>();
 let bus: { race: GainNode; lounge: GainNode; winner: GainNode } | null = null;
-let phrasesReady = false, started = false;
+let phrasesReady = false, buildReady = false, started = false;
 
 const fetchBuf = (file: string): Promise<ArrayBuffer> => fetch(urlOf(file)).then((r) => {
   if (!r.ok) throw new Error(`music: ${file} ${r.status}`);
   return r.arrayBuffer();
 });
 
-/** Start fetching (call after first paint; it never blocks the page): the lounge first, then the rest. */
+const BUILD = ['intro', 'breakdown'];
+/** Start fetching (call after first paint; it never blocks the page): the title's pool, then the lounge, then the rest. */
 export function preloadMusic(): void {
   if (files.size) return;
-  const first = fetchBuf(L.file);
-  files.set('lounge', first);
-  const later = first.catch(() => undefined);
-  for (const p of meta.phrases) files.set(p.name, later.then(() => fetchBuf(p.file)));
+  const fileOf = (name: string) => (meta.phrases.find((p) => p.name === name) as { file: string }).file;
+  for (const n of BUILD) files.set(n, fetchBuf(fileOf(n)));
+  const first = Promise.all(BUILD.map((n) => files.get(n))).catch(() => undefined);
+  const lounge = first.then(() => fetchBuf(L.file));
+  files.set('lounge', lounge);
+  const later = lounge.catch(() => undefined);
+  for (const p of meta.phrases) if (!files.has(p.name)) files.set(p.name, later.then(() => fetchBuf(p.file)));
   files.set('winner', later.then(() => fetchBuf(meta.tracks.winner.file)));
   whenReady((b) => { void begin(b); });
 }
@@ -82,11 +88,16 @@ async function begin(b: Buses): Promise<void> {
   const g = (db: number) => { const n = b.ctx.createGain(); n.gain.value = dbGain(db); n.connect(b.music); return n; };
   bus = { race: g(meta.tracks.race.gainDb), lounge: g(L.gainDb), winner: g(meta.tracks.winner.gainDb) };
   setInterval(tick, 50);
+  // each track starts as soon as the screen's own music is decoded; the rest follows
+  await Promise.all(BUILD.map((n) => decode(b, n)));
+  buildReady = true;
+  if (mode === 'build' && !cur) cur = play('intro', b.ctx.currentTime + 0.3, 0, 'butt');
   await decode(b, 'lounge');
-  if (mode === 'lounge') startLounge(b.ctx.currentTime + 0.3, 0.02);
-  await Promise.all(meta.phrases.map((p) => decode(b, p.name)));
+  // the sandbox may have been opened while the lounge was still decoding: the build pool played on until now
+  if (mode === 'lounge' && !lounge && !winner) { if (cur) toLounge(); else startLounge(b.ctx.currentTime + 0.3, 0.02); }
+  await Promise.all(meta.phrases.filter((p) => !BUILD.includes(p.name)).map((p) => decode(b, p.name)));
   phrasesReady = true;
-  if (mode !== 'lounge') enterPhrases(mode);
+  if (mode === 'race' && !cur) enterPhrases('race');
   await decode(b, 'winner');
 }
 
@@ -136,9 +147,9 @@ function release(v: Voice, at: number, dur: number): void {
 
 // ---- the phrase engine (race, build) ----
 
-/** Play phrase `name` so that its bar `fromBar` lands on context time `when`. */
-function play(name: string, when: number, fromBar = 0, join: Join = 'butt'): Playing {
-  const lead = join === 'xfade' ? BEAT / 2 : 0.012;
+/** Play phrase `name` so that its bar `fromBar` lands on context time `when` (join 'track': a cross-track fade-in). */
+function play(name: string, when: number, fromBar = 0, join: Join | 'track' = 'butt'): Playing {
+  const lead = join === 'track' ? XFADE / 2 : join === 'xfade' ? BEAT / 2 : 0.012;
   const v = voice(name, (bus as NonNullable<typeof bus>).race, when - lead, PRE + fromBar * BAR - lead, lead * 2 > 0.03 ? lead * 2 : 0.024);
   return { ...v, name, at: when, bar0: when - fromBar * BAR, end: when + (PHRASE_BARS - fromBar) * BAR };
 }
@@ -162,6 +173,14 @@ function cancelNext(): void {
   try { cur.src.stop(cur.end + 2 * BEAT); } catch { /* already stopping */ }
 }
 
+/** The next beat of the track playing now (the lounge's or the race track's), at least 0.1 s away. */
+function nextBeat(): number {
+  const t = now() + 0.1;
+  if (lounge) return lounge.start + Math.ceil((t - lounge.start) / L.beat) * L.beat;
+  if (cur) return cur.bar0 + Math.ceil((t - cur.bar0) / BEAT) * BEAT;
+  return t;
+}
+
 /** The next bar line (every `every` bars) of the current phrase at least `min` s away. */
 function nextBar(min = 0.15, every = 1): number {
   const c = cur as Playing;
@@ -182,24 +201,34 @@ function intoBuildUp(): number {
 }
 
 /**
- * The phrase engine takes over in mode m (from the lounge, from silence or after the winner): race starts the intro
- * at bar 4 at once (its build-up, then the drop), build starts the breakdown. Returns the intro's bar 0 (race).
+ * The phrase engine takes over in mode m (from the lounge, or from silence): on the lounge's next beat, race starts the
+ * intro at bar 4 (its build-up, then the drop) and build the intro from its start, with a 0.6 s cross-fade. Returns
+ * the intro's bar 0.
  */
 function enterPhrases(m: 'build' | 'race'): number {
-  const t = now() + 0.1;
-  if (lounge) { release(lounge, now(), TO_RACE_FADE); lounge = null; }
-  cur = m === 'race' ? play('intro', t, 4, 'butt') : play('breakdown', t, 0, 'butt');
+  const t = lounge ? nextBeat() : now() + 0.1;
+  if (lounge) { release(lounge, t - XFADE / 2, XFADE); lounge = null; }
+  cur = play('intro', t, m === 'race' ? 4 : 0, 'track');
   nxt = null;
   return cur.bar0;
 }
 
 // ---- the lounge ----
 
-/** A copy of the lounge loop heard from its loop start at `when` (pre-roll before it), fading in over `fade` s. */
+/** A copy of the lounge loop heard from its loop start at `when`, fading in over `fade` s centred on it. */
 function startLounge(when: number, fade: number): void {
-  const lead = Math.min(fade, L.pre);
+  const lead = Math.min(fade / 2, L.pre);
   const v = voice('lounge', (bus as NonNullable<typeof bus>).lounge, when - lead, L.pre - lead, fade);
-  lounge = { ...v, end: when + LOUNGE_LOOP };
+  lounge = { ...v, start: when, end: when + LOUNGE_LOOP };
+}
+
+/** The phrase engine hands over to the lounge: a 0.6 s cross-fade centred on the outgoing track's next beat. */
+function toLounge(): void {
+  const c = cur as Playing, t = nextBeat();
+  cancelNext();
+  release(c, t - XFADE / 2, XFADE);
+  cur = null;
+  startLounge(t, XFADE);
 }
 
 /** The scheduler: keeps the next phrase (or the next lounge copy) queued about a second ahead. */
@@ -216,7 +245,7 @@ function tick(): void {
     const old = lounge, at = old.end - L.beat / 2;
     release(old, at, L.beat);
     const v = voice('lounge', bus.lounge, at, L.pre - L.beat / 2, L.beat);
-    lounge = { ...v, end: old.end + LOUNGE_LOOP };
+    lounge = { ...v, start: old.end, end: old.end + LOUNGE_LOOP };
   }
   if (!cur) return;
   if (!nxt && cur.end - t < 1.2 && (mode === 'race' || mode === 'build')) {
@@ -231,15 +260,15 @@ function tick(): void {
 /** The mode's music again, fading in over `fade` s (after the winner). */
 function resume(fade: number): void {
   if (mode === 'lounge') { if (buffers.has('lounge')) startLounge(now() + fade, fade); return; }
-  if (!phrasesReady) return;
+  if (mode === 'race' ? !phrasesReady : !buildReady) return;
   const t = now() + fade;
-  cur = mode === 'race' ? play('drive-a', t, 0, 'xfade') : play('breakdown', t, 0, 'xfade');
+  cur = mode === 'race' ? play('drive-a', t, 0, 'track') : play('breakdown', t, 0, 'track');
   nxt = null;
 }
 
 /**
- * Sandbox workbench = lounge; training and drive = race; build is for the match lobbies to come. Before the music has
- * started, it only records the mode to start in.
+ * Title = build (the race track's quiet pool); sandbox designer = lounge; training and drive = race. Before the music
+ * has started, it only records the mode to start in.
  */
 export function setMode(m: Mode): void {
   if (m === mode) return;
@@ -249,15 +278,11 @@ export function setMode(m: Mode): void {
   if (!bus || winner) return; // not started yet, or the winner hands over when it ends
   tick();
   if (m === 'lounge') {
-    if (!cur) { if (!lounge && buffers.has('lounge')) startLounge(now() + 0.1, TO_LOUNGE_FADE); return; }
-    const t = nextBar();
-    cancelNext();
-    release(cur, t, TO_LOUNGE_FADE);
-    cur = null;
-    startLounge(t, TO_LOUNGE_FADE);
+    if (!cur) { if (!lounge && buffers.has('lounge')) startLounge(now() + 0.1, XFADE); return; }
+    if (buffers.has('lounge')) toLounge(); // else still decoding: the phrase engine plays on, begin() crosses when ready
     return;
   }
-  if (!phrasesReady) return; // begin() enters the phrase engine once they are decoded
+  if (m === 'race' ? !phrasesReady : !buildReady) return; // begin() enters the phrase engine once they are decoded
   if (was === 'lounge' || !cur) { enterPhrases(m); return; }
   if (m === 'race') { intoBuildUp(); return; }
   // race → build: into the breakdown at the next half-phrase (4-bar) line
@@ -270,6 +295,9 @@ export function setMode(m: Mode): void {
 }
 
 export interface RaceStart { ticks: number[]; go: number }
+
+/** Forget a race start in progress (leaving a race: its blips are cancelled by sfx, so a new start must not share it). */
+export function cancelRace(): void { race = null; }
 
 /**
  * A race start that follows the music: into the intro's build-up, countdown blips every two beats from bar 6 beat 3,

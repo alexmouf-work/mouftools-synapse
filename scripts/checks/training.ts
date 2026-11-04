@@ -60,7 +60,7 @@ async function main() {
 
   try {
     // 1. train from the designer
-    let page = await open(`?seed=${SEED}&T=${T}`);
+    let page = await open(`?seed=${SEED}&T=${T}&view=sandbox`);
     await train(page);
     await page.waitForFunction(() => (window.__training?.frames ?? 0) > 2, null, { timeout: 120_000 });
     const pr = await page.evaluate(() => window.__training!.probe!());

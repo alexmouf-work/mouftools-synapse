@@ -148,6 +148,11 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   drive's track);
   `?seed=` and `?workers=` override; `?T=` (dev server only) shrinks the budget for the browser checks;
   `?quality=low|high` overrides the renderer's choice.
+- `ui/title/` — the title screen (B2c; a port of `reference/title-screen-mockup.html`), which the page opens on: the
+  card ("Synapse", "Build a brain. Train it. Race it.", Multiplayer in blue and vs CPU in yellow, both disabled with
+  "soon" until B7/B8, Sandbox plain), a quiet wired brain firing behind it (still under reduced motion), and the rail
+  along its foot with Privacy · Terms · Cookies and the music credits (above the storage notice while it shows).
+  Sandbox opens the designer; the designer's "Synapse" wordmark comes back. `?view=sandbox|train|drive` skip it.
 - `ui/designer/` — the brain designer (the workbench; B3), a port of `reference/brain-v2-mockup.html` (the UI spec)
   onto the engine: `designer.css` (the mock-up's styles), `designer.ts` (layout in equal column regions, the tray of
   senses, sense cells as 3-D symbol circles, lines of identical neurons with a function header, the car whose wheels
@@ -160,8 +165,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   "Learning Rule : …" strip; Train asks how many generations), `symbols.ts` (three.js symbols, loaded after first
   paint, one viewport per tray tile and sense cell; build mode is still, so only a gentle idle motion), `store.ts`.
   One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows); portrait phones get the
-  "turn sideways" card. Additions to the mock-up: the sound button in the top bar, the legal and credits line at the
-  right end of the rule strip. No Drive button: the drive view is reached after training.
+  "turn sideways" card. Additions to the mock-up: the Music and Sound effects toggles in the top bar; the
+  wordmark is the way back to the title. No Drive button: the drive view is reached after training.
 - Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
   {seed, phases}, genome}` (canonical genome JSON). Reads and writes are in try/catch: a missing save starts from the
   starting brain; an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
@@ -224,18 +229,24 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   it out.
 - `audio/` — sound (plan: `docs/plans/2026-11-04-sound.md`); client only, src/common has none. `audio.ts`: one
   AudioContext created on the first pointerdown, keydown or touchstart (browsers need a gesture), master → music and
-  effects buses, mute (localStorage `synapse.sound`, the speaker buttons `button.sound`: pressed = sound on), suspend
-  while the tab is hidden, `ctxToPerf` (context time → when it is heard, via `getOutputTimestamp`). `music.ts`: three
+  effects buses, two toggles (`button.sound.music`, a note, mutes the music bus; `button.sound.sfx`, a speaker, mutes
+  the effects bus; pressed = on; a pair on the title, in the top bar and in both views' action rows; the master stays
+  at 1; localStorage `synapse.sound` as `{"music":true,"sfx":true}`, the old `off` / `on` read as both), no
+  suspending in a hidden or unfocused tab (the toggles are the only off switches), level meters on the master and
+  each bus for the checks, `ctxToPerf` (context time → when it is heard, via `getOutputTimestamp`). `music.ts`: three
   tracks on their own gains from `src/assets/music/music.json` (race −9.0 dB, lounge −0.2 dB, winner −4.1 dB, all to
   −16 LUFS). The race track is ten 8-bar phrases on the bar grid, queued a second ahead (natural neighbours butt-join;
   jumps cross-fade one beat on the downbeat); modes `lounge` (the sandbox workbench: a 128-bar loop joined on itself),
-  `race` (training and drive), `build` (intro ↔ breakdown, for the lobbies to come). `startRace()` jumps into the
+  `race` (training and drive), `build` (intro ↔ breakdown: the title). Between tracks, an equal-power cross-fade of
+  about 0.6 s centred on the outgoing track's next beat; the title's pool is fetched first, then the lounge. `startRace()` jumps into the
   intro's build-up and returns the countdown's context times with Go on the drop; `win()` plays the winner once and
   returns to the mode. Files (`?url` imports via `import.meta.glob`, so hashed and cached as `assets/`) are fetched
   after first paint, the lounge first, and decoded once unlocked. `sfx.ts`: the countdown blips (F♯5; Go F♯–A–C♯ an
   octave up) and `Engine` (motor whine with speed, road roar, tyre squeal when the sides differ; every parameter eased
-  with setTargetAtTime). `countdown.ts`: "5, 4, 3, 2, 1, Go" on the music when sound is on, else a plain timer with the
-  same two-beat spacing. The drive view holds the car on the line until Go and then plays the recorded run from tick
+  with setTargetAtTime). `countdown.ts`: "5, 4, 3, 2, 1, Go" on the music clock once audio is unlocked (whichever toggles
+  are off), else (locked) a plain timer with the same two-beat spacing. `racing.ts`: THE teardown for racing sounds (engines fade, every scheduled countdown blip is
+  cancelled), called by the arena whenever its view changes or it is hidden, which every exit goes through. The
+  drive view holds the car on the line until Go and then plays the recorded run from tick
   0 (hashes unchanged); the training view's solid car has a quieter engine.
 
 ## scripts
@@ -262,11 +273,16 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   both views, bloom audit, `?T=` ignored, deep links fall back to the app, no `/bench` in the build, console clean.
 - `scripts/checks/audio.ts` — sound in headless Chromium (autoplay allowed): locked until the first click, then the
   lounge; Drive → race mode, the countdown 5…1, Go on the music, the car held at tick 0 until Go and moving after,
-  Go on the drop, drive hash = Node; back → the lounge; `win()` plays the winner then the lounge again; a hidden tab
-  suspends; mute silences the master and survives a reload; muted, the countdown runs on the plain timer; console
-  clean.
+  Go on the drop, drive hash = Node; back → the lounge; the music never silent for over 0.8 s from title to back;
+  `win()` plays the winner then the lounge again; leaving training, a countdown or a drive leaves no racing effect;
+  a hidden tab keeps playing; the toggles are independent (music off: the music bus silent, blips and engine heard;
+  effects off: no blip or engine, the music heard), agree across all four pairs and survive a reload; the old
+  `off` / `on` migrates; locked, the countdown runs on the plain timer; console clean.
+- `scripts/checks/title.ts` — the title in headless Chromium: it opens first; Multiplayer (blue) and vs CPU (yellow)
+  disabled with "soon"; Sandbox → designer → wordmark → title; the rail's links resolve and carry the credits, the
+  rule strip doesn't; an overlap audit at 1440×900 and 844×390, light and dark; the notice sits below the rail.
 - `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench,
-  training, drive, production-build, legal and audio checks.
+  training, drive, production-build, legal, audio, icons and title checks.
 
 ## Deploy
 Static site. `vite build` → `dist/` (`index.html`, hashed `assets/`: the app ~70 kB JS, the 3-D stage chunk with

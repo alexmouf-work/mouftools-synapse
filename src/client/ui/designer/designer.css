@@ -100,12 +100,12 @@ dialog#confirm { width: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { .split i { transition: none; } }
 
-/* additions beyond the mock-up: the speaker button in the top bar, the legal and credits line at the right end of
-   the rule strip (small, so the rule stays centred) */
-.app .btn.sound { min-height: 30px; width: 30px; padding: 0; display: inline-grid; place-items: center; border-radius: 0; }
+/* additions beyond the mock-up: the speaker button in the top bar; the wordmark is a button back to the title */
+.top .word { border: 0; background: none; padding: 0; cursor: pointer; color: var(--text); }
+/* the two sound toggles, side by side: Music (a note) and Sound effects (a speaker); pressed = on */
+.sounds { display: inline-flex; gap: 4px; flex: none; }
+.btn.sound { min-height: 30px; width: 30px; padding: 0; display: inline-grid; place-items: center; border-radius: 0; color: var(--text); }
 .btn.sound svg { width: 16px; height: 16px; }
 .btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }
 .btn.sound[aria-pressed="false"] { color: var(--muted); }
-.rulebar { position: relative; }
-.rulebar .legal-links { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); margin: 0; font-size: 9px; line-height: 1; color: var(--muted); white-space: nowrap; }
-.rulebar .legal-links a { color: var(--muted); }
+

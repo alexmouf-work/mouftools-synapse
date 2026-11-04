@@ -1,5 +1,5 @@
 // First-visit storage notice (UK GDPR / PECR). Synapse stores only what it needs to work: the brain you build
-// (`synapse.brain`), whether you turned the sound off (`synapse.sound`) and the fact that you've seen this notice
+// (`synapse.brain`), whether you turned the music or sound effects off (`synapse.sound`) and the fact that you've seen this notice
 // (`synapse.notice`). All are strictly necessary, so no consent is needed; the notice tells you, links the cookie
 // policy, and goes away once dismissed. No cookies are set.
 // Storage can be missing or throw (private windows, blocked site data): the notice then shows and simply can't remember.

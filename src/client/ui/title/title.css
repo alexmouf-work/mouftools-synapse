@@ -1,0 +1,30 @@
+/* The title screen, from reference/title-screen-mockup.html; the rail along the foot is new (B2c: the legal links
+   and the music credits live here). The page's tokens come from the designer's stylesheet. */
+:root { --wire: #b8c0cf; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wire: #3a4252; } }
+:root[data-theme="dark"] { --wire: #3a4252; }
+#title { position: fixed; inset: 0; z-index: 4; background: var(--bg); color: var(--text); font-family: Arial, Helvetica, sans-serif; }
+#title[hidden] { display: none; }
+#titleNet { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#title .card { position: absolute; left: 50%; top: calc((100% - var(--rail-h) - var(--notice-h, 0px)) / 2); transform: translate(-50%, -50%);
+  width: min(340px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line); padding: 22px 22px 20px; text-align: center; }
+#title h1 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -.01em; }
+#title .tag { margin: 6px 0 18px; color: var(--muted); font-size: 14px; }
+#title .tbtn { position: relative; display: block; width: 100%; height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  border-radius: 0; font: inherit; font-size: 16px; cursor: pointer; }
+#title .tbtn + .tbtn { margin-top: 8px; }
+#title .tbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+#title .tbtn.cpu { background: var(--spike); border-color: var(--spike); color: #1d2330; font-weight: 700; }
+#title .tbtn.plain { background: transparent; color: var(--muted); font-size: 15px; }
+#title .tbtn:disabled { cursor: default; opacity: .55; }
+#title .tbtn .soon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 400; opacity: .9; }
+#title .tbtn:focus-visible, #title a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the rail: thin, full width, along the foot (above the storage notice while it shows) */
+:root { --rail-h: 28px; }
+#title .rail { position: absolute; left: 0; right: 0; bottom: var(--notice-h, 0px); height: var(--rail-h); display: flex; align-items: center;
+  justify-content: center; gap: 6px 16px; flex-wrap: wrap; padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line);
+  font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+#title .rail a { color: var(--muted); }
+@media (max-width: 560px) { :root { --rail-h: 44px; } #title .rail { white-space: normal; text-align: center; line-height: 1.3; } }
+/* the sound toggles, top right of the title screen */
+#title .ti-sounds { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 1; }

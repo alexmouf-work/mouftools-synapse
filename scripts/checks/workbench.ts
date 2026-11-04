@@ -1,6 +1,6 @@
 // Designer browser check (brain v2, B3): serve the app with Vite, drive the designer in headless Chromium.
 // - The starting brain, the energy split (resting–flat out) as energy.ts computes it, the Learning Rule strip and the
-//   trainer picker (actor-critic and A_RP not built yet), the legal line and the sound button.
+//   trainer picker (actor-critic and A_RP not built yet), the legal line and the two sound toggles.
 // - Tap a sense in the tray to add a cell (it is selected: graph, one-line description, "At maximum firing rate"
 //   energy from energy.ts, bin); the bin removes it. A full sense dims and loses its "+". A trained neuron or wheel
 //   shows its built-in bias; an untrained one doesn't.
@@ -88,7 +88,7 @@ async function main() {
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
     await page.evaluate(([k, v]) => { localStorage.setItem('synapse.notice', '2'); if (v !== null) localStorage.setItem(k, v); }, [SAVE_KEY, o.save ?? null] as const);
-    await page.goto(base);
+    await page.goto(`${base}?view=sandbox`); // the page opens on the title; the checks go straight to the designer
     await page.waitForSelector('#net g.cell');
     return page;
   }
@@ -105,8 +105,8 @@ async function main() {
     check(await page.locator('#eq').innerText() === 'Learning Rule : w′ = w + σ·ε', `Learning Rule strip: "${await page.locator('#eq').innerText()}"`);
     const trs = await page.locator('#trainers button').evaluateAll((bs) => bs.map((b) => [b.textContent, (b as HTMLButtonElement).disabled, b.getAttribute('aria-pressed')]));
     check(JSON.stringify(trs) === JSON.stringify([['Evolution', false, 'true'], ['Backprop', false, 'false'], ['Actor-critic', true, 'false'], ['ARP', true, 'false']]), `trainer picker: ${JSON.stringify(trs)}`);
-    check(await page.locator('.legal-links a').count() === 3 && /DM DOKURO, Kevin MacLeod/.test(await page.locator('.legal-links').innerText()), 'legal links and music credits on the page');
-    check(await page.locator('#soundWb').getAttribute('aria-label') === 'Sound', 'the sound button is in the top bar');
+    check(await page.locator('.app .legal-links').count() === 0, 'the legal links and credits are on the title\'s rail, not in the designer');
+    check(await page.locator('#musicWb').getAttribute('aria-label') === 'Music' && await page.locator('#sfxWb').getAttribute('aria-label') === 'Sound effects', 'the Music and Sound effects toggles are in the top bar');
     check(await page.locator('#drive').count() === 0, 'no Drive button on the designer (drive comes after training)');
     await page.screenshot({ path: `${OUT}/designer.png` });
 
