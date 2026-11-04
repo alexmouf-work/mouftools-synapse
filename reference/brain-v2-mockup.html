@@ -9,18 +9,18 @@
 :root {
   --bg: #eef0f3; --canvas: #f7f8fa; --dot: #d3d8e0; --panel: #ffffff; --line: #dde1e8;
   --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; --accent-soft: #e3ecfc;
-  --spike: #ffc21a; --speed: #3fb3a3; --node: #ffffff; --car: #5b6b88; --minus: #d9465b;
+  --band: rgba(47,111,222,.045); --spike: #ffc21a; --speed: #3fb3a3; --node: #ffffff; --car: #5b6b88; --minus: #d9465b;
   --shadow: 0 1px 2px rgba(20,30,50,.08), 0 2px 8px rgba(20,30,50,.06);
   --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
-  --accent: #6b9cff; --accent-soft: #24304a; --node: #232933; --car: #9fb0d0; --minus: #ff7085;
+  --accent: #6b9cff; --accent-soft: #24304a; --band: rgba(107,156,255,.06); --node: #232933; --car: #9fb0d0; --minus: #ff7085;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
-  --accent: #6b9cff; --accent-soft: #24304a; --node: #232933; --car: #9fb0d0; --minus: #ff7085;
+  --accent: #6b9cff; --accent-soft: #24304a; --band: rgba(107,156,255,.06); --node: #232933; --car: #9fb0d0; --minus: #ff7085;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -37,14 +37,14 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent
 .split { position: relative; width: 220px; height: 14px; border-radius: 7px; background: var(--speed); overflow: hidden; flex: none; }
 .split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .2s ease; }
 .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
-.btn { min-height: 44px; border: 1px solid var(--line); background: var(--panel); padding: 0 16px; border-radius: 12px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; }
+.btn { min-height: 38px; border: 1px solid var(--line); background: var(--panel); padding: 0 16px; border-radius: 12px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 10px; min-height: 0; }
 .board { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
   background: radial-gradient(var(--dot) 1.2px, transparent 1.3px) 0 0 / 22px 22px, var(--canvas); }
 .tray { position: absolute; left: 10px; top: 10px; bottom: 10px; width: 150px; display: flex; flex-direction: column; gap: 6px; z-index: 1; }
 .tray h3 { margin: 2px 4px 2px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.sense { flex: 1 1 0; min-height: 44px; max-height: 78px; position: relative; display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 12px; background: transparent; cursor: pointer; text-align: left; padding: 0 8px 0 4px; }
+.sense { flex: 1 1 0; min-height: 36px; max-height: 64px; position: relative; display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 12px; background: transparent; cursor: pointer; text-align: left; padding: 0 8px 0 4px; }
 .sense:active { transform: scale(.98); }
 .sense .nm { font-size: 12px; font-weight: 700; line-height: 1.15; }
 .sense .ct { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--muted); font-weight: 400; }
@@ -59,13 +59,19 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; margin: 0; font-size: 13px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; text-align: right; }
 .fx { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.fx button { min-height: 44px; border: 1px solid var(--line); background: transparent; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+.fx button { min-height: 38px; border: 1px solid var(--line); background: transparent; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
 .fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .fx svg { width: 22px; height: 14px; flex: none; }
 .acts { display: grid; gap: 6px; }
 .acts .btn { box-shadow: none; text-align: left; white-space: normal; padding: 10px 14px; line-height: 1.3; }
 .acts .danger { color: var(--minus); }
 .hint { font-size: 12.5px; color: var(--muted); }
+.tr { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; }
+.tr button { min-height: 32px; border: 1px solid var(--line); background: transparent; border-radius: 8px; cursor: pointer; font-size: 12.5px; }
+.tr button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.eq { font-family: var(--mono); font-size: 14px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); color: var(--text); line-height: 1.5; }
+.nums { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.55; font-variant-numeric: tabular-nums; }
+.nums b { color: var(--text); font-weight: 500; }
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; z-index: 9; max-width: calc(100% - 32px); }
 #rotate { display: none; }
 @media (orientation: portrait) and (max-width: 700px) {
@@ -84,7 +90,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent
 <div class="app">
   <header class="top">
     <span class="word">Synapse</span>
-    <span class="name">Starter brain</span>
+    
     <div class="alloc" aria-label="Energy split: brain power against speed">
       <span>Brain <b id="aBrain"></b></span>
       <div class="split"><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
@@ -95,14 +101,19 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent
   </header>
   <main class="work">
     <div class="board" id="board">
-      <div class="tray" id="tray"><h3>Senses · tap to add</h3></div>
+      <div class="tray" id="tray"></div>
       <canvas id="gl"></canvas>
       <svg id="net" aria-label="The brain"></svg>
       <div class="tools"><button class="btn" id="addLayer" type="button">+ Layer</button></div>
     </div>
     <aside class="side">
+      <section id="rule" aria-live="off">
+        <h2>Learning rule</h2>
+        <div class="tr" id="trainers"></div>
+        <div class="eq" id="eq"></div>
+        <div class="nums" id="nums"></div>
+      </section>
       <section id="insp"></section>
-      <p class="hint">Tap a cell, then another, to wire or unwire them. Every cell flashes yellow at its firing rate; wires run red (−1) through black (0) to green (+1). The brain is always running on a replay of your last drive.</p>
     </aside>
   </main>
 </div>
@@ -132,15 +143,13 @@ const spread = (k, n) => (n === 1 ? 0 : -90 + 180 * k / (n - 1));
 const dirTag = (d) => (Math.abs(d) < 1 ? 'ahead' : `${d < 0 ? 'left' : 'right'} ${Math.abs(Math.round(d))}°`);
 const SENSES = [
   { id: 'boundary', name: 'Boundary cells', sym: 'wall', cost: 3, max: 7, about: 'Fire the nearer a wall is inside their field, which faces one way from the car. Like the border and boundary-vector cells of a rat. More cells spread their fields across the front.', tag: (k, n) => dirTag(spread(k, n)) },
-  { id: 'whisker', name: 'Whisker cells', sym: 'whisker', cost: 1.5, max: 6, about: 'Fire only when a wall is very close, like a rat’s whiskers touching it. Short range, cheap.', tag: (k, n) => dirTag(spread(k, n)) },
   { id: 'object', name: 'Object-vector cells', sym: 'flag', cost: 3, max: 5, about: 'Fire the nearer the finish line is inside their field, like the object-vector cells of the entorhinal cortex.', tag: (k, n) => dirTag(spread(k, n)) },
-  { id: 'place', name: 'Place cells', sym: 'tree', cost: 2.5, max: 8, about: 'Fire when the car is inside their place field on this track. More cells spread their fields round the lap. A new track remaps them.', tag: (k, n) => `field at ${Math.round(100 * k / n)}% of the lap` },
   { id: 'hd', name: 'Head direction', sym: 'arrow', cost: 2, max: 8, about: 'Fires as a cosine of the car’s compass heading. One cell can’t tell left from right; two (cosine and sine) pin the heading down.', tag: (k, n) => `prefers ${Math.round(360 * k / n * (n === 2 ? 0.5 : 1))}°` },
   { id: 'grid', name: 'Grid cells', sym: 'hex', cost: 2, max: 6, about: 'Fire at the corners of a hexagonal grid laid over the ground. The first two take two scales; more take spread phases.', tag: (k) => `${k % 2 ? 'large' : 'small'} scale, phase ${Math.floor(k / 2) + 1}` },
   { id: 'speed', name: 'Speed cells', sym: 'gauge', cost: 2, max: 1, about: 'Fire faster the faster the car goes.', tag: () => '' },
 ];
 const WHEELS = [['fl', 'Front-left'], ['fr', 'Front-right'], ['rl', 'Rear-left'], ['rr', 'Rear-right']].map(([id, label]) => ({ id: 'o:' + id, label }));
-const S = { count: { boundary: 3, whisker: 0, object: 1, place: 0, hd: 1, grid: 2, speed: 1 }, layers: [{ n: 5, fn: 'tanh' }], off: new Set(), sel: null };
+const S = { count: { boundary: 3, object: 1, hd: 1, grid: 2, speed: 1 }, trainer: 'backprop', layers: [{ n: 5, fn: 'tanh' }], off: new Set(), sel: null };
 const WIRE_COST = 0.15, WHEEL_COST = 1.5;
 
 // ---- ids, wires (default: every layer fully connected to the previous) ----
@@ -157,8 +166,8 @@ function brainShare() {
   const neur = S.layers.reduce((a, l) => a + l.n * FX[l.fn].cost, 0) + 4 * WHEEL_COST;
   return sens + neur + wires().length * WIRE_COST;
 }
-function tryChange(apply, undo, what) { apply(); const b = brainShare(); if (b > 100) { undo(); toast(`${what} would take the brain past 100%: no energy left for the wheels.`); return false; } return true; }
-function showAlloc() { const b = brainShare(); $('aFill').style.width = `${clamp(b, 0, 100)}%`; $('aBrain').textContent = `${Math.round(b)}%`; $('aSpeed').textContent = `${Math.round(100 - b)}% · top ${Math.round(60 * (100 - b) / 100)} m/s`; }
+function tryChange(apply, undo, what) { apply(); const b = brainShare(); if (b > 100) { undo(); toast('Over 100%.'); return false; } return true; }
+function showAlloc() { const b = brainShare(); $('aFill').style.width = `${clamp(b, 0, 100)}%`; $('aBrain').textContent = `${Math.round(b)}%`; $('aSpeed').textContent = `${Math.round(100 - b)}%`; }
 
 // ---- the replay the brain runs on ----
 function world(t) {
@@ -191,15 +200,15 @@ function layout() {
   trayW = $('tray').getBoundingClientRect().width + 10;
   P = new Map();
   const ins = inputIds(), top = 46, avail = box.h - top - 20;
-  const perCol = Math.max(1, Math.floor(avail / 52)), cols = Math.ceil(ins.length / perCol);
-  R = clamp(Math.min(24, avail / Math.min(ins.length, perCol) / 2.25), 18, 24);
-  ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: trayW + 34 + col * 60, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.min(56, avail / inCol), kind: 'in' }); });
+  const pitch = 2 * 15 + 12, perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol);
+  R = 15;
+  ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: trayW + 30 + col * 44, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(48, avail / inCol)), kind: 'in' }); });
   const carW = Math.min(box.w * 0.24, 280), carH = carW * 0.52;
   car = { cx: box.w - carW / 2 - 56, cy: box.h / 2, W: carW, H: carH };
-  const x0 = trayW + 34 + cols * 60 + 70, x1 = car.cx - carW / 2 - 80;
+  const x0 = trayW + 30 + cols * 44 + 60, x1 = car.cx - carW / 2 - 80;
   S.layers.forEach((l, L) => {
     const x = S.layers.length === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * L / (S.layers.length - 1);
-    const step = Math.min(58, (box.h - 150) / Math.max(l.n - 1, 1));
+    const step = Math.max(38, Math.min(50, (box.h - 170) / Math.max(l.n - 1, 1)));
     layerIds(L).forEach((id, k) => P.set(id, { x, y: box.h / 2 + 10 + (k - (l.n - 1) / 2) * step, kind: 'mid', L }));
   });
   WHEELS.forEach((w, i) => P.set(w.id, { x: car.cx + (i < 2 ? 0.27 : -0.27) * car.W, y: car.cy + (i % 2 === 0 ? -0.5 : 0.5) * car.H, kind: 'out', i }));
@@ -209,35 +218,33 @@ const wireColour = (w) => { const m = Math.min(1, Math.abs(w)); return w >= 0 ? 
 function render() {
   layout(); svg.innerHTML = '';
   const bg = el('rect', { x: trayW, y: 0, width: box.w - trayW, height: box.h, fill: 'transparent', class: 'hit' }, svg);
+  { const xs = [Math.max(...[...P.values()].filter((q) => q.kind === 'in').map((q) => q.x), trayW + 30), ...S.layers.map((_, L) => P.get(layerIds(L)[0])?.x ?? 0), car.cx]; const edges = [trayW]; for (let i = 0; i < xs.length - 1; i++) edges.push((xs[i] + xs[i + 1]) / 2); edges.push(box.w); for (let i = 0; i < xs.length; i++) if (i % 2 === 0) el('rect', { x: edges[i], y: 0, width: edges[i + 1] - edges[i], height: box.h, style: 'fill:var(--band)', 'pointer-events': 'none' }, svg); }
   bg.addEventListener('click', () => { S.sel = null; render(); });
   const t = (x, y, s, a = {}) => { const e = el('text', { x, y, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, 'letter-spacing': '1.2', style: 'fill:var(--muted)', 'font-family': 'Atkinson Hyperlegible, sans-serif', ...a }, svg); e.textContent = s; return e; };
   const ins = [...P.values()].filter((p) => p.kind === 'in');
-  if (ins.length && box.w >= 760) t((Math.min(...ins.map((p) => p.x)) + Math.max(...ins.map((p) => p.x))) / 2, 24, 'INPUT CELLS');
-  if (!ins.length) t(trayW + 60, box.h / 2, 'Tap a sense to add a cell', { 'font-weight': 400, 'letter-spacing': '0' });
+  if (!ins.length) t(trayW + 60, box.h / 2, '+ a sense', { 'font-weight': 400, 'letter-spacing': '0' });
   // layer headers: the function for that line, tappable
   S.layers.forEach((l, L) => {
     const p = P.get(layerIds(L)[0]); if (!p) return;
     const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Layer ${L + 1}: ${FX[l.fn].n}. Tap to change.` }, svg);
-    el('rect', { x: p.x - 52, y: 8, width: 104, height: 44, rx: 12, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
-    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 30} 30)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
-    t(p.x + 10, 26, `LAYER ${L + 1}`, { 'font-size': 9.5 }).setAttribute('pointer-events', 'none');
-    const e = t(p.x + 10, 41, FX[l.fn].n, { 'font-size': 12, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none');
+    el('rect', { x: p.x - 44, y: 8, width: 88, height: 34, rx: 10, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
+    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 26} 25)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    const e = t(p.x + 8, 29.5, FX[l.fn].n, { 'font-size': 12, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none');
     g.addEventListener('click', (ev) => { ev.stopPropagation(); S.sel = `layer:${L}`; render(); });
   });
-  t(car.cx, 24, box.w < 760 ? 'THE CAR' : 'THE CAR · WHEELS ARE MOTOR NEURONS');
   // car, front to the right
   const { cx, cy, W, H } = car, w = W / 2, h = H / 2;
   el('path', { d: `M ${cx - w} ${cy - h * .8} Q ${cx - w} ${cy - h} ${cx - w * .86} ${cy - h} L ${cx + w * .55} ${cy - h} L ${cx + w} ${cy - h * .78} Q ${cx + w * 1.08} ${cy} ${cx + w} ${cy + h * .78} L ${cx + w * .55} ${cy + h} L ${cx - w * .86} ${cy + h} Q ${cx - w} ${cy + h} ${cx - w} ${cy + h * .8} Z`, style: 'fill:var(--car);fill-opacity:.1;stroke:var(--car);stroke-opacity:.35', 'stroke-width': 1.5 }, svg);
   el('path', { d: `M ${cx - w * .32} ${cy - h * .6} Q ${cx + w * .46} ${cy - h * .66} ${cx + w * .32} ${cy} Q ${cx + w * .46} ${cy + h * .66} ${cx - w * .32} ${cy + h * .6} Z`, style: 'fill:var(--car);fill-opacity:.12;stroke:var(--car);stroke-opacity:.25' }, svg);
-  t(cx + w + 22, cy + 4, 'front ›', { 'font-weight': 400, 'letter-spacing': '0', 'text-anchor': 'start' });
   // wires
   const wg = el('g', {}, svg);
   for (const [a, b, wt] of wires()) {
     const p = P.get(a), q = P.get(b); if (!p || !q) continue;
     const m = Math.min(1, Math.abs(wt)), hot = S.sel && (a === S.sel || b === S.sel);
-    const x1 = p.x + (p.kind === 'in' ? R : 20), x2 = q.x - (q.kind === 'out' ? 16 : 22), dx = x2 - x1;
+    const x1 = p.x + (p.kind === 'in' ? R : 16), x2 = q.x - (q.kind === 'out' ? 13 : 16), dx = x2 - x1;
     el('path', { d: `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`, fill: 'none', style: `stroke:${wireColour(wt)}`, 'stroke-width': 0.6 + Math.abs(wt) * 1.3, opacity: S.sel && !S.sel.startsWith('layer') && !hot ? .1 : 0.25 + m * 0.6, 'stroke-linecap': 'round' }, wg);
   }
+  el('path', { id: 'ruleWire', d: '', fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 5, opacity: .35, 'stroke-linecap': 'round', 'pointer-events': 'none' }, svg);
   // cells (tap to select; tap a second cell to wire/unwire)
   for (const [id, p] of P) {
     const g = el('g', { class: 'hit', 'data-id': id, role: 'button', tabindex: 0 }, svg);
@@ -246,23 +253,22 @@ function render() {
       el('circle', { cx: p.x, cy: p.y, r: R, style: `fill:transparent;stroke:${sel ? 'var(--accent)' : 'var(--line)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
       el('circle', { cx: p.x, cy: p.y, r: R + 2, 'data-spk': id, style: 'fill:none;stroke:var(--spike)', 'stroke-width': 5, opacity: 0 }, g);
     } else if (p.kind === 'mid') {
-      el('circle', { cx: p.x, cy: p.y, r: 22, style: `fill:${sel ? 'var(--accent-soft)' : 'var(--node)'};stroke:${sel ? 'var(--accent)' : 'var(--muted)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
-      el('circle', { cx: p.x, cy: p.y, r: 19, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
-      el('path', { d: FX[S.layers[p.L].fn].g, transform: `translate(${p.x} ${p.y})`, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
+      el('circle', { cx: p.x, cy: p.y, r: 16, style: `fill:${sel ? 'var(--accent-soft)' : 'var(--node)'};stroke:${sel ? 'var(--accent)' : 'var(--muted)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+      el('circle', { cx: p.x, cy: p.y, r: 13.5, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
+      el('path', { d: FX[S.layers[p.L].fn].g, transform: `translate(${p.x} ${p.y}) scale(.8)`, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
     } else {
-      el('rect', { x: p.x - 16, y: p.y - 11, width: 32, height: 22, rx: 6, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--car)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
-      el('rect', { x: p.x - 13, y: p.y - 8, width: 26, height: 16, rx: 4, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
+      el('rect', { x: p.x - 13, y: p.y - 9, width: 26, height: 18, rx: 5, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--car)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+      el('rect', { x: p.x - 10.5, y: p.y - 6.5, width: 21, height: 13, rx: 3, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
       el('path', { 'data-arrow': id, d: '', style: 'stroke:var(--accent);fill:none', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, g);
-      t(p.x, p.y + (p.i % 2 === 0 ? -18 : 28), WHEELS[p.i].label, { 'font-weight': 400, 'letter-spacing': '0', 'font-size': 10.5 });
     }
-    el('circle', { cx: p.x, cy: p.y, r: 26, fill: 'transparent' }, g); // generous touch target
+    el('circle', { cx: p.x, cy: p.y, r: p.kind === 'in' ? 20 : 18, fill: 'transparent' }, g); // touch target, never reaching a neighbour
     g.addEventListener('click', (ev) => { ev.stopPropagation(); tap(id); });
   }
   S.layers.forEach((l, L) => {
     const ids = layerIds(L), last = P.get(ids[ids.length - 1]); if (!last) return;
     const add = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Add a neuron to layer ${L + 1}` }, svg);
-    el('circle', { cx: last.x, cy: last.y + 44, r: 18, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
-    el('path', { d: `M ${last.x - 7} ${last.y + 44} H ${last.x + 7} M ${last.x} ${last.y + 37} V ${last.y + 51}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
+    el('circle', { cx: last.x, cy: last.y + 34, r: 12, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
+    el('path', { d: `M ${last.x - 5} ${last.y + 34} H ${last.x + 5} M ${last.x} ${last.y + 29} V ${last.y + 39}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
     add.addEventListener('click', (ev) => { ev.stopPropagation(); if (l.n >= 8) return toast('Eight neurons per layer is the limit here.'); tryChange(() => l.n++, () => l.n--, 'Another neuron'); render(); inspect(); });
   });
   showAlloc(); inspect();
@@ -270,7 +276,7 @@ function render() {
 function tap(id) {
   if (S.sel && S.sel !== id && !S.sel.startsWith('layer') && Math.abs(depth(S.sel) - depth(id)) === 1) {
     const [a, b] = depth(S.sel) < depth(id) ? [S.sel, id] : [id, S.sel]; const k = a + '|' + b;
-    if (S.off.has(k)) { if (tryChange(() => S.off.delete(k), () => S.off.add(k), 'That wire')) toast('Wired.'); } else { S.off.add(k); toast('Unwired.'); }
+    if (S.off.has(k)) tryChange(() => S.off.delete(k), () => S.off.add(k), 'That wire'); else S.off.add(k);
     render(); return;
   }
   if (S.sel && S.sel !== id && !S.sel.startsWith('layer') && Math.abs(depth(S.sel) - depth(id)) > 1) toast('Wires join neighbouring layers.');
@@ -280,31 +286,29 @@ function tap(id) {
 // ---- side panel ----
 function inspect() {
   const box2 = $('insp'), id = S.sel;
-  if (!id) { box2.innerHTML = `<h2>Nothing selected</h2><p class="note">Tap a sense in the tray to add a cell. Tap any cell to see what it does.</p>`; return; }
+  if (!id) { box2.innerHTML = ''; return; }
   if (id.startsWith('layer:')) {
     const L = +id.slice(6), l = S.layers[L];
-    box2.innerHTML = `<h2>Layer ${L + 1} · ${l.n} neurons</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><p class="note" style="margin-top:8px">Every neuron in this layer works the same way. ${FX[l.fn].d} ${FX[l.fn].cost}% of energy per neuron.</p><div class="acts" style="margin-top:8px">${S.layers.length > 1 ? '<button class="btn danger" id="rmL" type="button">Remove this layer</button>' : ''}</div>`;
+    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><dl class="kv" style="margin-top:8px"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl><div class="acts" style="margin-top:8px">${S.layers.length > 1 ? '<button class="btn danger" id="rmL" type="button">Remove layer</button>' : ''}</div>`;
     box2.querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => { const old = l.fn; tryChange(() => (l.fn = b.dataset.fx), () => (l.fn = old), 'That function'); render(); }));
     if ($('rmL')) $('rmL').onclick = () => { S.layers.splice(L, 1); S.sel = null; render(); };
     return;
   }
   if (id.startsWith('i:')) {
     const [, sid, ks] = id.split(':'), s = SENSES.find((q) => q.id === sid), k = +ks, n = S.count[sid];
-    box2.innerHTML = `<h2>${s.name}${n > 1 ? ` · ${k + 1} of ${n}` : ''}</h2><p class="note">${s.about}</p><dl class="kv" style="margin-top:8px">${s.tag(k, n) ? `<dt>Tuning</dt><dd>${s.tag(k, n)}</dd>` : ''}<dt>Energy</dt><dd>${s.cost}%</dd></dl><div class="acts" style="margin-top:8px"><button class="btn danger" id="rm" type="button">Remove this cell</button></div><p class="note" style="margin-top:6px">Then tap a neuron in layer 1 to wire or unwire it.</p>`;
+    box2.innerHTML = `<h2>${s.name}</h2><dl class="kv">${s.tag(k, n) ? `<dt>Tuning</dt><dd>${s.tag(k, n)}</dd>` : ''}<dt>Energy</dt><dd>${s.cost}%</dd></dl><div class="acts" style="margin-top:8px"><button class="btn danger" id="rm" type="button">Remove</button></div>`;
     $('rm').onclick = () => { S.count[sid]--; S.sel = null; render(); };
     return;
   }
   if (id.startsWith('h')) {
-    const L = depth(id) - 1;
-    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><p class="note">Adds up its inputs, each times its wire’s weight, passes the total through ${FX[S.layers[L].fn].n.toLowerCase()} (this layer’s function) and fires at the result.</p><div class="acts" style="margin-top:8px"><button class="btn" id="wireAll" type="button">Wire from all of the previous layer</button><button class="btn" id="unwireAll" type="button">Unwire all its inputs</button>${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove this neuron</button>' : ''}</div>`;
-    const prev = allLayers()[L];
+    const L = depth(id) - 1, prev = allLayers()[L];
+    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><div class="acts"><button class="btn" id="wireAll" type="button">Wire all inputs</button><button class="btn" id="unwireAll" type="button">Unwire all inputs</button>${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove</button>' : ''}</div>`;
     $('wireAll').onclick = () => { const keys = prev.map((a) => a + '|' + id).filter((k) => S.off.has(k)); tryChange(() => keys.forEach((k) => S.off.delete(k)), () => keys.forEach((k) => S.off.add(k)), 'Those wires'); render(); };
     $('unwireAll').onclick = () => { prev.forEach((a) => S.off.add(a + '|' + id)); render(); };
     if ($('rmN')) $('rmN').onclick = () => { S.layers[L].n--; S.sel = null; render(); };
     return;
   }
-  const w = WHEELS.find((q) => q.id === id);
-  box2.innerHTML = `<h2>Motor neuron · ${w.label} wheel</h2><p class="note">Fixed to tanh: its output is the wheel’s speed, full reverse at −1, full forward at +1. The arrow shows it; the flashes show its firing rate.</p>`;
+  box2.innerHTML = `<h2>${WHEELS.find((q) => q.id === id).label} wheel</h2><dl class="kv"><dt>Function</dt><dd>tanh (fixed)</dd></dl>`;
 }
 
 // ---- tray ----
@@ -313,10 +317,10 @@ function buildTray() {
   for (const s of SENSES) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'sense'; b.dataset.s = s.id;
     b.setAttribute('aria-label', `Add a ${s.name.replace(/s$/, '')} cell`);
-    b.innerHTML = `<span class="ic"></span><span class="nm">${s.name}<span class="ct">${s.cost}% · ${S.count[s.id]} on</span></span><span class="plus" aria-hidden="true">+</span>`;
+    b.innerHTML = `<span class="ic"></span><span class="nm">${s.name.replace(/ cells$/, '')}<span class="ct">${s.cost}%</span></span><span class="plus" aria-hidden="true">+</span>`;
     b.addEventListener('click', () => {
       if (S.count[s.id] >= s.max) return toast(`${s.name}: ${s.max} is the most${s.max === 1 ? ' (one is enough)' : ''}.`);
-      if (tryChange(() => S.count[s.id]++, () => S.count[s.id]--, `A ${s.name.toLowerCase().replace(/s$/, '')}`)) { S.sel = `i:${s.id}:${S.count[s.id] - 1}`; toast(S.count[s.id] > 1 ? `${s.name}: ${S.count[s.id]} cells, re-tuned to spread out.` : `${s.name.replace(/s$/, '')} added and wired to layer 1.`); }
+      if (tryChange(() => S.count[s.id]++, () => S.count[s.id]--, `A ${s.name.toLowerCase().replace(/s$/, '')}`)) { S.sel = `i:${s.id}:${S.count[s.id] - 1}`;  }
       buildTray(); render();
     });
     tr.appendChild(b);
@@ -337,7 +341,7 @@ const SYM = {
   flag: scene((g) => { const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), mat(0x8a8f99)); pole.position.x = -0.9; g.add(pole); const geo = new THREE.PlaneGeometry(1.6, 1, 8, 5), cols = [], pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) { const c = (Math.floor((pos.getX(i) + 0.8) * 4) + Math.floor((pos.getY(i) + 0.5) * 4)) % 2 ? 0.95 : 0.12; cols.push(c, c, c); } geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); const flag = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true, side: THREE.DoubleSide })); flag.position.set(-0.1, 0.55, 0); g.add(flag); const base = pos.array.slice(); return (t) => { for (let i = 0; i < pos.count; i++) { const x = base[i * 3]; pos.setZ(i, Math.sin(x * 3 + t * 4) * 0.12 * (x + 0.8)); } pos.needsUpdate = true; geo.computeVertexNormals(); g.rotation.y = -0.4; }; }),
   tree: scene((g) => { const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.7, 6), mat(0x8a6446)); trunk.position.y = -0.7; g.add(trunk); const a = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.0, 7), mat(0x5aa86a)); a.position.y = -0.05; g.add(a); const b = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.8, 7), mat(0x6bbd78)); b.position.y = 0.5; g.add(b); return (t) => { g.rotation.set(0.15, t * 0.4, Math.sin(t * 1.3) * 0.05); }; }),
   arrow: scene((g) => { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.12, 6, 28, Math.PI * 1.6), mat(0x5b8def)); g.add(ring); const tip = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 6), mat(0x5b8def)); tip.position.set(0.85 * Math.cos(Math.PI * 1.6), 0.85 * Math.sin(Math.PI * 1.6), 0); tip.rotation.z = Math.PI * 1.6; g.add(tip); return (t, w) => { g.rotation.set(0.9, 0, -w.heading * Math.PI / 180); }; }),
-  hex: scene((g) => { const m = mat(0x3fb3a3), geo = new THREE.CylinderGeometry(0.16, 0.16, 0.12, 6), grid = new THREE.Group(); for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) { const c = new THREE.Mesh(geo, m); c.position.set(i * 0.5 + (j % 2) * 0.25, 0, j * 0.433); grid.add(c); } g.add(grid); return (t, w) => { grid.position.set((w.x * 0.05) % 0.5, 0, (w.y * 0.05) % 0.866); g.rotation.x = 0.7; }; }),
+  hex: scene((g) => { const discs = []; const geo = new THREE.CylinderGeometry(0.3, 0.3, 0.16, 18); const pts = [[0, 0]].concat([0, 1, 2, 3, 4, 5].map((i) => [0.78 * Math.cos(i * Math.PI / 3), 0.78 * Math.sin(i * Math.PI / 3)])); for (const [x, z] of pts) { const d = new THREE.Mesh(geo, mat(0x3fb3a3)); d.position.set(x, 0, z); g.add(d); discs.push(d); } return (t, w) => { const ph = ((w.x * 0.08 + w.y * 0.05) % 1 + 1) % 1, on = Math.floor(ph * 7) % 7; discs.forEach((d, i) => { d.position.y = i === on ? 0.14 : 0; d.material.color.setHex(i === on ? 0x7fe0cf : 0x3fb3a3); }); g.rotation.set(0.95, 0.3, 0); }; }),
   gauge: scene((g) => { const dial = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.15, 20, 1, false, 0, Math.PI), mat(0xb9c0cc)); dial.rotation.set(Math.PI / 2, Math.PI / 2, 0); g.add(dial); const needle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.85, 0.08), mat(0xe25a4a)); needle.geometry.translate(0, 0.42, 0); needle.position.z = 0.12; g.add(needle); return (t, w) => { needle.rotation.z = Math.PI / 2 - w.speed * Math.PI; g.position.y = -0.35; }; }),
 };
 const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50); cam.position.set(0, 0.2, 5.6); cam.lookAt(0, 0, 0);
@@ -345,8 +349,42 @@ function drawSymbols(t, w) {
   const r = board.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
   renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
   const draw = (sym, cx, cy, size) => { if (size < 8) return; const x = cx - size / 2, y = r.height - cy - size / 2; renderer.setViewport(x, y, size, size); renderer.setScissor(x, y, size, size); cam.aspect = 1; cam.updateProjectionMatrix(); SYM[sym].upd(t, w); renderer.render(SYM[sym].s, cam); };
-  document.querySelectorAll('.sense').forEach((b) => { const s = SENSES.find((q) => q.id === b.dataset.s), ic = b.querySelector('.ic') || b, br = ic.getBoundingClientRect(), bb = b.getBoundingClientRect(); const narrow = getComputedStyle(b.querySelector('.nm')).display === 'none'; const cx = (narrow ? bb.left + bb.width / 2 : bb.left + 25) - r.left, cy = bb.top + bb.height / 2 - r.top; draw(s.sym, cx, cy, Math.min(bb.height - 6, 44)); });
-  for (const [id, p] of P) if (p.kind === 'in') draw(SENSES.find((q) => q.id === id.split(':')[1]).sym, p.x, p.y, R * 1.55);
+  document.querySelectorAll('.sense').forEach((b) => { const s = SENSES.find((q) => q.id === b.dataset.s), ic = b.querySelector('.ic') || b, br = ic.getBoundingClientRect(), bb = b.getBoundingClientRect(); const narrow = getComputedStyle(b.querySelector('.nm')).display === 'none'; const cx = (narrow ? bb.left + bb.width / 2 : bb.left + 21) - r.left, cy = bb.top + bb.height / 2 - r.top; draw(s.sym, cx, cy, Math.min(bb.height - 6, 34)); });
+  for (const [id, p] of P) if (p.kind === 'in') draw(SENSES.find((q) => q.id === id.split(':')[1]).sym, p.x, p.y, R * 1.6);
+}
+
+// ---- the learning rule, always on screen (mock-up numbers from the replay) ----
+const TRAINERS = {
+  evolution: { n: 'Evolution', eq: 'w′ = w + σ·ε<br>the fittest 4 of 64 breed' },
+  backprop: { n: 'Backprop', eq: 'Δw = η · δ · x<br>δ<sub>out</sub> = (t − y)·f′(z)<br>δ<sub>hidden</sub> = f′(z)·Σ w·δ' },
+  ac: { n: 'Actor-critic', eq: 'δ = r + γ·V(s′) − V(s)<br>Δw = α · δ · ∂log π/∂w' },
+  arp: { n: 'A<sub>RP</sub>', eq: 'reward: Δw = ρ·(y − p)·x<br>penalty: Δw = λρ·(−y − p)·x' },
+};
+const dF = (fn, y) => fn === 'tanh' ? 1 - y * y : fn === 'sigmoid' ? y * (1 - y) : fn === 'relu' ? (y > 0 ? 1 : 0) : 0;
+const label = (id) => id.startsWith('i:') ? (() => { const [, sid, k] = id.split(':'), s = SENSES.find((q) => q.id === sid); const tg = s.tag(+k, S.count[sid]); return `${s.name.replace(/ cells$/, '')}${tg ? ` (${tg})` : ''}`; })() : id.startsWith('o:') ? WHEELS.find((w) => w.id === id).label + ' wheel' : `layer ${depth(id)} neuron ${+id.split(':')[1] + 1}`;
+function buildTrainers() { $('trainers').innerHTML = Object.entries(TRAINERS).map(([k, v]) => `<button type="button" data-tr="${k}" aria-pressed="${S.trainer === k}">${v.n}</button>`).join(''); $('trainers').querySelectorAll('[data-tr]').forEach((b) => b.onclick = () => { if (b.dataset.tr !== 'evolution' && S.layers.some((l) => l.fn === 'step')) return toast(`${TRAINERS[b.dataset.tr].n.replace(/<[^>]+>/g, '')} needs a slope to follow; a step layer has none. Change it first.`); S.trainer = b.dataset.tr; buildTrainers(); }); $('eq').innerHTML = TRAINERS[S.trainer].eq; }
+let ruleT = 0;
+function showRule(act, t) {
+  ruleT += 1; if (ruleT % 12) return;
+  const W = wires(), L = allLayers(), delta = new Map(), tr = S.trainer;
+  // outputs: backprop copies a teacher; the RL rules get a reward signal
+  const fr = Math.max(0, Math.sin(t * 0.7 - 1)) ** 2, wall = fr > 0.7, r = wall ? 0 : 1;
+  L[L.length - 1].forEach((id, j) => { const y = act.get(id) ?? 0, target = Math.tanh(Math.sin(t * 0.8 + j)); delta.set(id, (target - y) * (1 - y * y)); });
+  for (let i = L.length - 2; i >= 1; i--) for (const a of L[i]) { let s = 0; for (const [x, b, w] of W) if (x === a) s += w * (delta.get(b) ?? 0); delta.set(a, dF(S.layers[i - 1].fn, act.get(a) ?? 0) * s); }
+  let best = null;
+  for (const [a, b, w] of W) {
+    const x = act.get(a) ?? 0, d = delta.get(b) ?? 0;
+    const dw = tr === 'backprop' ? 0.05 * d * x : tr === 'ac' ? 0.02 * (0.1 + 0.4 * Math.sin(t * 0.9)) * d * x : tr === 'arp' ? (r ? 0.1 * (Math.sign(Math.sin(t * 3 + w)) - Math.tanh(act.get(b) ?? 0)) * x : 0.05 * (-Math.sign(Math.sin(t * 3 + w)) - Math.tanh(act.get(b) ?? 0)) * x) : 0.2 * Math.sin(t * 2.3 + w * 7) * 0.4;
+    if (!best || Math.abs(dw) > Math.abs(best.dw)) best = { a, b, w, x, d, dw };
+  }
+  if (!best) return;
+  const f = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(3);
+  const line = tr === 'backprop' ? `0.05 × ${f(best.d)} × ${f(best.x)} = <b>${f(best.dw)}</b>`
+    : tr === 'ac' ? `δ = ${f(0.1 + 0.4 * Math.sin(t * 0.9))} (${r ? 'progress' : 'wall'}) · Δw = <b>${f(best.dw)}</b>`
+    : tr === 'arp' ? `${r ? 'reward' : 'penalty'} · Δw = <b>${f(best.dw)}</b>` : `σ = 0.21 · this wire: <b>${f(best.dw)}</b>`;
+  $('nums').innerHTML = `${label(best.a)} → ${label(best.b)}<br>${line}`;
+  const p = P.get(best.a), q = P.get(best.b), hl = svg.querySelector('#ruleWire');
+  if (p && q && hl) { const x1 = p.x + (p.kind === 'in' ? R : 16), x2 = q.x - (q.kind === 'out' ? 13 : 16), dx = x2 - x1; hl.setAttribute('d', `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`); }
 }
 
 // ---- the always-running loop ----
@@ -362,9 +400,10 @@ function frame(now) {
     else { let ph = (phase.get(id) ?? Math.random()) + rate * MAX_HZ * dt, fl = flash.get(id) ?? 0; if (ph >= 1) { ph -= Math.floor(ph); fl = 1; } fl = Math.max(0, fl - dt * 9); phase.set(id, ph); flash.set(id, fl); node.setAttribute('opacity', fl.toFixed(2)); }
     if (id.startsWith('o:')) { const p = P.get(id), a = svg.querySelector(`[data-arrow="${CSS.escape(id)}"]`); if (a && p) { const sp = v, s = Math.sign(sp || 1), x0 = p.x + 18 * s; a.setAttribute('d', Math.abs(sp) < 0.05 ? '' : `M ${x0} ${p.y} h ${24 * sp} l ${-5 * s} -4 m ${5 * s} 4 l ${-5 * s} 4`); } }
   }
+  showRule(act, simT);
   drawSymbols(simT, w);
   requestAnimationFrame(frame);
 }
 addEventListener('resize', render);
-buildTray(); render(); requestAnimationFrame(frame);
+buildTray(); buildTrainers(); render(); requestAnimationFrame(frame);
 </script>

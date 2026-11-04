@@ -109,3 +109,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   cells. they don't intuitively have a different purpose to boundary vector cells. remove the tree cells too." ·
   "change the representation of grid cells so that they show 7 button shapes (or spheres or whatever they are) in a
   flat hexagonal grid + centre." · "make the buttons smaller, I don't want overlap at all."
+- "give each layer a slightly differently coloured background, alternating." · "remove the excess copy on the page, so
+  that it's way more simple. only have text that's absolutely necessary. that means remove things like \"the car . the
+  wheels are neurons\""
