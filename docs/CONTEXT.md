@@ -229,3 +229,4 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "Actually, a change to that: let's keep it as many cars as we had before, but load them more lazily so that we don't
   have a lag spike when we try to load them. Try to let them complete as much of the course as possible in the training
   session, but at a way faster speed than real racing."
+- "make sure to stop racing sound effects when leaving the racing part of the site."
