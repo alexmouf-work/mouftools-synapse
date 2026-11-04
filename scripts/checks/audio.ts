@@ -208,6 +208,7 @@ async function main() {
     check(a.state === 'running' && a.playing, `tab hidden and unfocused → still running (${a.state}, ${a.phrase})`);
 
     // 7. the two toggles. Music off: its bus to 0, the effects untouched, all four pairs agree, remembered
+    await page.waitForTimeout(600);
     await page.click('#musicWb');
     // the bus eases down (time constant 50 ms on the audio clock, which a loaded headless page can run behind)
     await page.waitForFunction(() => window.__audio!.musicGain < 0.01, null, { timeout: 5000 }).catch(() => {});
@@ -228,7 +229,10 @@ async function main() {
     check(c.musicMax < 1e-4 && c.sfxMax > 1e-3, `music off: the countdown and engine still sound (effects peak ${c.sfxMax.toFixed(4)}), the music does not (peak ${c.musicMax.toExponential(1)})`);
     await page.click('#dvBack');
 
-    // Sound effects off, music back on: no blip or engine, the music plays
+    // Sound effects off, music back on: no blip or engine, the music plays (the designer re-fits itself as it comes
+    // back, so wait for it to settle before clicking its small buttons)
+    await page.locator('.app').waitFor({ state: 'visible' });
+    await page.waitForTimeout(600);
     await page.click('#sfxWb');
     await page.click('#musicWb');
     await page.waitForFunction(() => window.__audio!.sfxGain < 0.01 && window.__audio!.musicGain > 0.65, null, { timeout: 5000 }).catch(() => {});

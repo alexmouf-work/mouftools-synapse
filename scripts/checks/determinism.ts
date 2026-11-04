@@ -1,6 +1,7 @@
 // Determinism golden hashes (3 seeds): track geometry, recorded 600-tick races (the default brain, and a heavy brain
 // with every sense and two layers, whose energy load caps its speed), and a short training phase per trainer
-// (evolution, backprop) of the default brain run inline and on 4 worker_threads (must match each other and the golden). golden.json is written only by this script:
+// (evolution, backprop, and evolution at temperature ×2) of the default brain run inline and on 4 worker_threads (must
+// match each other and the golden; ×2 must differ from ×1). golden.json is written only by this script:
 //   npx tsx scripts/checks/determinism.ts            check
 //   npx tsx scripts/checks/determinism.ts --update   regenerate (say why in the commit)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -45,7 +46,11 @@ async function main() {
     const bpInline = await runPhase(new InlineExecutor(), defaultSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
     const bpPooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
     if (bpInline.hash !== bpPooled.hash) { bad++; console.error(`seed ${seed} backprop: inline ${bpInline.hash} ≠ 4 workers ${bpPooled.hash}`); }
-    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), phase: inline.hash, phaseBackprop: bpInline.hash };
+    const hotInline = await runPhase(new InlineExecutor(), defaultSpec(), seed, { T: PHASE_T, temperature: 1 });
+    const hotPooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T, temperature: 1 });
+    if (hotInline.hash !== hotPooled.hash) { bad++; console.error(`seed ${seed} ×2: inline ${hotInline.hash} ≠ 4 workers ${hotPooled.hash}`); }
+    if (hotInline.hash === inline.hash) { bad++; console.error(`seed ${seed}: temperature ×2 gave the ×1 hash ${inline.hash}`); }
+    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), phase: inline.hash, phaseBackprop: bpInline.hash, phaseTemp2: hotInline.hash };
   }
   await pool.close();
   if (update) {
@@ -59,7 +64,7 @@ async function main() {
     if (golden[seed]?.[k] !== got[seed][k]) { bad++; console.error(`seed ${seed} ${k}: got ${got[seed][k]}, golden ${golden[seed]?.[k]}`); }
   }
   if (bad) { console.error(`determinism: ${bad} mismatch(es)`); process.exit(1); }
-  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, evolution and backprop phases inline = 4 workers)`);
+  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, evolution, backprop and ×2 phases inline = 4 workers)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

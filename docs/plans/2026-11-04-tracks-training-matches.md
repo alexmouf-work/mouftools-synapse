@@ -39,15 +39,16 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   generation counts only the generations already evaluated.
 - One **info panel on the left**, full height, **at most a fifth of the width**, a section of its own (not an
   overlay); the camera fills the rest of the screen. Nothing on the right.
-- **Random agents from each generation**: as each generation is evaluated, a random handful of its agents (as many as
-  before: 5–20 by device) drive on the track, **all as ghosts**. ("5 cars" was withdrawn the same day: "let's keep it
-  as many cars as we had before, but load them more lazily so that we don't have a lag spike".)
+- **Every agent of each generation**: as each generation is evaluated, its agents drive on the track, **all as
+  ghosts**, as many as the old view showed: the whole population of 64. ("5 cars" was withdrawn the same day: "let's
+  keep it as many cars as we had before, but load them more lazily so that we don't have a lag spike". An earlier
+  version of this plan said "5–20 by device", which misread it; corrected in B2d.) A weak device shows fewer only if
+  its frame budget forces it.
 - **Loaded lazily**: car meshes are made once and reused; each generation's paths are prepared a few cars per frame (or
   off the main thread) ahead of when they're needed, so a new generation never causes a frame spike.
 - **Show whatever we've got, not just "round number" generations** (2026-11-04): every generation is available to show,
-  not only the story's picks (1, 10%, 25%, 50%, final). Each generation records the paths of the few agents the view
-  might show (the random handful, recorded as part of that generation's evaluation), and the view always moves to the
-  newest finished one.
+  not only the story's picks (1, 10%, 25%, 50%, final). Each generation records the paths of the agents the view
+  shows (recorded as part of that generation's evaluation), and the view always moves to the newest finished one.
 - **Never the same generation twice; its number big and white** (2026-11-04): each generation is shown at most once,
   in order (skipping is fine, repeating never is; at the end the champion's lap plays, not generation 1 again). The
   generation shown is a large white number centred at the top of the camera view (Arial bold, with a soft shadow for
@@ -74,11 +75,13 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   (my default: nowhere during training; it's in the drive view).
 
 Built (B6, 2026-11-04): the panel, the map, the big number and the playback as above, with these specifics:
-- Ghosts per generation: 20 on a desktop GPU, 12 on a phone or tablet, 5 on a software renderer. The handful is
-  picked with a seeded draw per generation (display only) and recorded by the workers as part of that generation's
-  evaluation: their track-0 paths and weights, and the firing of the one furthest along, which is the highlighted
-  car (yellow among the cyan ghosts; ringed on the map; its brain in the panel). The main thread only compiles one
-  net per generation, so a new generation causes no frame spike.
+- Ghosts per generation: B6 showed 20 / 12 / 5 by device (from the misread above); since B2d every device shows the
+  whole population of 64. The workers record them as part of that generation's evaluation: their track-0 paths and
+  weights, and the firing of the one furthest along, which is the highlighted car (yellow among the cyan ghosts;
+  ringed on the map; its brain in the panel). The main thread only compiles one net per generation, and a new
+  generation's ghosts are added in 16 a frame (the highlighted one first), so it causes no frame spike;
+  check:training measures the worst frame while they come in against the median frame. Even the software renderer
+  (SwiftShader in the checks) stays within that, so no device class shows fewer.
 - Playback at 12× (60 s episodes, 5 s a generation). A newer finished generation takes over after 2 s. The start
   offset is (g − 1)/(N − 1) of the latest start that leaves 2.5 s to watch (30 s into the episode), never
   shrinking. With nothing newer the frame holds (ended cars stay faintly where they stopped). At the end the
@@ -101,7 +104,7 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.
-- **Only the nearest cars are drawn as 3-D cars** (5–20 by device, as in training), nearest to the camera's car. The
+- **Only the nearest cars are drawn as 3-D cars** (a number by device, to be measured; training shows all 64), nearest to the camera's car. The
   rest exist only as dots on a **map in a corner**, the player's own car highlighted.
 - To check before building: the cost of 100 brains × 60 s on a phone. Measured, not assumed; the match screen can
   show the race once it's computed if a weak device needs it.

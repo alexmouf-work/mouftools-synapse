@@ -6,12 +6,12 @@ import { biasCount, wireCount } from '../../src/common/sim/spec';
 describe('designer save', () => {
   it('round-trips name, trainer, training history and the genome exactly', () => {
     const g = defaultGenome(), genome = { ...g, w: g.w.map((_, k) => (k - 8) / 6) };
-    const saved = { name: 'Gerald', genome, train: { seed: 4000000000, phases: 3 }, trainer: 'backprop' as const };
+    const saved = { name: 'Gerald', genome, train: { seed: 4000000000, phases: 3, temps: [0, 1, -0.75] }, trainer: 'backprop' as const };
     const back = parse(serialize(saved));
     expect(back.status).toBe('ok');
     expect(back.saved.name).toBe('Gerald');
     expect(back.saved.trainer).toBe('backprop');
-    expect(back.saved.train).toEqual({ seed: 4000000000, phases: 3 });
+    expect(back.saved.train).toEqual({ seed: 4000000000, phases: 3, temps: [0, 1, -0.75] });
     expect(genomeHash(back.saved.genome)).toBe(genomeHash(genome));
   });
   it('a save from before brain v2 (versions 1 and 2) loads as the starting brain, flagged so the designer can say why', () => {
@@ -20,7 +20,7 @@ describe('designer save', () => {
       const r = parse(old);
       expect(r.status).toBe('reset');
       expect(r.saved.name).toBe('Old');
-      expect(r.saved.train).toEqual({ seed: null, phases: 0 });
+      expect(r.saved.train).toEqual({ seed: null, phases: 0, temps: [] });
       expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
       expect(parse(serialize(r.saved)).status).toBe('ok'); // once: saved back as v3
     }
@@ -32,7 +32,7 @@ describe('designer save', () => {
     expect(r.status).toBe('ok');
     expect(r.saved.genome.w.slice(0, wires)).toEqual(weights);
     expect(r.saved.genome.w.slice(wires)).toEqual(new Array(biasCount(g.spec)).fill(0));
-    expect(r.saved.train).toEqual({ seed: 3, phases: 1 });
+    expect(r.saved.train).toEqual({ seed: 3, phases: 1, temps: [0] }); // before the temperature slider: ×1
   });
   it('missing → the starting brain, quietly', () => {
     const r = parse(null);
@@ -46,6 +46,8 @@ describe('designer save', () => {
     ['no name', JSON.stringify({ ...good, name: '' })],
     ['an unknown trainer', JSON.stringify({ ...good, trainer: 'magic' })],
     ['bad training history', JSON.stringify({ ...good, train: { seed: -1, phases: 0 } })],
+    ['temperatures that do not match the phases', JSON.stringify({ ...good, train: { seed: 1, phases: 2, temps: [0] } })],
+    ['a temperature off the slider', JSON.stringify({ ...good, train: { seed: 1, phases: 1, temps: [0.3] } })],
     ['weights that don\'t fit', JSON.stringify({ ...good, genome: { ...good.genome, w: [1] } })],
     ['no genome', JSON.stringify({ ...good, genome: undefined })],
   ];

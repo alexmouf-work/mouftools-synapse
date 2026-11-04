@@ -100,7 +100,9 @@ that many fitness checks over the budget. The S1 bench still uses T = 6M.
 
 Neuroevolution: population 64, both training tracks × 1200-tick (1-minute) episodes (early stop on stall or going
 backwards),
-elitism 4, tournament 3, no crossover, Gaussian mutation p 0.2 with σ falling 0.4 → 0.08 over the phase, reset
+elitism 4, tournament 3, no crossover, Gaussian mutation p 0.2 with σ falling 0.4 → 0.08 over the phase (times the
+temperature's multiplier 2^t, t a multiple of 0.25 in −2..2, from a fixed table so it is the same bits everywhere; a
+run input like the seed: `TrainerOptions.temperature`, and a golden at ×2), reset
 p 0.01, weights clamped ±4. `fresh` start draws N(0, 0.5); `carry` puts the given genome in slot 0 exactly and its
 mutants after it. It runs whole generations while the next one's worst case fits T. Probe channel: `signal`.
 
@@ -162,13 +164,16 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   axes through 0), the one-line description, "At maximum firing rate, uses x% energy" from energy.ts, the Neurons
   slider, the bin; a trained neuron's or wheel's bias, its transfer curve plotted against Σ w·x so the bias shifts it;
   the energy split resting–flat out; Reset with a confirmation; the trainer picker and the centred
-  "Learning Rule : …" strip; Train asks how many generations), `symbols.ts` (three.js symbols, loaded after first
+  "Learning Rule : …" strip; Train asks how many generations and, under it, the Temperature (B2d, mock-up v26: a
+  log-scale slider ×0.25 to ×4 in quarter steps, default ×1, one line on what it scales; off, "—", for backprop));
+  input cells of radius 16 with their symbols at 1.7× the radius, columns spaced 2R + 6 (B2d), `symbols.ts` (three.js symbols, loaded after first
   paint, one viewport per tray tile and sense cell; build mode is still, so only a gentle idle motion), `store.ts`.
   One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows); portrait phones get the
   "turn sideways" card. Additions to the mock-up: the Music and Sound effects toggles in the top bar; the
   wordmark is the way back to the title. No Drive button: the drive view is reached after training.
 - Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
-  {seed, phases}, genome}` (canonical genome JSON). Reads and writes are in try/catch: a missing save starts from the
+  {seed, phases, temps}, genome}` (canonical genome JSON; `temps` holds each phase's temperature, log2 of the
+  multiplier, so seed, phase and temperature reproduce every run; a save from before B2d has none: all ×1). Reads and writes are in try/catch: a missing save starts from the
   starting brain; an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
   the starting brain with a one-time note; a v2 save from before the biases loads with every bias 0; a browser that
   refuses storage gets a toast that changes last until the
@@ -182,10 +187,11 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   Drive / Keep training / Back and the sound toggles; below it the highlighted car's brain, live, with the drive
   view's `BrainPanel`); the camera fills the rest, with the generation on screen as a big white number at the top
   (clamp(40px, 9vh, 88px)) and a map in its bottom-right corner (`map.ts`: min(28%, 300px), 4:3, 10 px margins; the
-  track, the chequered finish, every shown car as a dot, the highlighted one ringed; "5 of 64"). Every generation
-  records a seeded handful of its agents (`showPick`: 20 on a desktop GPU, 12 on a phone or tablet, 5 on a software
-  renderer): the pool asks its workers for those agents' track-0 paths and weights, plus the firing of the one
-  furthest along (the highlighted car), so the main thread only compiles one net per generation. Recording never
+  track, the chequered finish, every shown car as a dot, the highlighted one ringed; "64 of 64"). Every generation
+  records all its agents (the whole population, as the old view showed; `showPick` picks them, seeded, and can pick
+  fewer): the pool asks its workers for their track-0 paths and weights, plus the firing of the one furthest along
+  (the highlighted car), so the main thread only compiles one net per generation; the ghosts of a new generation
+  are added in 16 a frame. Recording never
   changes a result. The view plays the newest finished generation (render/ghosts.ts). Stop = the generation limit
   reached there (principal 2026-11-04): the pool is aborted, the generation being evaluated is dropped, and
   `runPhase` returns the best agent evaluated so far (`bestSoFar`; for evolution the last generation's champion,
@@ -204,8 +210,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   run-off, walls with light strip, boost pads, the start/finish line as a chequered band of four rows of 1 m squares,
   from the sim Track; flat for now), `finish.ts` (a chequered flag on a black pole each side of the finish line, in
   the run-off, the cloth reaching away from the road), `scenery.ts` (terrain,
-  tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the training playback, B6: one InstancedMesh of 20,
-  made once; the newest finished generation replays at 12× as see-through cyan ghosts, the highlighted car warm
+  tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the training playback, B6: one InstancedMesh of 64,
+  made once, a new generation's ghosts added in 16 a frame, the highlighted one first; the newest finished generation replays at 12× as see-through cyan ghosts, the highlighted car warm
   yellow; a newer generation takes over after a 2 s minimum; each one is shown at most once, in order, and starts
   further into its episode than the one before (offset = (g − 1)/(N − 1) of the latest start that leaves 2.5 s to
   watch, never shrinking); with nothing newer the last frame holds (ended cars stay faintly where they stopped); when
@@ -275,7 +281,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   workers → the same hash, Stop saves the best agent so far (= Node stopped there = Node asked for that many
   generations) and offers Drive / Keep training / Back, render smoke (mean luminance and spread of a real frame),
   the layout at 1440×900 and 844×390 in light and dark, mid-training and at the end (panel width, camera, map
-  corner and size, the big white number), 5–20 ghosts, every generation offered and shown in order, never twice,
+  corner and size, the big white number), all 64 ghosts with no frame spike as they come in, every generation
+  offered and shown in order, never twice,
   each after the minimum and starting further along, then the champion's lap, no main-thread spike, two finish
   flags, bloom audits at the start line, mid-run and in the finale, console clean; screenshots to `out/s3/`.
 - `scripts/checks/drive.ts` — train a tiny T, Drive: distance increases, drive hash = Node `runDrive` replay (also

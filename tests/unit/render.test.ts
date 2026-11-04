@@ -50,18 +50,21 @@ describe('render guards', () => {
     expect(() => setInstance(m, 4, new THREE.Matrix4())).toThrow(/capacity/);
     expect(() => setInstance(m, 0, new THREE.Matrix4().makeTranslation(NaN, 0, 0))).toThrow(/non-finite/);
   });
-  it('the ghosts: at most 20, the newest generation after the minimum, never one twice, offsets never shrinking, then the champion', () => {
+  it('the ghosts: a whole generation, added in over frames; the newest generation after the minimum, never one twice, offsets never shrinking, then the champion', () => {
     const t = generateTrack(4);
     const sw = new Swarm(makeCar('#ffc21a', '#14161d', new THREE.Texture()));
     sw.setTrack(t);
     expect(sw.capacity).toBe(MAX_GHOSTS);
     expect(() => sw.offer(paths(t, MAX_GHOSTS + 1), 1, 0)).toThrow(/capacity|holds/);
     const step = (s: number) => { for (let k = 0; k < Math.round(s / 0.05); k++) sw.update(0.05, k * 0.05); };
-    sw.offer(paths(t, 20), 1, 0);
+    sw.offer(paths(t, MAX_GHOSTS), 1, 0);
     expect(sw.shownGen).toBe(1); // the first is shown at once
+    const added: number[] = [];
+    for (let k = 0; k < 5; k++) { sw.update(0.05, k * 0.05); added.push(sw.shownCount); }
+    expect(added).toEqual([16, 32, 48, 64, 64]); // added in over frames, not all at once
     sw.offer(paths(t, 20), 2, 0.1);
     sw.offer(paths(t, 20), 3, 0.2); // only the newest waiting one matters
-    step(MIN_SHOW_S - 0.2);
+    step(MIN_SHOW_S - 0.5);
     expect(sw.shownGen).toBe(1); // not before the minimum
     step(0.4);
     expect(sw.shownGen).toBe(3);
@@ -72,6 +75,7 @@ describe('render guards', () => {
     step(10); // nothing newer: it holds (the road never empties)
     expect(sw.shownGen).toBe(7);
     expect(sw.dots.length).toBe(12);
+    expect(MAX_GHOSTS).toBe(CONFIG.train.population); // the whole population, as before
     expect(sw.log.map((l) => l.gen)).toEqual([1, 3, 7]);
     const offs = sw.log.map((l) => l.offset);
     expect(offs).toEqual([0, offsetFor(0.2), offsetFor(0.2)]);

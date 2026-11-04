@@ -43,6 +43,8 @@ export interface TrainingHooks {
 export interface TrainingStatus {
   state: 'running' | 'done' | 'stopped';
   seed: number; phase: number; start: 'fresh' | 'carry'; workers: number; T: number;
+  /** The run's temperature (log2 of the multiplier; 0 for backprop, which has nothing to explore). */
+  temperature: number;
   /** Generations asked for, evaluated so far, and the one on screen (0 = none yet). */
   generations: number; gen: number; ticksUsed: number; shownGen: number; finale: boolean;
   /** Every generation shown, in order, with its replay's start offset (ticks; −1 = the champion's lap) and when (s). */
@@ -51,6 +53,11 @@ export interface TrainingStatus {
   ghosts: number; ghostCapacity: number;
   /** Generations whose handful was recorded and offered to the view. */
   offered: number[];
+  /**
+   * Frame cost (main thread, ms): the worst frame while a new generation's ghosts are being added in, and the median
+   * frame otherwise (the no-spike check compares them).
+   */
+  switchFrameMs: number; steadyFrameMs: number; steadyP95Ms: number; switchFrames: number[];
   /** The slowest main-thread preparation of a generation (ms): its highlighted brain, compiled for the panel. */
   prepMs: number;
   /** Chequered flags at the finish line. */
@@ -85,12 +92,12 @@ function newSeed(): number {
   return a[0];
 }
 
-/** Ghosts per generation by device: 20 on a desktop GPU, 12 on a phone or tablet, 5 on a software renderer. */
-function ghostsFor(stage: Stage | null): number {
-  if (!stage || stage.quality === 'low') return 5;
-  const coarse = matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 600;
-  return coarse ? 12 : MAX_GHOSTS;
-}
+/**
+ * Ghosts per generation: the whole population on every device (principal 2026-11-04: "keep it as many cars as we
+ * had before"). They are added in over a few frames; even a software renderer keeps its frame cost flat with all 64
+ * (check:training measures it), so no device class shows fewer.
+ */
+const ghostsFor = (): number => MAX_GHOSTS;
 
 /** The seeded handful of generation `gen`'s `count` policies to record (display only: no result depends on it). */
 export function showPick(seed: number, phase: number, gen: number, k: number, count: number): number[] {
@@ -117,13 +124,14 @@ const lives = new Map<number, Live>();
 let champLive: Live | null = null;
 
 /** Open the view and train the given brain; resolves when the run ends (done or stopped). */
-export async function openTraining(saved: Saved, generations: number, hooks: TrainingHooks): Promise<void> {
+export async function openTraining(saved: Saved, generations: number, temperature: number, hooks: TrainingHooks): Promise<void> {
   if (running) return;
   running = true;
   stopAsked = false;
   const p = params();
   const seed = p.seed ?? saved.train.seed ?? newSeed();
   const phase = saved.train.phases;
+  const temp = saved.trainer === 'backprop' ? 0 : temperature;
   const genome = saved.genome;
   const start: 'fresh' | 'carry' = genome.w.every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
@@ -145,11 +153,11 @@ export async function openTraining(saved: Saved, generations: number, hooks: Tra
   if (stage) await stage.setTrack(track0, 'train');
   map ??= new TrackMap($('tvMap') as HTMLCanvasElement);
   map.setTrack(track0);
-  const K = Math.min(p.ghosts ?? ghostsFor(stage), MAX_GHOSTS);
+  const K = Math.min(p.ghosts ?? ghostsFor(), MAX_GHOSTS);
   const pop = CONFIG.train.population;
   const status: TrainingStatus = {
-    state: 'running', seed, phase, start, workers, T, generations, gen: 0, ticksUsed: 0, shownGen: 0, finale: false,
-    shown: stage ? stage.swarm.log : [], ghosts: K, ghostCapacity: stage?.swarm.capacity ?? 0, offered: [], prepMs: 0,
+    state: 'running', seed, phase, start, workers, T, temperature: temp, generations, gen: 0, ticksUsed: 0, shownGen: 0, finale: false,
+    shown: stage ? stage.swarm.log : [], ghosts: K, ghostCapacity: stage?.swarm.capacity ?? 0, offered: [], prepMs: 0, switchFrameMs: 0, steadyFrameMs: 0, steadyP95Ms: 0, switchFrames: [],
     flags: stage?.finishFlags ?? 0, frames: 0, frameMs: 0, webgl, quality: stage?.quality,
     probe: stage ? () => (stage as Stage).probe() : undefined, bloomAudit: stage ? (m?: boolean) => (stage as Stage).bloomAudit(m) : undefined,
     auditAt: stage ? (t: number) => { const st = stage as Stage; const a = st.auditTrainAt(t); return { ...a, gen: st.swarm.shownGen, finale: st.swarm.finale }; } : undefined,
@@ -164,7 +172,7 @@ export async function openTraining(saved: Saved, generations: number, hooks: Tra
   let result: PhaseResult;
   try {
     result = await runPhase(thePool, genome.spec, seed, {
-      T, generations, trainer: saved.trainer, phase, start, genome, now: () => performance.now(),
+      T, generations, temperature: temp, trainer: saved.trainer, phase, start, genome, now: () => performance.now(),
       stepTicks: (env) => env.worstCase(pop),
       // every generation records its seeded handful (display only)
       beforeStep: () => { if (stage) { const g = gens.length + 1; thePool.record = (count) => showPick(seed, phase, g, K, count); } },
@@ -204,7 +212,7 @@ export async function openTraining(saved: Saved, generations: number, hooks: Tra
     setButtons('stopped');
   } else {
     // done, or stopped: the best agent evaluated so far becomes the brain, exactly as at the generation limit
-    const next: Saved = { ...saved, genome: result.final, train: { seed, phases: phase + 1 } };
+    const next: Saved = { ...saved, genome: result.final, train: { seed, phases: phase + 1, temps: [...saved.train.temps, temp] } };
     hooks.save(next);
     status.state = result.stopped ? 'stopped' : 'done';
     status.savedOnStop = result.stopped || undefined;
@@ -222,7 +230,7 @@ export async function openTraining(saved: Saved, generations: number, hooks: Tra
       ? `Stopped at gen ${evaluated}: the best brain so far is saved. Keep training continues from it on new tracks.`
       : `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain is saved; Keep training continues from it on new tracks.`);
     setButtons('done');
-    $('tvAgain').onclick = () => { void openTraining(next, generations, hooks); };
+    $('tvAgain').onclick = () => { void openTraining(next, generations, temperature, hooks); };
     $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); hooks.drive(next); };
   }
   $('tvBack').onclick = () => close(hooks);
@@ -271,7 +279,8 @@ const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function loop() {
   cancelAnimationFrame(raf);
-  let last = performance.now(), nextAt = 0, mapAt = 0;
+  let last = performance.now(), nextAt = 0, mapAt = 0, seenSwitches = 0, afterSwitch = 0;
+  const steady: number[] = [];
   const t0 = last;
   const tick = (now: number) => {
     raf = requestAnimationFrame(tick);
@@ -287,7 +296,7 @@ function loop() {
     const g = sw.shownGen, fin = sw.finale, st = window.__training;
     if (st) { st.shownGen = g; st.finale = fin; }
     $('tvBig').textContent = g ? String(g) : '';
-    $('tvCars').textContent = fin ? 'champion' : g ? `${sw.shownCount} of ${CONFIG.train.population}` : '';
+    $('tvCars').textContent = fin ? 'champion' : g ? `${sw.recordedCount} of ${CONFIG.train.population}` : '';
     $('tvBrainOf').textContent = fin ? `champion · gen ${g}` : g ? 'highlighted car' : '';
     // the highlighted car's brain at the tick on screen
     const L = fin ? champLive : lives.get(g) ?? null;
@@ -300,7 +309,19 @@ function loop() {
     }
     if (map && now >= mapAt) { map.draw(sw.dots); mapAt = now + 66; }
     const cost = performance.now() - c0;
-    if (st) { st.frames++; st.frameMs = cost; }
+    if (st) {
+      st.frames++; st.frameMs = cost;
+      // frames while a generation's ghosts come in (the first few after a switch) against the rest
+      // (not the first generation or the champion's lap: their first frames also compile the scene's shaders)
+      if (sw.log.length !== seenSwitches) {
+        seenSwitches = sw.log.length;
+        const e = sw.log[sw.log.length - 1];
+        afterSwitch = sw.log.length >= 2 && e.offset >= 0 ? 6 : -6;
+      }
+      if (afterSwitch > 0) { afterSwitch--; st.switchFrameMs = Math.max(st.switchFrameMs, cost); if (st.switchFrames.length < 120) st.switchFrames.push(Math.round(cost * 10) / 10); }
+      else if (afterSwitch < 0) afterSwitch++;
+      else if (!fin && sw.log.length >= 2) { steady.push(cost); if (steady.length > 400) steady.shift(); const so = [...steady].sort((a, b) => a - b); st.steadyFrameMs = so[so.length >> 1]; st.steadyP95Ms = so[Math.floor(so.length * 0.95)]; }
+    }
     // While training, drawing must not starve the worker pool. An expensive frame (a weak GPU) is kept to about a
     // fifth of this thread; a software rasteriser (quality low) draws on the same CPU cores the workers use, so it
     // gets 4 frames a second.

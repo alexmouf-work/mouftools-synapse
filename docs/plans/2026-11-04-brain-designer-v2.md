@@ -78,6 +78,11 @@ generations choice: Temperature, a log-scale multiplier ×0.25 to ×4 (default �
 trainer's own exploration: evolution's σ (mutation size), actor-critic's exploration, A_RP's firing randomness. It's
 disabled for backprop, which copies a teacher and has nothing to explore; one line under the slider says what it does.
 The run records the temperature with the brain's training history.
+Built (B2d): the slider is −2..2 in steps of 0.25 (log2 of the multiplier), shown as ×0.25 … ×4.0; evolution's σ is
+multiplied by 2^t (exact quarter-step table, so every engine gets the same bits); the run takes it as an input like
+the seed (`TrainerOptions.temperature`) and records it per phase in the save (`train.temps`); backprop ignores it and
+the slider is off. Actor-critic and A_RP will take it when they are built (B4). A determinism golden covers a phase
+at ×2 (inline = 4 workers, and different from ×1).
 
 ## 3ab. Every neuron has a built-in bias (2026-11-04)
 Without the bias cell, a quiet brain outputs zero and can't hold "drive forward": backprop failed to learn and the

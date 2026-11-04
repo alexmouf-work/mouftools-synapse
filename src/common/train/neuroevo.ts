@@ -1,5 +1,6 @@
 // Neuroevolution (solo-loop plan §3 "Neuroevolution"): population 64 on the phase's training tracks, elitism,
-// tournament selection, Gaussian mutation with σ falling linearly over the phase, occasional resets, weights clamped.
+// tournament selection, Gaussian mutation with σ falling linearly over the phase (times the temperature's multiplier,
+// brain v2 plan §3ac), occasional resets, weights clamped.
 // Common random numbers: every policy sees the same tracks and noise. Ties break by index. Runs whole generations
 // while the next one's worst case fits the budget; the generation count is a result, not a setting.
 import { CONFIG } from '../config';
@@ -8,7 +9,7 @@ import { paramCount, type Genome } from '../sim/spec';
 import { derive, Rng, TAG } from '../rng';
 import { meanFitness, type Env } from './env';
 import { firstTickSignal } from './probe';
-import { registerTrainer, type Channel, type ProbeFrame, type Trainer, type TrainerEvent, type TrainerOptions } from './trainer';
+import { registerTrainer, tempScale, type Channel, type ProbeFrame, type Trainer, type TrainerEvent, type TrainerOptions } from './trainer';
 
 const P = CONFIG.train;
 const CAP = CONFIG.brain.weightCap;
@@ -25,7 +26,9 @@ export class Neuroevo implements Trainer {
   private gen = 0;
   private finished = false;
 
-  constructor(private readonly opts: TrainerOptions) {}
+  private readonly heat: number;
+
+  constructor(private readonly opts: TrainerOptions) { this.heat = tempScale(opts.temperature ?? 0); }
 
   init(genome: Genome, seed: number, env: Env): void {
     if (specHash(genome.spec) !== specHash(env.setup.spec)) throw new Error('neuroevo: genome spec differs from the env spec');
@@ -53,7 +56,7 @@ export class Neuroevo implements Trainer {
   private sigma(): number {
     const env = this.need();
     const f = Math.min(1, env.used / env.budget);
-    return P.sigmaStart + (P.sigmaEnd - P.sigmaStart) * f;
+    return (P.sigmaStart + (P.sigmaEnd - P.sigmaStart) * f) * this.heat;
   }
 
   private mutate(parent: Float64Array, sigma: number): Float64Array {

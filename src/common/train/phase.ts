@@ -55,6 +55,8 @@ export interface PhaseOptions {
   T?: number;
   /** Sandbox Train (2026-11-04): train this many generations (see TrainerOptions.generations). */
   generations?: number;
+  /** Temperature (see TrainerOptions.temperature); a run input like the seed, so it changes the hash. */
+  temperature?: number;
   phase?: number;
   /** A clock for timing only (sim code never reads time); defaults to no timing. */
   now?: () => number;
@@ -94,7 +96,7 @@ export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o:
   let stopped = false;
   try { await exec.setup(setup); } catch (e) { if (!aborted(e)) throw e; stopped = true; }
   const env = new MeteredEnv(setup, exec, o.T ?? phaseBudget(o.generations));
-  const trainer = createTrainer(o.trainer ?? 'evolution', { start: o.start ?? 'fresh', generations: o.generations });
+  const trainer = createTrainer(o.trainer ?? 'evolution', { start: o.start ?? 'fresh', generations: o.generations, temperature: o.temperature });
   const genome = o.genome ?? zeroGenome(spec);
   const now = o.now ?? (() => 0);
   const t0 = now();

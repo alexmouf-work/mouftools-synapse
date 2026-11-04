@@ -44,6 +44,29 @@ export interface TrainerOptions {
    * spreads that many fitness checks over the budget. The budget is that many of evolution's worst-case generations.
    */
   generations?: number;
+  /**
+   * Temperature (brain v2 plan §3ac): how boldly the trainer explores, as log2 of a multiplier on its own exploration
+   * (evolution: σ). A multiple of 0.25 in −2..2 (×0.25 to ×4); default 0 (×1, the tuned value). Backprop ignores it.
+   */
+  temperature?: number;
+}
+
+export const TEMP_MIN = -2, TEMP_MAX = 2, TEMP_STEP = 0.25;
+// 2^(k/4) for k = 0..3, written out so the multiplier is the same bits on every engine (no Math.pow in the sim)
+const QUARTER = [1, 1.189207115002721, 1.4142135623730951, 1.681792830507429];
+
+/** True for a temperature the slider can give: a multiple of 0.25 in −2..2. */
+export const validTemperature = (t: unknown): t is number =>
+  typeof t === 'number' && t >= TEMP_MIN && t <= TEMP_MAX && Number.isInteger(t / TEMP_STEP);
+
+/** The multiplier 2^t of a valid temperature t (exact for whole t; the quarter steps from a fixed table). */
+export function tempScale(t = 0): number {
+  if (!validTemperature(t)) throw new Error(`trainer: temperature ${String(t)} is not a multiple of 0.25 in −2..2`);
+  const k = Math.round(t / TEMP_STEP), q = ((k % 4) + 4) % 4, e = (k - q) / 4;
+  let m = QUARTER[q];
+  for (let i = 0; i < e; i++) m *= 2;
+  for (let i = 0; i > e; i--) m /= 2;
+  return m;
 }
 
 export type TrainerFactory = (o: TrainerOptions) => Trainer;

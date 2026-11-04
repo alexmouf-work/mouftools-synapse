@@ -12,7 +12,7 @@ import {
 import { cellMax, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
 import { fieldAct, fieldWidthDeg, gridAct, gridPhase, gridScale, hdAct, hdPreferred, SENSE_INFO, spreadDeg } from '../../../common/sim/senses';
 import { biasIndex, columns, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
-import { trainerInfo } from '../../../common/train/trainer';
+import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
 import { load, NO_TRAINING, save, type Saved, type TrainerId } from './store';
 
@@ -52,11 +52,11 @@ const GENS = [10, 25, 50, 100, 250, 500, 1000];
 
 // ---- state ----
 const loaded = load();
-interface State { saved: Saved; sel: string | null; gens: number }
-const W: State = { saved: loaded.saved, sel: null, gens: 100 };
+interface State { saved: Saved; sel: string | null; gens: number; temp: number }
+const W: State = { saved: loaded.saved, sel: null, gens: 100, temp: 0 };
 const spec = (): BrainSpec => W.saved.genome.spec;
 const trained = (): boolean => W.saved.genome.w.some((x) => x !== 0);
-let onTrain: (s: Saved, generations: number) => void = () => toast('Training isn’t available here.');
+let onTrain: (s: Saved, generations: number, temperature: number) => void = () => toast('Training isn’t available here.');
 let active = true;
 let saveWarned = false;
 
@@ -65,14 +65,14 @@ function persist(): void {
 }
 function commit(r: EditResult, what?: string): boolean {
   if (!r.ok) { if (r.reason === 'energy' && r.why) toast(`${what ?? 'That'}: ${r.why}`); return false; }
-  W.saved = { ...W.saved, genome: r.genome, train: { seed: W.saved.train.seed, phases: 0 } };
+  W.saved = { ...W.saved, genome: r.genome, train: { seed: W.saved.train.seed, phases: 0, temps: [] } };
   persist();
   return true;
 }
 
 // ---- layout (as the mock-up: equal regions per column unless the inputs or the car need more) ----
 interface Pos { x: number; y: number; kind: 'in' | 'mid' | 'out'; L?: number; step?: number }
-let P = new Map<string, Pos>(), box = { w: 1000, h: 600 }, trayW = 54, R = 10.5;
+let P = new Map<string, Pos>(), box = { w: 1000, h: 600 }, trayW = 54, R = 16;
 let regions: { x0: number; x1: number; cx: number }[] = [];
 let car = { cx: 0, cy: 0, W: 0, H: 0 };
 const svg = () => $('net') as unknown as SVGSVGElement;
@@ -86,8 +86,8 @@ function layout(): void {
   trayW = tray.offsetLeft + tray.offsetWidth;
   P = new Map();
   const C = s.layers.length + 2, Wb = box.w - trayW;
-  R = 10.5;
-  const ins = inputIds(s), top = 34, avail = box.h - top - 40, pitch = 2 * R + 9; // the bottom row stays clear for the layer buttons
+  R = 16; // input cells large enough to read their symbols (B2d, mock-up v26)
+  const ins = inputIds(s), top = 34, avail = box.h - top - 40, pitch = 2 * R + 6; // the bottom row stays clear for the layer buttons
   const perCol = Math.max(1, Math.floor(avail / pitch)), inCols = Math.max(1, Math.ceil(ins.length / perCol));
   const needIn = inCols * pitch + 10, needCar = 112;
   let widths = Array(C).fill(Wb / C) as number[];
@@ -97,7 +97,7 @@ function layout(): void {
   }
   let acc = trayW;
   regions = widths.map((w) => { const r = { x0: acc, x1: acc + w, cx: acc + w / 2 }; acc += w; return r; });
-  const cols = Math.ceil(ins.length / perCol), colGap = Math.min(30, (regions[0].x1 - regions[0].x0 - 10) / Math.max(cols, 1));
+  const cols = Math.ceil(ins.length / perCol), colGap = Math.min(pitch, (regions[0].x1 - regions[0].x0 - 10) / Math.max(cols, 1));
   ins.forEach((id, i) => {
     const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol);
     P.set(id, { x: regions[0].cx + (col - (cols - 1) / 2) * colGap, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' });
@@ -166,6 +166,7 @@ function render(): void {
     const sel = W.sel === id;
     if (p.kind === 'in') {
       el('circle', { cx: p.x, cy: p.y, r: R, style: `fill:transparent;stroke:${sel ? 'var(--accent)' : 'var(--line)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+      el('circle', { cx: p.x, cy: p.y, r: R + 1.5, fill: 'transparent' }, g); // touch target, never reaching a neighbour (pitch 2R + 6)
     } else if (p.kind === 'mid') {
       el('circle', { cx: p.x, cy: p.y, r: 11, style: `fill:${sel ? 'var(--accent-soft)' : 'var(--node)'};stroke:${sel ? 'var(--accent)' : 'var(--muted)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
       el('path', { d: FX[s.layers[p.L as number].fn].g, transform: `translate(${p.x} ${p.y}) scale(.55)`, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
@@ -408,7 +409,7 @@ function symbolList() {
   const out: { sym: string; x: number; y: number; size: number }[] = [];
   const tr = $('tray');
   document.querySelectorAll<HTMLButtonElement>('#tray .sense').forEach((b) => out.push({ sym: SYM[b.dataset.s as SenseId], x: tr.offsetLeft + b.offsetLeft + b.offsetWidth / 2, y: tr.offsetTop + b.offsetTop + b.offsetHeight / 2, size: b.offsetHeight - 6 }));
-  for (const [id, p] of P) if (p.kind === 'in') out.push({ sym: SYM[id.split(':')[1] as SenseId], x: p.x, y: p.y, size: R * 1.6 });
+  for (const [id, p] of P) if (p.kind === 'in') out.push({ sym: SYM[id.split(':')[1] as SenseId], x: p.x, y: p.y, size: R * 1.7 });
   return out;
 }
 let raf = 0;
@@ -439,6 +440,22 @@ function buildGens(): void {
   $('gens').querySelectorAll<HTMLButtonElement>('[data-g]').forEach((b) => { b.onclick = () => { W.gens = Number(b.dataset.g); buildGens(); }; });
 }
 
+// temperature (brain v2 plan §3ac, mock-up v26): how boldly training explores, a multiplier on the trainer's own
+// exploration on a log scale (×0.25 to ×4); backprop copies a teacher, so it is off there
+const TEMP_HINT: Record<TrainerId, string> = {
+  evolution: 'Scales σ, the size of each mutation.', ac: 'Scales how much the actor explores.',
+  arp: 'Scales how randomly the units fire while learning.', backprop: 'Backprop copies a teacher, so it has nothing to explore.',
+};
+/** "×0.25", "×0.59", "×1.0", "×2.0", "×4.0", as the mock-up writes them. */
+export const tempLabel = (t: number): string => { const v = tempScale(t); return `×${v < 1 ? v.toFixed(2).replace(/0$/, '') : v.toFixed(1)}`; };
+function showTemp(): void {
+  const off = W.saved.trainer === 'backprop', sl = $('tSlide') as HTMLInputElement;
+  sl.value = String(W.temp); sl.disabled = off;
+  $('tVal').textContent = off ? '—' : tempLabel(W.temp);
+  $('tHint').textContent = TEMP_HINT[W.saved.trainer];
+  $('tempRow').classList.toggle('off', off);
+}
+
 let tt: ReturnType<typeof setTimeout> | undefined;
 function toast(m: string, ms = 2000): void { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), ms); }
 
@@ -462,11 +479,14 @@ export function setActive(on: boolean): void {
 }
 export function replaceSaved(s: Saved): void { W.saved = s; persist(); if (active) render(); }
 
-export function start(o: { onTrain: (s: Saved, generations: number) => void }): void {
+export function start(o: { onTrain: (s: Saved, generations: number, temperature: number) => void }): void {
   onTrain = o.onTrain;
-  $('train').onclick = () => { buildGens(); ($('trainDlg') as HTMLDialogElement).showModal(); };
+  const sl = $('tSlide') as HTMLInputElement;
+  sl.min = String(TEMP_MIN); sl.max = String(TEMP_MAX); sl.step = String(TEMP_STEP);
+  sl.addEventListener('input', () => { W.temp = Number(sl.value); showTemp(); });
+  $('train').onclick = () => { buildGens(); showTemp(); ($('trainDlg') as HTMLDialogElement).showModal(); };
   $('tdNo').onclick = () => ($('trainDlg') as HTMLDialogElement).close();
-  $('tdGo').onclick = () => { ($('trainDlg') as HTMLDialogElement).close(); onTrain(W.saved, W.gens); };
+  $('tdGo').onclick = () => { ($('trainDlg') as HTMLDialogElement).close(); onTrain(W.saved, W.gens, W.saved.trainer === 'backprop' ? 0 : W.temp); };
   $('reset').onclick = () => ($('confirm') as HTMLDialogElement).showModal();
   $('cfNo').onclick = () => ($('confirm') as HTMLDialogElement).close();
   $('cfYes').onclick = () => {

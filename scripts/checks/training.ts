@@ -7,7 +7,7 @@
 // - Layout (1440×900 and 844×390, light and dark, mid-training and at the end): the panel on the left at min(20vw,
 //   280px), the camera filling the rest; the map in its bottom-right (min(28%, 300px), 4:3, 10 px margins); the
 //   generation big and white at the top centre (clamp(40px, 9vh, 88px)); no sideways scroll.
-// - Playback: 5–20 ghosts by device; every generation offered; shown strictly in order, never twice, each after the
+// - Playback: the whole population (64) as ghosts every generation, added in over a few frames with no frame spike; every generation offered; shown strictly in order, never twice, each after the
 //   ~2 s minimum and starting further along; then the champion's lap; no main-thread spike preparing a generation.
 // - The finish line's flags; bloom audits at the start line (band and flags in view), mid-run and in the finale.
 // Screenshots → out/s3/ (mid-training and end, 1440×900 and 844×390, light and dark; gen 1 at the start; champion).
@@ -35,6 +35,7 @@ async function main() {
   mkdirSync(OUT, { recursive: true });
   const node1 = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS });
   const node2 = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, phase: 1, start: 'carry', genome: node1.final });
+  const nodeHot = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, temperature: 1 });
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -74,7 +75,7 @@ async function main() {
     let sv = await saved(page);
     check(s?.hash === node1.hash, `browser phase hash ${s?.hash} = Node ${node1.hash} (${s?.workers} workers)`);
     check(genomeHash(sv.genome) !== starterHash && genomeHash(sv.genome) === genomeHash(node1.final), 'trained genome saved; hash changed from the untrained starting brain and equals Node\'s');
-    check(sv.train.seed === SEED && sv.train.phases === 1, `training history saved (seed ${sv.train.seed}, phases ${sv.train.phases})`);
+    check(sv.train.seed === SEED && sv.train.phases === 1 && sv.train.temps.join() === '0', `training history saved (seed ${sv.train.seed}, phases ${sv.train.phases}, temperatures ${sv.train.temps.join()})`);
     check((s?.ghostCapacity ?? 0) >= (s?.ghosts ?? 99), `ghost capacity ${s?.ghostCapacity} ≥ the ${s?.ghosts} ghosts a generation records here`);
     check(s?.webgl === true && (s?.frames ?? 0) > 0, `3-D view drew ${s?.frames} frames (${s?.quality} quality)`);
     const snapshot = await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY);
@@ -101,6 +102,35 @@ async function main() {
       check(s?.workers === w && s?.hash === node2.hash, `retrain of the same saved brain on ${w} worker${w === 1 ? '' : 's'}: hash ${s?.hash} = ${node2.hash}`);
       await page.context().close();
     }
+
+    // 3b. temperature in the Train popup
+    page = await open(`?seed=${SEED}&T=${T}&view=sandbox`);
+    await page.click('#train');
+    const tslider = () => page.evaluate(() => {
+      const s = document.getElementById('tSlide') as HTMLInputElement;
+      return { min: s.min, max: s.max, step: s.step, value: s.value, disabled: s.disabled, shown: document.getElementById('tVal')!.textContent, hint: document.getElementById('tHint')!.textContent };
+    });
+    let ts = await tslider();
+    check(ts.min === '-2' && ts.max === '2' && ts.step === '0.25' && ts.value === '0' && !ts.disabled && ts.shown === '×1.0' && ts.hint === 'Scales σ, the size of each mutation.',
+      `Temperature: range ${ts.min}..${ts.max} step ${ts.step}, default ${ts.value} (${ts.shown}), "${ts.hint}"`);
+    const setT = (v: number) => page.evaluate((x) => { const s = document.getElementById('tSlide') as HTMLInputElement; s.value = String(x); s.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    const shownAt: string[] = [];
+    for (const v of [-2, -0.75, 2, 1]) { await setT(v); shownAt.push((await tslider()).shown ?? ''); }
+    check(shownAt.join(' ') === '×0.25 ×0.59 ×4.0 ×2.0', `the value shown follows the slider (${shownAt.join(', ')})`);
+    await page.click('#tdGo');
+    await waitState(page, 'done');
+    s = await status(page);
+    sv = await saved(page);
+    check(s?.temperature === 1 && s?.hash === nodeHot.hash && nodeHot.hash !== node1.hash,
+      `a run at ×2: hash ${s?.hash} = Node's ×2 run ${nodeHot.hash}, ≠ the ×1 run ${node1.hash}`);
+    check(sv.train.temps.join() === '1', `the temperature is recorded in the training history (temps ${sv.train.temps.join()})`);
+    await page.click('#tvBack');
+    await page.click('#trainers [data-tr="backprop"]');
+    await page.click('#train');
+    ts = await tslider();
+    check(ts.disabled && ts.shown === '—' && ts.hint === 'Backprop copies a teacher, so it has nothing to explore.', `backprop: the slider is off (${ts.shown}, "${ts.hint}")`);
+    await page.click('#tdNo');
+    await page.context().close();
 
     // 4. Stop = the generation limit reached there (B6): the best agent so far is saved, as a run asked for that many
     //    generations would; the generation being evaluated is dropped; Drive and Keep training appear
@@ -184,8 +214,8 @@ async function main() {
     s = await status(page);
     check(s?.flags === 2, `the finish line has a chequered flag on a black pole each side (${s?.flags})`);
     const ghosts = s?.ghosts ?? 0, cars = await page.locator('#tvCars').innerText();
-    check(ghosts >= 5 && ghosts <= 20 && (s?.ghostCapacity ?? 0) >= ghosts && cars === `${ghosts} of ${CONFIG.train.population}`,
-      `${ghosts} ghosts a generation on this device (${s?.quality} quality; 5–20 by device), capacity ${s?.ghostCapacity}; map says "${cars}"`);
+    check(ghosts === CONFIG.train.population && (s?.ghostCapacity ?? 0) >= ghosts && cars === `${ghosts} of ${CONFIG.train.population}`,
+      `${ghosts} ghosts a generation (the whole population, ${s?.quality} quality), capacity ${s?.ghostCapacity}; map says "${cars}"`);
     await page.waitForFunction(() => { const s = window.__training!; return s.shownGen > 1 && !s.finale && s.state === 'running'; }, null, { timeout: 300_000 });
     const midA = await page.evaluate(() => window.__training!.auditAt!(0.5));
     check(midA.over === 0, `bloom audit, gen ${midA.gen} at 0.5 s: over ${(midA.over * 100).toFixed(3)}% (max ${midA.max.toFixed(2)})`);
@@ -206,7 +236,11 @@ async function main() {
     check(story.every((l, i) => i === 0 || l.at - story[i - 1].at >= 1.9), `each newer one after the ~2 s minimum (gaps ${story.slice(1).map((l, i) => (l.at - story[i].at).toFixed(1)).join(', ')} s)`);
     check(gens.some((g) => ![1, 10, 25, 50, GENS].includes(g)), 'not only round-number generations');
     check(last?.offset === -1 && s?.finale === true && gens[gens.length - 1] === s?.gen, `then the champion's lap (gen ${last?.gen}), never generation 1 again`);
-    check((s?.prepMs ?? 99) < 15, `no spike preparing a generation: at most ${(s?.prepMs ?? 0).toFixed(1)} ms of main-thread work (its paths and firing come from the workers)`);
+    // a loaded machine has the odd slow frame anywhere (a GC pause): compare with the steady frames' 95th percentile and
+    // allow 20 ms on top, well under what preparing 64 cars at once on the main thread cost (a 35 ms replay alone)
+    const sf = s?.switchFrameMs ?? 99, st = s?.steadyFrameMs ?? 0, p95 = s?.steadyP95Ms ?? 0, lim = Math.max(2 * p95, p95 + 20);
+    check(sf <= lim, `no frame spike when a generation's 64 ghosts come in: worst ${sf.toFixed(1)} ms (limit ${lim.toFixed(1)}; steady median ${st.toFixed(1)}, 95th ${p95.toFixed(1)})${sf > lim ? ` (${s?.switchFrames.join(' ')})` : ''}`);
+    check((s?.prepMs ?? 99) < 25, `no spike preparing a generation: at most ${(s?.prepMs ?? 0).toFixed(1)} ms of main-thread work (its paths and firing come from the workers)`);
     await page.context().close();
 
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);

@@ -55,7 +55,7 @@
   </main>
 </div>
 <div id="rotate"><div><h1>Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button">Continue in portrait</button></div></div>
-<dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
+<dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><label class="count temp" id="tempRow"><span>Temperature</span><b id="tVal"></b><input id="tSlide" type="range" min="-2" max="2" step="0.25" value="0" aria-label="Temperature"><small id="tHint"></small></label><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>

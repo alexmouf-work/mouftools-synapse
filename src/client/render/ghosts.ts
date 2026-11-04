@@ -1,6 +1,9 @@
-// The training view's cars (B6, docs/plans/2026-11-04-tracks-training-matches.md §3). Every generation records a
-// seeded handful of its agents on training track 0 (5–20 by device); the view plays the newest finished generation
-// at 12×, all as glowing ghosts, one of them highlighted (its brain is drawn live in the panel). A newer generation
+// The training view's cars (B6, docs/plans/2026-11-04-tracks-training-matches.md §3). Every generation records its
+// agents on training track 0 (the whole population of 64, as before: principal 2026-11-04 "keep it as many cars as we
+// had before, but load them more lazily so that we don't have a lag spike"); the view plays the newest finished
+// generation at 12×, all as glowing ghosts, one of them highlighted (its brain is drawn live in the panel). A new
+// generation's ghosts are added in over several frames (REVEAL_PER_FRAME, the highlighted one first), and the one
+// mesh is made once and reused. A newer generation
 // takes over after a short minimum (about 2 s), so the screen keeps up with training; each generation's replay
 // starts further into its episode than the one before (the offset grows with the generation's share of the run,
 // never shrinks, and leaves a few seconds to watch). A generation is shown at most once, in order; if training falls
@@ -19,8 +22,10 @@ export const PLAY_SPEED = 12; // sim seconds per real second (principal 2026-11-
 export const MIN_SHOW_S = 2; // real seconds a generation stays before a newer one takes over
 export const LEAVE_S = 2.5; // real seconds of episode the offset always leaves to watch
 export const FINALE_SPEED = 1.5;
-/** Most ghosts any device shows. */
-export const MAX_GHOSTS = 20;
+/** Most ghosts any device shows: a whole generation. */
+export const MAX_GHOSTS = CONFIG.train.population;
+/** Ghosts added per frame when a generation takes over (64 come in over 4 frames). */
+export const REVEAL_PER_FRAME = 16;
 const TICK_HZ = CONFIG.tick.hz;
 const EP = CONFIG.train.episodeTicks;
 /** The latest an episode's replay can start (ticks), so LEAVE_S of it is always left. */
@@ -34,7 +39,7 @@ export const offsetFor = (f: number): number => Math.round(Math.max(0, Math.min(
 
 /** The champion's lap, replayed for display (per tick). */
 export interface Lap { x: Float64Array; y: Float64Array; hdg: Float64Array; v: Float64Array; ticks: number; gen: number }
-interface Shown { paths: Paths; gen: number; offset: number; end: number; hl: number }
+interface Shown { paths: Paths; gen: number; offset: number; end: number; hl: number; order: Int32Array; revealed: number }
 /** One car on the map. */
 export interface Dot { x: number; y: number; hl: boolean; alpha: number }
 
@@ -97,8 +102,10 @@ export class Swarm {
   /** Index (in its generation's recorded handful) of the highlighted car, or −1. */
   get highlight(): number { return this.cur?.hl ?? -1; }
   get current(): { paths: Paths; gen: number; offset: number } | null { return this.cur; }
-  /** Ghosts on screen now. */
-  get shownCount(): number { return this.finaleOn ? 0 : this.cur?.paths.count ?? 0; }
+  /** Ghosts on screen now (all of the generation once they have been added in). */
+  get shownCount(): number { return this.finaleOn ? 0 : this.cur?.revealed ?? 0; }
+  /** Ghosts the generation on screen recorded. */
+  get recordedCount(): number { return this.finaleOn ? 0 : this.cur?.paths.count ?? 0; }
 
   setTrack(t: Track): void {
     this.track = t;
@@ -119,7 +126,11 @@ export class Swarm {
     const hl = highlightOf(paths);
     let end = 0;
     for (let i = 0; i < paths.count; i++) end = Math.max(end, paths.ticks[i]);
-    this.pending = { paths, gen, offset: 0, end, hl };
+    // instance slots: the highlighted car first, then the rest in order
+    const order = new Int32Array(paths.count);
+    order[0] = hl;
+    for (let i = 0, k = 1; i < paths.count; i++) if (i !== hl) order[k++] = i;
+    this.pending = { paths, gen, offset: 0, end, hl, order, revealed: 0 };
     this.pendingF = f;
     if (!this.cur) this.take();
   }
@@ -129,7 +140,7 @@ export class Swarm {
   finish(lap: Lap | null): void { this.ended = true; this.lap = lap; }
 
   /** Jump to t real seconds into what is on screen (deterministic: the result does not depend on earlier frames). */
-  seek(t: number): void { this.t = t; this.fullSearch = true; }
+  seek(t: number): void { this.t = t; this.fullSearch = true; if (this.cur) this.cur.revealed = this.cur.paths.count; }
   /** Real seconds into what is on screen (an audit puts it back after seeking, so the playback's timing is unchanged). */
   get at(): number { return this.t; }
 
@@ -178,24 +189,25 @@ export class Swarm {
 
   private drawGhosts(tau: number, time: number, dt: number): void {
     const cur = this.cur as Shown, t = this.track as Track;
-    const { paths, hl } = cur, S = paths.samples, d = paths.data;
-    this.mesh.count = paths.count;
+    const { paths, hl, order } = cur, S = paths.samples, d = paths.data;
+    cur.revealed = Math.min(paths.count, cur.revealed + REVEAL_PER_FRAME);
+    this.mesh.count = cur.revealed;
     this.dots.length = 0;
-    for (let i = 0; i < paths.count; i++) {
-      const ticks = paths.ticks[i];
+    for (let k = 0; k < cur.revealed; k++) {
+      const i = order[k], ticks = paths.ticks[i];
       const pose = samplePath(d, S, i, ticks, tau);
       const ended = tau >= ticks;
       const fade = ended ? Math.max(FLOOR, 1 - (tau - ticks) / (TICK_HZ * PLAY_SPEED) / FADE_S) : 1;
       toWorld(pose.x, pose.y, 0, this.p);
       this.q.setFromAxisAngle(this.up, yawOf(pose.hdg));
       this.m4.compose(this.p, this.q, this.s.set(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE));
-      setInstance(this.mesh, i, this.m4);
+      setInstance(this.mesh, k, this.m4);
       const early = ticks < EP;
       if (ended && early) this.c.setRGB(1.4, 0.2, 0.3).multiplyScalar(fade * (fade > FLOOR ? 0.55 + 0.45 * Math.abs(Math.sin(time * 9)) : 1));
       else if (pose.wall && !ended) this.c.setRGB(2.4, 0.25, 0.35).multiplyScalar(0.6 + 0.4 * Math.abs(Math.sin(time * 18)));
       else if (i === hl) this.c.setRGB(2.3, 1.7, 0.25).multiplyScalar(0.6 * fade); // the highlighted car: warm yellow
       else this.c.setRGB(0.45, 1.5, 2.2).multiplyScalar(0.55 * fade);
-      this.mesh.setColorAt(i, this.c);
+      this.mesh.setColorAt(k, this.c);
       this.dots.push({ x: pose.x, y: pose.y, hl: i === hl, alpha: fade });
       if (i === hl) {
         const idx = locate(t, pose.x, pose.y, this.fullSearch ? t.startIdx : this.guess[i], this.fullSearch ? t.n >> 1 : 40);

@@ -16,6 +16,7 @@ import { liveSfx } from './audio/sfx';
 import { level } from './audio/audio';
 import type { Saved } from './ui/designer/store';
 import { CONFIG } from '../common/config';
+import { validTemperature } from '../common/train/trainer';
 
 const app = document.querySelector<HTMLElement>('.app');
 if (!app) throw new Error('main: .app missing');
@@ -24,12 +25,12 @@ function sandbox() { showTitle(false); app!.hidden = false; setActive(true); set
 const back = sandbox;
 function title() { setActive(false); app!.hidden = true; showTitle(true); setMode('build'); }
 
-function train(s: Saved, generations: number) {
+function train(s: Saved, generations: number, temperature = 0) {
   setMode('race');
   showTitle(false);
   setActive(false);
   app!.hidden = true;
-  openTraining(s, generations, { save: (next) => replaceSaved(next), back, drive }).catch((e) => { console.error(e); });
+  openTraining(s, generations, temperature, { save: (next) => replaceSaved(next), back, drive }).catch((e) => { console.error(e); });
 }
 
 function drive(s: Saved) {
@@ -71,7 +72,10 @@ Object.defineProperty(window, '__audio', {
   },
 });
 const view = new URLSearchParams(location.search).get('view');
-if (view === 'train') train(currentSaved(), Number(new URLSearchParams(location.search).get('gens')) || CONFIG.train.defaultGenerations);
+if (view === 'train') {
+  const q = new URLSearchParams(location.search), t = Number(q.get('temp') ?? 0);
+  train(currentSaved(), Number(q.get('gens')) || CONFIG.train.defaultGenerations, validTemperature(t) ? t : 0);
+}
 else if (view === 'drive') drive(currentSaved());
 else if (view === 'sandbox') sandbox();
 else title();
