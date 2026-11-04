@@ -211,3 +211,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   hidden layers. remove the drive button."
 - "when clicking on the processing function button (tanh / ReLU, etc) we should show the number of neurons in that layer
   on a slider, so that it can be easily changed."
+- "show the amount of energy each neuron uses when click on it directly. show the total energy used by the layer when
+  looking at the processing function. energy used should be shown as \"at maximum firing rate, uses xx% energy\""
+- "please build all the changes and push to development when ready." → `docs/plans/2026-11-04-build-order.md`.
