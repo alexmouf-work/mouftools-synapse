@@ -23,7 +23,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `fmath.ts` | sin, cos, atan, atan2, exp, tanh, sigmoid, log from + − × ÷, sqrt, floor, round only. |
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
-| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the default brain, column ids, the canonical wire order (`wireList`), `Genome`, validation. |
+| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the default brain, column ids, the canonical wire order (`wireList`), the parameter layout (weights then biases: `paramCount`, `biasIndex`), `Genome`, validation. |
 | `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs. |
 | `sim/energy.ts` | THE energy rule: per-node coefficients, the flat-out and resting loads, the speed cap (floor 10%), the match refusal, the designer's "at maximum firing rate" figures. |
 | `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
@@ -36,7 +36,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
 | `train/episodes.ts` | Episode batches: `EpisodeCore` (runs policies × tracks), `splitEven`, `InlineExecutor`. |
 | `train/neuroevo.ts` | Evolution. |
-| `train/grad.ts` | The generalised delta rule on a compiled net (pre-activations, backward pass); the gradient trainers' one implementation. |
+| `train/grad.ts` | The generalised delta rule on a compiled net (pre-activations, backward pass, Δw ∝ δ·x and Δb ∝ δ); the gradient trainers' one implementation. |
 | `train/rollout.ts` | Lanes for gradient trainers: `RolloutCore` runs a round of lanes with a kernel; lane state travels with the job. |
 | `train/kernels.ts`, `train/imitate.ts` | The kernels by id; `imitate` is backprop's (DAgger with the teacher). |
 | `train/gradTrainer.ts` | What every gradient trainer shares: rounds, fitness checks, the update, the `delta` channel. |
@@ -53,8 +53,10 @@ the field's direction), head direction (≤ 8; cos(heading − preferred), prefe
 sin), grid (≤ 6; three plane waves 60° apart; the first two at two scales, more at spread phases), speed (≤ 1). Adding
 a cell re-tunes the set (cells are numbered by count). Hidden layers: 1–8, each 1–8 neurons of one function
 (Linear = z kept to −1..1, ReLU capped at 4, Sigmoid, Tanh); a new layer starts with two tanh neurons. The wheels are
-tanh. Node order: sense cells (by sense, then cell), hidden layer by layer, wheels; the genome's weights follow
-`wireList` (column by column, source by source, then target). The default brain: one boundary vector cell, one
+tanh. Every hidden neuron and every wheel has a built-in bias (2026-11-04, §3ab): z = b + Σ w·x; it is not a cell
+and costs nothing itself. Node order: sense cells (by sense, then cell), hidden layer by layer, wheels. A genome's
+parameters are the weights in `wireList` order (column by column, source by source, then target), then the biases
+in node order (`paramCount`, `biasIndex`); evolution mutates biases like weights, backprop learns Δb = η·δ. The default brain: one boundary vector cell, one
 head-direction cell, three tanh neurons. Every node has a firing rate 0..1 (`rateOf`: tanh and linear (y + 1)/2,
 ReLU min(y, 1), sigmoid y; head direction (cos + 1)/2; the other senses their value).
 
@@ -153,7 +155,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   layers that vanish at a limit; the panel: the activation graph from the engine's own rules (polar fields with
   distance rings, the head-direction wave, the grid heatmap with a 50 m bar, transfer and speed curves, axis titles,
   axes through 0), the one-line description, "At maximum firing rate, uses x% energy" from energy.ts, the Neurons
-  slider, the bin; the energy split resting–flat out; Reset with a confirmation; the trainer picker and the centred
+  slider, the bin; a trained neuron's or wheel's bias, its transfer curve plotted against Σ w·x so the bias shifts it;
+  the energy split resting–flat out; Reset with a confirmation; the trainer picker and the centred
   "Learning Rule : …" strip; Train asks how many generations), `symbols.ts` (three.js symbols, loaded after first
   paint, one viewport per tray tile and sense cell; build mode is still, so only a gentle idle motion), `store.ts`.
   One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows); portrait phones get the
@@ -162,7 +165,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
   {seed, phases}, genome}` (canonical genome JSON). Reads and writes are in try/catch: a missing save starts from the
   starting brain; an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
-  the starting brain with a one-time note; a browser that refuses storage gets a toast that changes last until the
+  the starting brain with a one-time note; a v2 save from before the biases loads with every bias 0; a browser that
+  refuses storage gets a toast that changes last until the
   tab closes. Any edit, and Reset, clear the training history (new seed, trains from scratch).
 - `ui/training/` — the training view. Train hands the saved brain over; the seed is the brain's own (picked on its
   first Train), the phase is its count of finished runs, so every run is reproducible and a retrain sees new tracks.
@@ -199,7 +203,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   (`auditTrainAt` / the drive view's `auditAt`: seek, snap the camera, draw, audit), so a pass means pass. The car's
   coats are satin (roughness ≥ 0.45; the paint near matte, 0.7): mirror-sharp coats threw sun glints up to 3.6 at some poses,
   and driving into a low sun the glossier paint (1.8) and kerbs (1.38) still went over, so kerbs, run-off and walls are
-  rough (0.8) too (found by the bloom audit after brain v2).
+  rough (0.8) too, and the pale floodlight poles and stand roof satin (0.75) (found by the bloom audit after brain v2).
   Bloom radius 0.32 (mock-up 0.45), and `glow.ts` fades strips and gate bands near the camera (25% at ≤ 6 m, full
   from 60 m), so near glows read as lines, not haze, while mid-distance glow keeps the mock-up's look.
 - `ui/weights.ts` — how a wire's weight looks everywhere (principal, 2026-10-31): red at −1, black at 0, green at +1

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { genomeHash, specHash, zeroGenome } from '../sim/brain';
-import { defaultSpec, wireCount } from '../sim/spec';
+import { defaultSpec, paramCount } from '../sim/spec';
 import { InlineExecutor, type EpisodeSetup } from './episodes';
 import { MeteredEnv } from './env';
 import { phaseSeeds, runPhase } from './phase';
@@ -13,7 +13,7 @@ import './backprop';
 
 const T = 700_000; // small phase: a few generations (one is 64 × 2 × 1200 ticks at worst)
 const spec = defaultSpec();
-const nW = wireCount(spec);
+const nW = paramCount(spec);
 
 async function makeEnv(seed: number, budgetT = T) {
   const s = phaseSeeds(seed);

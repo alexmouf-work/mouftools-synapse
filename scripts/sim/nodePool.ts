@@ -1,6 +1,6 @@
 // Node worker_threads executor. Same split as the browser pool (splitEven); results reassembled in policy order.
 import { Worker } from 'node:worker_threads';
-import { wireCount } from '../../src/common/sim/spec';
+import { paramCount } from '../../src/common/sim/spec';
 import { RESULT_STRIDE, splitEven, splitJob, type EpisodeSetup, type Executor } from '../../src/common/train/episodes';
 import type { LaneOut, RolloutJob } from '../../src/common/train/rollout';
 
@@ -25,7 +25,7 @@ export class NodePool implements Executor {
     });
   }
   async setup(s: EpisodeSetup): Promise<void> {
-    this.nW = wireCount(s.spec); this.nT = s.trackSeeds.length;
+    this.nW = paramCount(s.spec); this.nT = s.trackSeeds.length;
     await Promise.all(this.ws.map((w) => this.ask(w, { type: 'setup', setup: s })));
   }
   async run(w: Float64Array, count: number): Promise<Float64Array> {

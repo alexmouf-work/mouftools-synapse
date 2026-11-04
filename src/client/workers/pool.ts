@@ -4,7 +4,7 @@ import {
   joinPaths, pathSamples, RESULT_STRIDE, splitEven, splitJob, type EpisodeSetup, type Executor, type Paths,
 } from '../../common/train/episodes';
 import type { LaneOut, RolloutJob } from '../../common/train/rollout';
-import { wireCount } from '../../common/sim/spec';
+import { paramCount } from '../../common/sim/spec';
 
 type Reply =
   | { type: 'ready' } | { type: 'result'; id: number; out: Float64Array; paths: Paths | null } | { type: 'lanes'; id: number; lanes: LaneOut[] }
@@ -35,7 +35,7 @@ export class BrowserPool implements Executor {
     });
   }
   async setup(s: EpisodeSetup): Promise<void> {
-    this.nW = wireCount(s.spec); this.nT = s.trackSeeds.length; this.samples = pathSamples(s.episodeTicks);
+    this.nW = paramCount(s.spec); this.nT = s.trackSeeds.length; this.samples = pathSamples(s.episodeTicks);
     await Promise.all(this.ws.map((w) => this.ask(w, { type: 'setup', setup: s })));
   }
   async run(w: Float64Array, count: number): Promise<Float64Array> {

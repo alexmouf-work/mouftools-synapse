@@ -3,7 +3,7 @@ import { CONFIG } from '../../src/common/config';
 import { compile, evalNet } from '../../src/common/sim/brain';
 import { speedCap } from '../../src/common/sim/energy';
 import { startCar } from '../../src/common/sim/car';
-import { defaultSpec, wireCount, type BrainSpec } from '../../src/common/sim/spec';
+import { defaultSpec, paramCount, type BrainSpec } from '../../src/common/sim/spec';
 import { driveTeacher, teacherWheels } from '../../src/common/sim/teacher';
 import { generateTrack } from '../../src/common/sim/track';
 import { Backprop } from '../../src/common/train/backprop';
@@ -15,9 +15,9 @@ import { hashU } from '../../src/common/rng';
 import { readSensors } from '../../src/common/sim/sensors';
 import { trainerRefusal } from '../../src/common/train/trainer';
 
-/** One speed cell → one neuron (fn) → the four wheels (tanh). Canonical wires: speed→h, then h→FL, FR, RL, RR. */
+/** One speed cell → one neuron (fn) → the four wheels (tanh). Parameters: speed→h, h→FL, FR, RL, RR; biases h, FL, FR, RL, RR. */
 const tiny = (fn: 'tanh' | 'sigmoid' | 'relu' | 'linear'): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
-const W = [0.6, 0.8, -0.3, 0.5, 0.2];
+const W = [0.6, 0.8, -0.3, 0.5, 0.2, 0.1, -0.2, 0.05, 0, 0.3];
 const SPD = 0.5, TARGET = 0.9;
 const F: Record<string, [(z: number) => number, (z: number) => number]> = {
   tanh: [Math.tanh, (z) => 1 - Math.tanh(z) ** 2],
@@ -33,7 +33,7 @@ function engineGrad(fn: 'tanh' | 'sigmoid' | 'relu' | 'linear') {
   evalNet(net, [SPD], vals);
   preActivations(net, vals, z);
   const err = [TARGET - vals[net.outStart], 0, 0, 0];
-  const grad = new Float64Array(5);
+  const grad = new Float64Array(10);
   backward(net, vals, z, err, delta, grad);
   return { grad, y: vals[net.outStart] };
 }
@@ -42,14 +42,14 @@ describe('the generalised delta rule, hand-computed on a tiny net', () => {
   for (const fn of ['tanh', 'sigmoid', 'relu', 'linear'] as const) {
     it(fn, () => {
       const [f, df] = F[fn];
-      const z1 = W[0] * SPD, y1 = f(z1);
-      const zo = W[1] * y1, y = Math.tanh(zo); // the wheels are tanh
+      const z1 = W[5] + W[0] * SPD, y1 = f(z1); // z = b + Σ w·x
+      const zo = W[6] + W[1] * y1, y = Math.tanh(zo); // the wheels are tanh
       const dOut = (TARGET - y) * (1 - y * y); // output δ = (t − y)·f′(z)
       const d1 = df(z1) * W[1] * dOut; // hidden δ = f′(z)·Σ w·δ (only FL carries an error)
-      const hand = [d1 * SPD, dOut * y1, 0, 0, 0]; // δ·x per wire
+      const hand = [d1 * SPD, dOut * y1, 0, 0, 0, d1, dOut, 0, 0, 0]; // δ·x per wire, then δ per bias
       const { grad, y: yEngine } = engineGrad(fn);
       expect(yEngine).toBeCloseTo(y, 14);
-      for (let k = 0; k < 5; k++) expect(grad[k]).toBeCloseTo(hand[k], 14);
+      for (let k = 0; k < 10; k++) expect(grad[k]).toBeCloseTo(hand[k], 14);
     });
   }
   it('the trainer step is Δw = η · (Σ δ·x) / samples', () => {
@@ -66,7 +66,7 @@ describe('copying the teacher (imitate kernel)', () => {
   // the default brain plus a speed cell (so the brain sees something on the start straight)
   const s = phaseSeeds(11), spec: BrainSpec = { ...defaultSpec(), senses: { ...defaultSpec().senses, speed: 1 } };
   const setup = { spec, trackSeeds: s.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
-  const w = Float64Array.from({ length: wireCount(spec) }, (_, k) => ((k * 7) % 5 - 2) / 4);
+  const w = Float64Array.from({ length: paramCount(spec) }, (_, k) => ((k * 7) % 5 - 2) / 4);
 
   it('one tick of a lane adds exactly the hand-built δ·x for e = teacher − brain', () => {
     const core = new EpisodeCore(setup);
@@ -82,7 +82,7 @@ describe('copying the teacher (imitate kernel)', () => {
     const target = new Float64Array(4);
     teacherWheels(c, t, target, speedCap(load)); // labelled at the speed cap the brain's energy leaves
     preActivations(net, vals, z);
-    const grad = new Float64Array(wireCount(spec));
+    const grad = new Float64Array(paramCount(spec));
     backward(net, vals, z, [0, 1, 2, 3].map((k) => target[k] - vals[net.outStart + k]), delta, grad);
     expect(Array.from(out.grad)).toEqual(Array.from(grad));
     expect(grad.some((g) => g !== 0)).toBe(true);

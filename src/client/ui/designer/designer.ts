@@ -11,7 +11,7 @@ import {
 } from '../../../common/sim/brain';
 import { cellMax, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
 import { fieldAct, fieldWidthDeg, gridAct, gridPhase, gridScale, hdAct, hdPreferred, SENSE_INFO, spreadDeg } from '../../../common/sim/senses';
-import { columns, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
+import { biasIndex, columns, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
 import { load, NO_TRAINING, save, type Saved, type TrainerId } from './store';
@@ -234,6 +234,9 @@ const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
 const binBtn = (id: string, label: string) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
 const fmtE = (v: number) => `${Math.round(v * 10) / 10}%`;
 const useLine = (v: number) => `<p class="use">At maximum firing rate, uses <b>${fmtE(v)}</b> energy</p>`;
+/** A neuron's or wheel's built-in bias (shown once the brain is trained; 0 before, so omitted). */
+const biasOf = (id: string): number => (trained() ? W.saved.genome.w[biasIndex(spec(), id)] : 0);
+const biasLine = (b: number) => (trained() ? `<p class="use" data-bias>Bias <b>${b >= 0 ? '+' : '−'}${Math.abs(b).toFixed(2)}</b></p>` : '');
 let holdPanel = false; // while the neurons slider is dragged, the board redraws but the panel stays put
 
 function inspect(): void {
@@ -268,13 +271,15 @@ function inspect(): void {
   if (id.startsWith('h')) {
     const L = Number(id.slice(1, id.indexOf(':')));
     if (!s.layers[L]) { W.sel = null; inspect(); return; }
-    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.neuron}</p>${useLine(cellMax(s, L + 1))}${s.layers[L].n > 1 ? binBtn('rmN', 'Remove this neuron') : ''}`;
-    graphCurve(s.layers[L].fn, 'input');
+    const b = biasOf(id);
+    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.neuron}</p>${biasLine(b)}${useLine(cellMax(s, L + 1))}${s.layers[L].n > 1 ? binBtn('rmN', 'Remove this neuron') : ''}`;
+    graphCurve(s.layers[L].fn, 'Σ w·x', 'output', b);
     if (document.getElementById('rmN')) $('rmN').onclick = () => { commit(setLayerSize(W.saved.genome, L, s.layers[L].n - 1)); W.sel = null; render(); };
     return;
   }
-  box2.innerHTML = `<h2>${OUTPUTS.find((q) => q.id === id)?.label} wheel</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.wheel}</p>${useLine(cellMax(s, columns(s).length - 1))}`;
-  graphCurve('tanh', 'input', 'wheel speed');
+  const b = biasOf(id);
+  box2.innerHTML = `<h2>${OUTPUTS.find((q) => q.id === id)?.label} wheel</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.wheel}</p>${biasLine(b)}${useLine(cellMax(s, columns(s).length - 1))}`;
+  graphCurve('tanh', 'Σ w·x', 'wheel speed', b);
 }
 
 // ---- activation-pattern graphs (the panel), from the engine's own sense rules ----
@@ -355,11 +360,11 @@ function gridMap(k: number): void {
   g.fillStyle = '#ffffff'; g.font = `bold 9px ${FONT}`;
   const bar = 50 * m2p; g.fillRect(6, w - 8, bar, 2); g.fillText('50 m', 8 + bar, w - 4);
 }
-/** A transfer curve, from the engine's own function. */
-function graphCurve(fn: Act, xl: string, yl = 'output'): void {
+/** A transfer curve, from the engine's own function, against the weighted input Σ w·x: shifted by the bias b. */
+function graphCurve(fn: Act, xl: string, yl = 'output', b = 0): void {
   const code = ACT_CODE[fn], ymin = fn === 'relu' || fn === 'sigmoid' ? 0 : -1, ymax = fn === 'relu' ? 4 : 1;
   const { g, X, Y } = plot({ x: [-4, 4], y: [ymin, ymax], xt: [-4, 0, 4], yt: [...new Set([ymin, 0, ymax])], xl, yl });
-  line(g, 160, (u) => { const xv = -4 + 8 * u; return [X(xv), Y(clamp(transfer(code, xv), ymin, ymax))]; });
+  line(g, 160, (u) => { const xv = -4 + 8 * u; return [X(xv), Y(clamp(transfer(code, xv + b), ymin, ymax))]; });
 }
 function speedLine(): void {
   const top = CONFIG.car.wheelSpeed;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { genomeFromJSON, genomeHash, genomeToJSON } from '../../src/common/sim/brain';
-import { defaultSpec, wireCount, type BrainSpec } from '../../src/common/sim/spec';
+import { defaultSpec, paramCount, type BrainSpec } from '../../src/common/sim/spec';
 import { Rng } from '../../src/common/rng';
 
 describe('genome JSON', () => {
@@ -9,7 +9,7 @@ describe('genome JSON', () => {
     const big: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 1, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 4, fn: 'relu' }, { n: 2, fn: 'linear' }] };
     for (const spec of [defaultSpec(), big]) {
       const r = new Rng(5);
-      const w = Array.from({ length: wireCount(spec) }, (_, k) => awkward[k] ?? r.range(-4, 4));
+      const w = Array.from({ length: paramCount(spec) }, (_, k) => awkward[k] ?? r.range(-4, 4));
       const g = { spec, w };
       const back = genomeFromJSON(genomeToJSON(g));
       expect(genomeHash(back)).toBe(genomeHash(g));

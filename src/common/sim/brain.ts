@@ -1,12 +1,12 @@
 // Brain v2: spec → compiled net, evaluation, the energy load of a tick, edit ops, canonical genome JSON and its hash.
 // Node order: the sense cells (by sense, then cell), hidden neurons layer by layer, the four wheels (tanh). Each node
-// sums its incoming wires in canonical wire order. Every node has a firing rate 0..1 (rateOf), which the energy rule
+// sums its bias and its incoming wires in canonical wire order: z = b + Σ w·x (built-in biases, 2026-11-04). Every node has a firing rate 0..1 (rateOf), which the energy rule
 // charges and the views flash.
 import { CONFIG, type Act } from '../config';
 import { sigmoid, tanh } from '../fmath';
 import { Hasher } from '../hash';
 import { energyRefusal, nodeCoefs, type Mode } from './energy';
-import { columns, inputIds, OUTPUTS, SENSE_IDS, validateGenome, validateSpec, wireCount, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
+import { columns, inputIds, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
 
 export const ACT_CODE: Record<Act, number> = { relu: 1, sigmoid: 2, tanh: 3, linear: 5 };
 const TANH = ACT_CODE.tanh;
@@ -31,6 +31,10 @@ export interface Net {
   w: Float64Array;
   /** compiled wire → canonical wire index. */
   specIdx: Int32Array;
+  /** Per node: its bias (inputs 0); node d's bias is parameter wires + (d − nIn). */
+  bias: Float64Array;
+  /** Number of wires (the parameter vector's biases start here). */
+  wires: number;
   /** Per node: energy (% of the supply) per unit of firing rate, its own cost plus the wires it drives. */
   coef: Float64Array;
   /** Node ids, in node order. */
@@ -54,15 +58,18 @@ export function compile(g: Genome): Net {
   const from = new Int32Array(m), w = new Float64Array(m), specIdx = new Int32Array(m), inStart = new Int32Array(nNodes + 1);
   order.forEach((k, c) => { from[c] = index.get(wl[k][0]) as number; w[c] = g.w[k]; specIdx[c] = k; inStart[toNode[k] + 1]++; });
   for (let n = 0; n < nNodes; n++) inStart[n + 1] += inStart[n];
+  const bias = new Float64Array(nNodes);
+  for (let d = nIn; d < nNodes; d++) bias[d] = g.w[m + d - nIn];
   return {
-    spec: s, nIn, nHidden: outStart - nIn, nNodes, outStart, act, sense, cellK, cellN, inStart, from, w, specIdx,
+    spec: s, nIn, nHidden: outStart - nIn, nNodes, outStart, act, sense, cellK, cellN, inStart, from, w, specIdx, bias, wires: m,
     coef: Float64Array.from(nodeCoefs(s)), ids,
   };
 }
 
-/** Replace the weights of a compiled net in place (same spec). */
-export function setWeights(net: Net, wCanon: ArrayLike<number>): void {
-  for (let c = 0; c < net.w.length; c++) net.w[c] = wCanon[net.specIdx[c]];
+/** Replace the parameters of a compiled net in place (same spec): wire weights, then biases. */
+export function setWeights(net: Net, params: ArrayLike<number>): void {
+  for (let c = 0; c < net.w.length; c++) net.w[c] = params[net.specIdx[c]];
+  for (let d = net.nIn; d < net.nNodes; d++) net.bias[d] = params[net.wires + d - net.nIn];
 }
 
 export function transfer(code: number, x: number): number {
@@ -99,7 +106,7 @@ export const restRate = (fn: Act): number => rateOf(ACT_CODE[fn], transfer(ACT_C
  * energy load (% of the supply): Σ coef × rate over every node.
  */
 export function evalNet(net: Net, inputs: ArrayLike<number>, vals: Float64Array): number {
-  const { nIn, nNodes, act, inStart, from, w, coef, sense } = net;
+  const { nIn, nNodes, act, inStart, from, w, coef, sense, bias } = net;
   let load = 0;
   for (let i = 0; i < nIn; i++) {
     const v = inputs[i];
@@ -107,7 +114,7 @@ export function evalNet(net: Net, inputs: ArrayLike<number>, vals: Float64Array)
     load += coef[i] * (sense[i] === SENSE_CODE.hd ? (v + 1) / 2 : v);
   }
   for (let d = nIn; d < nNodes; d++) {
-    let s = 0;
+    let s = bias[d];
     for (let c = inStart[d], e = inStart[d + 1]; c < e; c++) s += w[c] * vals[from[c]];
     const y = transfer(act[d], s);
     vals[d] = y;
@@ -120,13 +127,14 @@ export function evalNet(net: Net, inputs: ArrayLike<number>, vals: Float64Array)
 export const nodeRate = (net: Net, d: number, v: number): number =>
   d < net.nIn ? (net.sense[d] === SENSE_CODE.hd ? (v + 1) / 2 : v) : rateOf(net.act[d], v);
 
-/** The `signal` probe channel: per canonical wire, sender output × weight. */
-export function signalOf(net: Net, vals: ArrayLike<number>, out = new Float64Array(net.w.length)): Float64Array {
+/** The `signal` probe channel, per parameter: each wire's sender output × weight, then each bias (its constant push). */
+export function signalOf(net: Net, vals: ArrayLike<number>, out = new Float64Array(net.wires + net.nNodes - net.nIn)): Float64Array {
   for (let k = 0; k < net.w.length; k++) out[net.specIdx[k]] = vals[net.from[k]] * net.w[k];
+  for (let d = net.nIn; d < net.nNodes; d++) out[net.wires + d - net.nIn] = net.bias[d];
   return out;
 }
 
-export const zeroGenome = (spec: BrainSpec): Genome => ({ spec, w: new Array(wireCount(spec)).fill(0) });
+export const zeroGenome = (spec: BrainSpec): Genome => ({ spec, w: new Array(paramCount(spec)).fill(0) });
 export const defaultGenome = (): Genome => zeroGenome(defaultSpec());
 
 // ---- edit ops (pure; the designer calls nothing else to change a brain). Any edit leaves an untrained brain: its

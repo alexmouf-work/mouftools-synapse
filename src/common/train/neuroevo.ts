@@ -4,7 +4,7 @@
 // while the next one's worst case fits the budget; the generation count is a result, not a setting.
 import { CONFIG } from '../config';
 import { genomeHash, specHash } from '../sim/brain';
-import { wireCount, type Genome } from '../sim/spec';
+import { paramCount, type Genome } from '../sim/spec';
 import { derive, Rng, TAG } from '../rng';
 import { meanFitness, type Env } from './env';
 import { firstTickSignal } from './probe';
@@ -32,7 +32,7 @@ export class Neuroevo implements Trainer {
     this.env = env;
     this.genome = genome;
     this.rng = new Rng(derive(seed, TAG.trainer));
-    const nW = wireCount(genome.spec);
+    const nW = paramCount(genome.spec);
     this.pop = [];
     if (this.opts.start === 'fresh') {
       for (let p = 0; p < P.population; p++) {

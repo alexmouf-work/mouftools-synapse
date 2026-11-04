@@ -64,7 +64,7 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
     assertCapacity(crowd, n);
     crowd.count = n; crowd.castShadow = true; g.add(crowd);
     const back = tiers * 2.4, roofY = 1.1 * tiers + 7;
-    const roof = new THREE.Mesh(G(new THREE.BoxGeometry(back + 8, 0.7, LEN + 6)), M(new THREE.MeshStandardMaterial({ color: '#cdd5e4', roughness: 0.55, metalness: 0.1, flatShading: true, envMapIntensity: 0.4 })));
+    const roof = new THREE.Mesh(G(new THREE.BoxGeometry(back + 8, 0.7, LEN + 6)), M(new THREE.MeshStandardMaterial({ color: '#cdd5e4', roughness: 0.75, metalness: 0.05, flatShading: true, envMapIntensity: 0.4 })));
     roof.position.set(back / 2 - 2, roofY, 0); roof.rotation.z = 0.06; roof.castShadow = true; g.add(roof);
     const roofLight = glow(new THREE.Mesh(G(new THREE.BoxGeometry(0.4, 0.25, LEN + 6)), litMat));
     roofLight.position.set(-6, roofY - 0.2, 0); g.add(roofLight);
@@ -122,7 +122,8 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
       faceTrack(g, i + 6);
       group.add(g); keepClear.push({ x: g.position.x, z: g.position.z, r: 22 });
     }
-    const poleMat = M(new THREE.MeshStandardMaterial({ color: '#d7deec', roughness: 0.4, metalness: 0.5, flatShading: true }));
+    // satin, not polished: a polished pale pole glinted to 1.4 against a low sun (bloom audit, brain v2 drive)
+    const poleMat = M(new THREE.MeshStandardMaterial({ color: '#d7deec', roughness: 0.75, metalness: 0.15, flatShading: true }));
     const lampMat = M(new THREE.MeshBasicMaterial({ map: tex.lamp, color: new THREE.Color(2.4, 2.3, 2.1) }));
     for (const f of [0.14, 0.36, 0.64, 0.9]) {
       const i = Math.round(f * t.n) % t.n, s = outSide(i), g = new THREE.Group();

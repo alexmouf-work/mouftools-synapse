@@ -5,7 +5,7 @@
 import { CONFIG } from '../config';
 import { compile, setWeights, zeroGenome, type Net } from '../sim/brain';
 import { newRecording, Runner, type Recording } from '../sim/race';
-import { wireCount, type BrainSpec } from '../sim/spec';
+import { paramCount, type BrainSpec } from '../sim/spec';
 import { generateTrack, type Track } from '../sim/track';
 import { KERNELS } from './kernels';
 import { RolloutCore, type LaneOut, type RolloutJob } from './rollout';
@@ -77,7 +77,7 @@ export class EpisodeCore {
     return (this.lanes ??= new RolloutCore(this.s, this.tracks, KERNELS)).run(job);
   }
   run(w: Float64Array, count: number, record = false): { out: Float64Array; paths: Paths | null } {
-    const nW = wireCount(this.s.spec), nT = this.tracks.length;
+    const nW = paramCount(this.s.spec), nT = this.tracks.length;
     if (w.length !== count * nW) throw new Error(`episodes: ${w.length} weights for ${count} × ${nW}`);
     const out = new Float64Array(count * nT * RESULT_STRIDE);
     const S = pathSamples(this.s.episodeTicks);

@@ -4,7 +4,7 @@ import {
   addSense, defaultGenome, genomeHash, insertLayer, removeLayer, removeSense, setLayerFn, setLayerSize, type EditResult,
 } from '../../src/common/sim/brain';
 import { maxLoad } from '../../src/common/sim/energy';
-import { wireCount, type Genome } from '../../src/common/sim/spec';
+import { paramCount, type Genome } from '../../src/common/sim/spec';
 
 const ok = (r: EditResult): Genome => { if (!r.ok) throw new Error(`refused: ${r.reason}`); return r.genome; };
 
@@ -43,7 +43,7 @@ describe('edit ops (brain v2: senses, layers, functions; wiring is fixed)', () =
   it('any edit leaves an untrained brain: every wire, old or new, at weight 0', () => {
     const trained: Genome = { ...defaultGenome(), w: defaultGenome().w.map((_, k) => (k % 3) - 1) };
     for (const g of [ok(addSense(trained, 'grid')), ok(setLayerFn(trained, 0, 'linear')), ok(setLayerSize(trained, 0, 5)), ok(insertLayer(trained, 1))]) {
-      expect(g.w.length).toBe(wireCount(g.spec));
+      expect(g.w.length).toBe(paramCount(g.spec));
       expect(g.w.every((x) => x === 0)).toBe(true);
     }
   });

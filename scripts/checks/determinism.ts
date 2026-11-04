@@ -9,7 +9,7 @@ import { CONFIG } from '../../src/common/config';
 import { Hasher } from '../../src/common/hash';
 import { Rng } from '../../src/common/rng';
 import { compile } from '../../src/common/sim/brain';
-import { defaultSpec, wireCount, type BrainSpec } from '../../src/common/sim/spec';
+import { defaultSpec, paramCount, type BrainSpec } from '../../src/common/sim/spec';
 import { newRecording, recordingHash, Runner } from '../../src/common/sim/race';
 import { generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
@@ -25,7 +25,7 @@ const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 2, hd: 2, grid
 /** A recorded 30 s race of `spec` with seeded random weights on the seed's unseen track. */
 function raceHash(seed: number, spec: BrainSpec): string {
   const ps = phaseSeeds(seed), r = new Rng(seed);
-  const net = compile({ spec, w: Array.from({ length: wireCount(spec) }, () => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
+  const net = compile({ spec, w: Array.from({ length: paramCount(spec) }, () => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
   const rec = newRecording(net, CONFIG.race.ticks);
   new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, earlyStop: false, record: rec });
   return recordingHash(rec);

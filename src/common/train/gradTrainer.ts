@@ -7,7 +7,7 @@
 import { CONFIG } from '../config';
 import { derive, Rng, TAG } from '../rng';
 import { specHash } from '../sim/brain';
-import { columns, wireCount, type BrainSpec, type Genome } from '../sim/spec';
+import { columns, paramCount, type BrainSpec, type Genome } from '../sim/spec';
 import { meanFitness, type Env } from './env';
 import { firstTickSignal } from './probe';
 import { fresh, type KernelId, type Lane, type LaneOut } from './rollout';
@@ -56,7 +56,7 @@ export abstract class GradTrainer implements Trainer {
     this.genome = genome;
     this.seed = derive(seed, TAG.trainer);
     this.rng = new Rng(this.seed);
-    const nW = wireCount(genome.spec);
+    const nW = paramCount(genome.spec);
     this.w = this.opts.start === 'fresh' ? freshWeights(genome.spec, this.rng) : Float64Array.from(genome.w);
     this.lastDw = new Float64Array(nW);
     this.lanes = fresh(G.lanes);
@@ -157,12 +157,13 @@ export abstract class GradTrainer implements Trainer {
 const clampW = (x: number): number => (x > CAP ? CAP : x < -CAP ? -CAP : x);
 
 /**
- * A fresh start: w ~ N(0, initSd), except that wires into a ReLU layer start positive (|N|). A ReLU that is silent on
+ * A fresh start: every weight and bias ~ N(0, initSd), except that wires into a ReLU layer, and its biases, start
+ * positive (|N|). A ReLU that is silent on
  * every input has slope 0 everywhere, so gradient descent can never wake it (a dead unit; measured in T1: half the
  * seeds lost the old Starter's cruise neuron that way); positive weights from mostly positive rates start it firing.
  */
 function freshWeights(spec: BrainSpec, rng: Rng): Float64Array {
-  const C = columns(spec), out = new Float64Array(wireCount(spec));
+  const C = columns(spec), out = new Float64Array(paramCount(spec));
   let k = 0;
   for (let i = 0; i + 1 < C.length; i++) {
     const relu = i < spec.layers.length && spec.layers[i].fn === 'relu';
@@ -170,6 +171,11 @@ function freshWeights(spec: BrainSpec, rng: Rng): Float64Array {
       const x = rng.normal() * G.initSd;
       out[k++] = clampW(relu && x < 0 ? -x : x);
     }
+  }
+  // the biases: hidden neurons layer by layer, then the wheels
+  for (let i = 1; i < C.length; i++) {
+    const relu = i <= spec.layers.length && spec.layers[i - 1].fn === 'relu';
+    for (let b = 0; b < C[i].length; b++) { const x = rng.normal() * G.initSd; out[k++] = clampW(relu && x < 0 ? -x : x); }
   }
   return out;
 }

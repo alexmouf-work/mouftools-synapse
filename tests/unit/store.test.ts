@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
 import { parse, serialize, startSaved } from '../../src/client/ui/designer/store';
+import { biasCount, wireCount } from '../../src/common/sim/spec';
 
 describe('designer save', () => {
   it('round-trips name, trainer, training history and the genome exactly', () => {
-    const g = defaultGenome(), genome = { ...g, w: g.w.map((_, k) => (k - 8) / 3) };
+    const g = defaultGenome(), genome = { ...g, w: g.w.map((_, k) => (k - 8) / 6) };
     const saved = { name: 'Gerald', genome, train: { seed: 4000000000, phases: 3 }, trainer: 'backprop' as const };
     const back = parse(serialize(saved));
     expect(back.status).toBe('ok');
@@ -23,6 +24,15 @@ describe('designer save', () => {
       expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
       expect(parse(serialize(r.saved)).status).toBe('ok'); // once: saved back as v3
     }
+  });
+  it('a brain v2 save from before the built-in biases loads with every bias at 0, weights kept', () => {
+    const g = defaultGenome(), wires = wireCount(g.spec), weights = Array.from({ length: wires }, (_, k) => (k % 5) / 4 - 0.5);
+    const old = JSON.stringify({ v: 3, name: 'No bias', trainer: 'evolution', train: { seed: 3, phases: 1 }, genome: { spec: g.spec, w: weights } });
+    const r = parse(old);
+    expect(r.status).toBe('ok');
+    expect(r.saved.genome.w.slice(0, wires)).toEqual(weights);
+    expect(r.saved.genome.w.slice(wires)).toEqual(new Array(biasCount(g.spec)).fill(0));
+    expect(r.saved.train).toEqual({ seed: 3, phases: 1 });
   });
   it('missing → the starting brain, quietly', () => {
     const r = parse(null);

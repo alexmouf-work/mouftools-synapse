@@ -3,7 +3,7 @@
 import { compile, setWeights, type Net } from '../sim/brain';
 import { startCar, type CarState } from '../sim/car';
 import { fitnessOf, Runner } from '../sim/race';
-import { wireCount } from '../sim/spec';
+import { paramCount } from '../sim/spec';
 import { generateTrack, type Track } from '../sim/track';
 import { RESULT_STRIDE, type EpisodeSetup, type Executor } from './episodes';
 import type { LaneOut, RolloutJob } from './rollout';
@@ -56,7 +56,7 @@ export class MeteredEnv implements Env {
   }
 
   async runEpisodes(ws: Float64Array[]): Promise<EpisodeOutcome[][]> {
-    const nW = wireCount(this.setup.spec), nT = this.setup.trackSeeds.length;
+    const nW = paramCount(this.setup.spec), nT = this.setup.trackSeeds.length;
     this.charge(this.worstCase(ws.length));
     const flat = new Float64Array(ws.length * nW);
     ws.forEach((w, p) => {

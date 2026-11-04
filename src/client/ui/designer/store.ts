@@ -1,9 +1,10 @@
 // The designer's saved brain: versioned JSON in localStorage. Storage can be missing or throw (private windows,
 // blocked site data), so every access is guarded and the designer always has a brain: a missing save starts from the
 // default brain quietly; a broken one starts from it and says so; a save from before brain v2 (versions 1 and 2) is
-// reset to the default brain with a one-time note (Synapse changed how brains work).
+// reset to the default brain with a one-time note (Synapse changed how brains work). A brain v2 save from before the
+// built-in biases (a weight per wire only) loads with every bias at 0.
 import { defaultGenome, genomeToJSON } from '../../../common/sim/brain';
-import { validateGenome, type Genome } from '../../../common/sim/spec';
+import { biasCount, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
 
 export const SAVE_KEY = 'synapse.brain';
 export const SAVE_VERSION = 3;
@@ -40,6 +41,8 @@ export function parse(text: string | null): { status: 'ok' | 'missing' | 'corrup
     if (typeof o.name !== 'string' || !o.name.trim()) throw new Error('save name');
     if (!TRAINERS.includes(o.trainer as TrainerId)) throw new Error('save trainer');
     if (!o.genome) throw new Error('save genome');
+    validateSpec(o.genome.spec);
+    if (Array.isArray(o.genome.w) && o.genome.w.length === wireCount(o.genome.spec)) o.genome = { ...o.genome, w: [...o.genome.w, ...new Array(biasCount(o.genome.spec)).fill(0)] };
     validateGenome(o.genome);
     return { status: 'ok', saved: { name: o.name, genome: o.genome, train: { seed: train.seed, phases: train.phases }, trainer: o.trainer as TrainerId } };
   } catch (e) {

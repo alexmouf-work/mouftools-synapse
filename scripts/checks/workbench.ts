@@ -2,7 +2,8 @@
 // - The starting brain, the energy split (resting–flat out) as energy.ts computes it, the Learning Rule strip and the
 //   trainer picker (actor-critic and A_RP not built yet), the legal line and the sound button.
 // - Tap a sense in the tray to add a cell (it is selected: graph, one-line description, "At maximum firing rate"
-//   energy from energy.ts, bin); the bin removes it. A full sense dims and loses its "+".
+//   energy from energy.ts, bin); the bin removes it. A full sense dims and loses its "+". A trained neuron or wheel
+//   shows its built-in bias; an untrained one doesn't.
 // - A layer header opens the layer panel: functions, the Neurons slider (live), the layer's energy line, bin.
 // - "+"/"−" add and remove neurons and layers; at 8 neurons and 8 layers the "+"s go.
 // - Reset asks first; Train asks how many generations (100 by default) and Cancel leaves the brain alone.
@@ -18,7 +19,7 @@ import { createServer } from 'vite';
 import { CONFIG } from '../../src/common/config';
 import { defaultGenome, genomeHash, restRate, zeroGenome } from '../../src/common/sim/brain';
 import { layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
-import type { BrainSpec, Genome } from '../../src/common/sim/spec';
+import { biasIndex, type BrainSpec, type Genome } from '../../src/common/sim/spec';
 import { parse, SAVE_KEY } from '../../src/client/ui/designer/store';
 
 const OUT = 'out/s2';
@@ -124,6 +125,17 @@ async function main() {
     check((await spec(page)).senses.boundary === 1, 'the bin removes the cell');
     for (let k = 0; k < 2; k++) await page.click('#tray [data-s="speed"]', { force: true });
     check((await spec(page)).senses.speed === 1 && await page.locator('#tray [data-s="speed"]').isDisabled() && await page.locator('#tray [data-s="speed"] .plus').count() === 0, 'speed cells: one at most; the full tile dims and loses its "+"');
+
+    // 3b. a neuron's built-in bias: shown once trained (with the curve against Σ w·x), not before
+    await page.evaluate(() => window.__designer!.select('h0:0'));
+    check(await page.locator('#insp [data-bias]').count() === 0, 'untrained: no bias line in the neuron panel');
+    const tg = defaultGenome(), trainedG = { ...tg, w: tg.w.map((_, k) => (k % 2 ? 0.25 : -0.5)) };
+    await page.evaluate((g) => { window.__designer!.load(g); window.__designer!.select('h0:0'); }, trainedG);
+    const bi = biasIndex(trainedG.spec, 'h0:0'), want = trainedG.w[bi];
+    check((await page.locator('#insp [data-bias] b').innerText()) === `${want >= 0 ? '+' : '−'}${Math.abs(want).toFixed(2)}`, `trained: "Bias ${await page.locator('#insp [data-bias] b').innerText()}" from the genome`);
+    await page.evaluate(() => window.__designer!.select('o:fr'));
+    check(await page.locator('#insp [data-bias]').count() === 1, 'wheels show their bias too');
+    await page.evaluate((g) => window.__designer!.load(g), defaultGenome());
 
     // 4. layer panel: function, the Neurons slider (live), energy line
     await page.click('#net g[data-layer="0"]');

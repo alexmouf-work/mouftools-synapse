@@ -26,7 +26,7 @@ function act(vals: Float64Array, o: number): void {
 }
 
 export const imitate: Kernel = {
-  gradSize: (net) => net.w.length,
+  gradSize: (net) => net.wires + net.nNodes - net.nIn,
   statSize: 3,
   episodeStart(_ctx, job, lane) {
     lane.mode = episodeDraw(job.seed, lane) < job.params[0] ? 1 : 0;

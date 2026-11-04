@@ -10,7 +10,10 @@ export const SENSE_IDS: readonly SenseId[] = ['boundary', 'landmark', 'hd', 'gri
 
 export interface LayerSpec { n: number; fn: Act }
 export interface BrainSpec { v: 2; senses: Record<SenseId, number>; layers: LayerSpec[] }
-/** Weights in canonical wire order (wireList). */
+/**
+ * The brain's parameters: one weight per wire in canonical order (wireList), then one bias per hidden neuron and per
+ * wheel, in node order (2026-11-04: "the neurons can have a bias internally as well").
+ */
 export interface Genome { spec: BrainSpec; w: number[] }
 
 /** Wheel outputs (tanh, −1..+1 each). */
@@ -45,6 +48,18 @@ export function wireCount(s: BrainSpec): number {
   return n;
 }
 
+/** Neurons with a bias: every hidden neuron and every wheel. */
+export const biasCount = (s: BrainSpec): number => s.layers.reduce((a, l) => a + l.n, 0) + OUTPUTS.length;
+/** Length of a genome's parameter vector: the wires' weights, then the biases. */
+export const paramCount = (s: BrainSpec): number => wireCount(s) + biasCount(s);
+/** Where node `id`'s bias sits in the parameter vector (hidden neurons layer by layer, then the wheels). */
+export function biasIndex(s: BrainSpec, id: string): number {
+  const C = columns(s), off = wireCount(s);
+  let k = 0;
+  for (let c = 1; c < C.length; c++) for (const x of C[c]) { if (x === id) return off + k; k++; }
+  throw new Error(`spec: ${id} has no bias`);
+}
+
 /** Throws with the first problem found. */
 export function validateSpec(s: BrainSpec): void {
   const fail = (m: string): never => { throw new Error(`spec: ${m}`); };
@@ -63,8 +78,8 @@ export function validateSpec(s: BrainSpec): void {
 
 export function validateGenome(g: Genome): void {
   validateSpec(g.spec);
-  const n = wireCount(g.spec);
-  if (g.w.length !== n) throw new Error(`genome: ${g.w.length} weights for ${n} wires`);
+  const n = paramCount(g.spec);
+  if (g.w.length !== n) throw new Error(`genome: ${g.w.length} parameters for ${wireCount(g.spec)} wires and ${biasCount(g.spec)} biases`);
   for (const w of g.w) {
     if (!Number.isFinite(w) || Math.abs(w) > CONFIG.brain.weightCap) throw new Error(`genome: weight ${w}`);
   }
