@@ -222,3 +222,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "the input neurons (not the buttons to choose them) are much too small to be legible. please make them larger." ·
   "change the train again button to say \"keep training\"" · "please also build the side panel as directed. I don't
   see it in the dev build." → training-view side panel brought forward (B6 after B2c).
+- "show the training at a much higher rate, only showing 5 cars at a time. all ghost-like. it should be shown at 12x
+  speed, so each generation takes 5 seconds. I also want driving to go further during training. it looks like the cars
+  only make it round the first bend and then the training resets. this may not actually be the case in the real thing,
+  but it's what it looks like."
