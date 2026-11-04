@@ -44,6 +44,10 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   as many cars as we had before, but load them more lazily so that we don't have a lag spike".)
 - **Loaded lazily**: car meshes are made once and reused; each generation's paths are prepared a few cars per frame (or
   off the main thread) ahead of when they're needed, so a new generation never causes a frame spike.
+- **Show whatever we've got, not just "round number" generations** (2026-11-04): every generation is available to show,
+  not only the story's picks (1, 10%, 25%, 50%, final). Each generation records the paths of the few agents the view
+  might show (the random handful, recorded as part of that generation's evaluation), and the view always moves to the
+  newest finished one.
 - **Never the same generation twice; its number big and white** (2026-11-04): each generation is shown at most once,
   in order (skipping is fine, repeating never is; at the end the champion's lap plays, not generation 1 again). The
   generation shown is a large white number centred at the top of the camera view (Arial bold, with a soft shadow for
