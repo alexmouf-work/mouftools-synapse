@@ -56,7 +56,12 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   wanted".
 - **Top half: fitness per generation**, best and mean. The x-axis spans the whole run, so the line's reach shows
   progress; "gen n of N" and Stop sit in its header (Stop becomes Drive/Back when done). Axis titles; axes through 0.
-- **Bottom half: the map**: the whole track with every shown car as a dot, one highlighted ("12 of 120").
+- **Bottom half: the brain** (2026-11-04: "show the map in the bottom right, and the BRAIN in the bottom left, swapped
+  for the map"): the highlighted car's brain, live: senses → layers → wheels, wires coloured by weight, every cell
+  flashing at its firing rate as that car drives.
+- **The map moves to the camera's bottom-right corner**: a small panel (about 28% of the view's width, at most 300 px,
+  4:3) with the whole track, every shown car as a dot, the highlighted one ringed ("12 of 120"). It replaces "nothing
+  on the right".
 - Replaces today's status panel and graph panel. Still to settle: where the highlighted car's brain goes, if anywhere
   (my default: nowhere during training; it's in the drive view).
 

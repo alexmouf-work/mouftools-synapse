@@ -239,3 +239,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   and that becomes the one that is allowed to drive. stopping the training should be functionally equivalent to hitting
   the limit on the number of generations." · "I want you to allow the input cells to vary their receptive fields / input
   fields / graphs as they learn."
+- "show me the training view when it's finished. make sure it aligns with the design we set up. I want you to adjust it
+  so that we show the map in the bottom right, and the BRAIN in the bottom left, swapped for the map."
