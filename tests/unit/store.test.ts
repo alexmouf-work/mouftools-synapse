@@ -19,6 +19,18 @@ describe('workbench save', () => {
     expect(r.status).toBe('ok');
     expect(r.saved.train).toEqual({ seed: null, phases: 0 });
   });
+  it('a save with step neurons loads them as Linear, weights kept, and names them (step is no longer offered)', () => {
+    const g = JSON.parse(JSON.stringify(good.genome));
+    g.spec.nodes[0].act = 'step'; g.spec.nodes[2].act = 'step';
+    g.w = g.w.map((_: number, k: number) => k / 10);
+    const r = parse(JSON.stringify({ ...good, genome: g }));
+    expect(r.status).toBe('ok');
+    expect(r.migrated).toEqual([g.spec.nodes[0].id, g.spec.nodes[2].id]);
+    expect(r.saved.draft.genome.spec.nodes.map((n) => n.act)).toEqual(['linear', g.spec.nodes[1].act, 'linear']);
+    expect(r.saved.draft.genome.w).toEqual(g.w);
+    expect(parse(serialize(r.saved)).migrated).toBeUndefined(); // once: the next load has nothing to migrate
+    expect(parse(serialize(starterSaved())).migrated).toBeUndefined();
+  });
   it('missing → Starter, quietly', () => {
     const r = parse(null);
     expect(r.status).toBe('missing');

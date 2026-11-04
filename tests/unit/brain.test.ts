@@ -5,6 +5,7 @@ import { validateSpec, type BrainSpec } from '../../src/common/sim/spec';
 
 const sig = (x: number) => 1 / (1 + Math.exp(-x));
 const EXPECT: Record<Act, (x: number) => number> = {
+  linear: (x) => Math.min(Math.max(x, -1), 1),
   step: (x) => (x > 0 ? 1 : 0),
   relu: (x) => Math.min(Math.max(x, 0), 4),
   sigmoid: sig,

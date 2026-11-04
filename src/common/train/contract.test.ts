@@ -8,6 +8,7 @@ import { MeteredEnv } from './env';
 import { phaseSeeds, runPhase } from './phase';
 import { createTrainer, trainerIds, type TrainerEvent } from './trainer';
 import './neuroevo';
+import './backprop';
 
 const T = 700_000; // small phase: a few generations (one is 64 × 2 × 1200 ticks at worst)
 const spec = starterSpec();
@@ -40,6 +41,7 @@ describe.each(trainerIds())('trainer contract: %s', (id) => {
     expect(done.length).toBe(1);
     expect(done[0].ticksUsed).toBe(env.used);
     if (id === 'evolution') expect(env.remaining()).toBeLessThan(env.worstCase(CONFIG.train.population));
+    else expect(env.remaining()).toBeLessThan(CONFIG.train.grad.lanes * CONFIG.train.grad.roundTicks + env.worstCase(1)); // a round + the final check
     const after = env.used;
     expect(await tr.step(Infinity)).toEqual([]);
     expect(env.used).toBe(after);

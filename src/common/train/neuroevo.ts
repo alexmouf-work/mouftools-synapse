@@ -3,12 +3,11 @@
 // Common random numbers: every policy sees the same tracks and noise. Ties break by index. Runs whole generations
 // while the next one's worst case fits the budget; the generation count is a result, not a setting.
 import { CONFIG } from '../config';
-import { compile, evalNet, genomeHash, signalOf, specHash } from '../sim/brain';
-import { startCar } from '../sim/car';
-import { readSensors } from '../sim/sensors';
+import { genomeHash, specHash } from '../sim/brain';
 import type { Genome } from '../sim/spec';
 import { derive, Rng, TAG } from '../rng';
-import type { Env } from './env';
+import { meanFitness, type Env } from './env';
+import { firstTickSignal } from './probe';
 import { registerTrainer, type Channel, type ProbeFrame, type Trainer, type TrainerEvent, type TrainerOptions } from './trainer';
 
 const P = CONFIG.train;
@@ -89,11 +88,7 @@ export class Neuroevo implements Trainer {
       const before = env.used;
       const res = await env.runEpisodes(this.pop);
       spent += env.used - before;
-      const fit = res.map((row) => {
-        let s = 0;
-        for (const r of row) s += r.prog - P.wallPenalty * r.wallTicks;
-        return s / row.length;
-      });
+      const fit = res.map(meanFitness);
       const rank = fit.map((_, i) => i).sort((a, b) => (fit[b] - fit[a]) || (a - b));
       let mean = 0;
       for (const f of fit) mean += f;
@@ -129,19 +124,11 @@ export class Neuroevo implements Trainer {
 
   /** signal = sender output × weight for the champion's first tick on training track 0 (no car-tick is spent). */
   probe(): ProbeFrame {
-    const env = this.need();
-    const g = this.weights();
-    const net = compile(g);
-    const t = env.track(0);
-    const c = startCar(t);
-    const inputs = new Float64Array(10), vals = new Float64Array(net.nNodes);
-    readSensors(c, t, net.inUsed, env.setup.pool, inputs);
-    evalNet(net, inputs, vals, 0, 0, 0);
-    return { channels: { signal: signalOf(net, vals) } };
+    return { channels: { signal: firstTickSignal(this.need(), this.weights()) } };
   }
 
   /** For tests: hash of the current champion. */
   championHash(): string { return genomeHash(this.weights()); }
 }
 
-registerTrainer('evolution', (o) => new Neuroevo(o));
+registerTrainer('evolution', (o) => new Neuroevo(o), { label: 'Evolution', refusal: () => null });

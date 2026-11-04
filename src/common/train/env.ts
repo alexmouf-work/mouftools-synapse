@@ -3,11 +3,19 @@
 import { CONFIG } from '../config';
 import { compile, setWeights, type Net } from '../sim/brain';
 import { startCar, type CarState } from '../sim/car';
-import { Runner } from '../sim/race';
+import { fitnessOf, Runner } from '../sim/race';
 import { generateTrack, type Track } from '../sim/track';
 import { RESULT_STRIDE, type EpisodeSetup, type Executor } from './episodes';
+import type { LaneOut, RolloutJob } from './rollout';
 
 export interface EpisodeOutcome { prog: number; wallTicks: number; ticks: number }
+
+/** A policy's training fitness: race.fitnessOf averaged over the training tracks. */
+export function meanFitness(row: EpisodeOutcome[]): number {
+  let s = 0;
+  for (const r of row) s += fitnessOf(r);
+  return s / row.length;
+}
 
 /** One car stepped tick by tick (for gradient trainers; metered one tick per step). */
 export interface CarHandle {
@@ -27,6 +35,8 @@ export interface Env {
   /** Run every policy on every training track; outcome[p][k]. */
   runEpisodes(w: Float64Array[]): Promise<EpisodeOutcome[][]>;
   openCar(w: ArrayLike<number>, trackIndex: number): CarHandle;
+  /** A gradient trainer's round: every lane runs job.ticks car-ticks (charged before it runs). */
+  rollout(job: RolloutJob): Promise<LaneOut[]>;
   track(i: number): Track;
 }
 
@@ -66,6 +76,20 @@ export class MeteredEnv implements Env {
       }
       out.push(row);
     }
+    this.usedTicks += ticks;
+    return out;
+  }
+
+  async rollout(job: RolloutJob): Promise<LaneOut[]> {
+    this.charge(job.lanes.length * job.ticks);
+    const out = await this.exec.rollout(job);
+    if (out.length !== job.lanes.length) throw new Error('env: executor returned the wrong number of lanes');
+    let ticks = 0;
+    out.forEach((o, k) => {
+      if (o.lane.id !== job.lanes[k].id) throw new Error('env: lanes came back out of order');
+      ticks += o.ticks;
+    });
+    if (ticks !== job.lanes.length * job.ticks) throw new Error(`env: lanes ran ${ticks} car-ticks, ${job.lanes.length * job.ticks} were asked`);
     this.usedTicks += ticks;
     return out;
   }

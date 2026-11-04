@@ -29,11 +29,18 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | The 10 input readings (only wired inputs are computed); `eyeDirection`, the one eye-angle rule the drive view's beams also use. |
-| `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training; `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. |
-| `train/trainer.ts` | Trainer interface, events, probe channels, registry. |
+| `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
+| `sim/teacher.ts` | The scripted pure-pursuit teacher backprop copies (`teacherWheels`), and `driveTeacher` (the teacher alone, a reference for tests and the bench). |
+| `train/trainer.ts` | Trainer interface, events, probe channels, registry with each trainer's label and refusal (`trainerRefusal`). |
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
 | `train/episodes.ts` | Episode batches: `EpisodeCore` (runs policies × tracks), `splitEven`, `InlineExecutor`. |
-| `train/neuroevo.ts` | The milestone's trainer. |
+| `train/neuroevo.ts` | Evolution. |
+| `train/grad.ts` | The generalised delta rule on a compiled net (pre-activations, backward pass); the gradient trainers' one implementation. |
+| `train/rollout.ts` | Lanes for gradient trainers: `RolloutCore` runs a round of lanes with a kernel; lane state travels with the job. |
+| `train/kernels.ts`, `train/imitate.ts` | The kernels by id; `imitate` is backprop's (DAgger with the teacher). |
+| `train/gradTrainer.ts` | What every gradient trainer shares: rounds, fitness checks, the update, the `delta` channel, the step refusal. |
+| `train/backprop.ts` | Backprop (copy a teacher). |
+| `train/probe.ts` | The `signal` probe all trainers share. |
 | `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop). |
 | `train/contract.test.ts` | The suite every trainer must pass. |
 
@@ -41,7 +48,9 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 Pins are always on the board; an input is computed and charged only while wired. Node order in the compiled net:
 10 inputs (`i:l, i:fl, i:f, i:fr, i:r, i:b, i:road, i:energy, i:spd, i:bias`), hidden neurons by (layer, spec
 order), then the wheels (`o:fl, o:fr, o:rl, o:rr`). Each node sums its incoming wires in spec order, so a new wire
-with w = 0 adds an exact +0. Hidden transfer functions: step, ReLU (cap 4), sigmoid, tanh. Wheels have no transfer
+with w = 0 adds an exact +0. Hidden transfer functions offered: linear (z kept to −1..1, step's old upkeep 0.2), ReLU
+(cap 4), sigmoid, tanh (principal 2026-11-04: no step). Step still runs, only so an old save can load: the workbench
+turns step neurons Linear on load, weights kept, with a one-time note naming them. Wheels have no transfer
 function: output = clamp(sum, −1, 1), and no upkeep (as the workbench shows them). Layers are 1..3. A wire's span for the skip
 surcharge counts only hidden lines that hold neurons (`wireSpan`; review call 2026-10-30), so the empty line the
 board always shows is free to cross.
@@ -57,7 +66,7 @@ tick (all noise at 200%). The noise value is a pure
 function of (car noise seed, node key, tick) — `hashU` — so it does not depend on how many other nodes there are,
 and every policy in a generation sees the same noise (common random numbers).
 
-Upgrade invariance (tested for all four transfer functions over 600 ticks): adding w = 0 wires or neurons, even a
+Upgrade invariance (tested for every transfer function over 600 ticks): adding w = 0 wires or neurons, even a
 whole new layer, leaves every wheel output and car position identical **while the brain is under budget and Energy
 left is unwired**. A new neuron's upkeep changes the energy used, and those two read energy by design.
 
@@ -105,7 +114,40 @@ p 0.01, weights clamped ±4. `fresh` start draws N(0, 0.5); `carry` puts the giv
 mutants after it. It runs whole generations while the next one's worst case fits T. Probe channel: `signal`.
 
 The Env also offers `openCar` (one car stepped tick by tick, metered per tick, optional exploration noise on the
-wheels) for the gradient trainers to come; neuroevolution does not use it.
+wheels; nothing uses it now) and `rollout` (a gradient trainer's round, below).
+
+### Trainers
+Every trainer gets the same experience budget T (car-ticks; principal 2026-10-30), so they compete on sample
+efficiency (plan, bench numbers and the levers tried: `docs/plans/2026-11-04-trainers.md`). Each is registered with a label and a refusal (`trainerRefusal(id, spec)`: a sentence the workbench can
+show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
+
+- **Evolution** (`neuroevo.ts`, above). Refuses nothing.
+- **Gradient trainers** (`gradTrainer.ts`) share one frame. `CONFIG.train.grad.lanes` (16) cars drive the current
+  weights at once, each from a seeded place on a training track at rest, through 60 s episodes with the same stop rule
+  and energy pool as evolution. A round runs every lane `roundTicks` (400) ticks with the weights fixed; each lane
+  returns its own sum of per-tick update terms, the trainer adds the lanes up in lane order and updates once
+  (weights clamped ±4). The lanes' whole state travels with each job, so worker count, Node or browser never change a
+  bit (checked: inline = 4 workers in the determinism check; 1 vs 4 workers in the bench). Every `evalEvery` (150k)
+  car-ticks and at the end, the current weights are scored with evolution's training fitness on both training tracks
+  (60 s each): that is a `generation` event (gen 1 = the starting weights), the fitness graph's point, and the last
+  one is the score of `weights()`. Rounds, checks and all are charged to T; the final check's worst case is reserved.
+  `fresh` draws N(0, 0.1) (all-zero weights have no gradient; small, so no tanh starts saturated), with wires into a
+  ReLU drawn positive: a ReLU silent on every input has slope 0 and can never wake (measured: half the seeds lost
+  Starter's cruise neuron that way). `carry` starts from the given weights. Step neurons
+  are refused (no slope). Channels: `signal`, and `delta` = the last round's Δw per wire.
+- **Backprop** (`backprop.ts`, kernel `imitate.ts`): copy the teacher, DAgger-style. The brain drives (an episode is
+  teacher-driven with probability β, 0.5 falling to 0 by 25% of T: classic DAgger mixing), the teacher labels every
+  state the brain saw, and each tick adds the generalised delta rule's terms (`grad.ts`): output δ = (t − y)·f′(z),
+  hidden δ = f′(z)·Σ w·δ, term δ·x; the round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant). Over budget
+  every f′ carries (1 − a). The wheels' clamp passes the error only when it points back into range (a wheel pinned at
+  ±1 could otherwise never let go).
+- **The teacher** (`sim/teacher.ts`): pure pursuit on the centreline (privileged: the brain never sees the centreline).
+  Look-ahead L = 10 m + 0.4 s × v (≤ 30 m); yaw wanted ω = gain × κ × max(v, 40 m/s), κ = 2·left / d² of the arc
+  through the target (gain 3; the grip caps the yaw anyway, and a firm label is what a brain can copy: with gain 1 the
+  wheel difference it asks for at speed is ~0.01, under what the brain's regression can resolve); speed capped by the
+  slowest corner in braking reach, √(0.85·grip/|curv| + 2·0.8·brake·s); skid-steer wheels v ∓ ω·trackWidth/2, giving
+  up speed rather than the turn at ±1. Alone it laps every tested track with no wall touch (~1 550 m in 30 s).
+
 
 ## src/client
 - `index.html` + `main.ts` — the app: self-hosted fonts (@fontsource Atkinson Hyperlegible, IBM Plex Mono; Chakra

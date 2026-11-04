@@ -1,8 +1,9 @@
 // Node worker_threads executor. Same split as the browser pool (splitEven); results reassembled in policy order.
 import { Worker } from 'node:worker_threads';
-import { RESULT_STRIDE, splitEven, type EpisodeSetup, type Executor } from '../../src/common/train/episodes';
+import { RESULT_STRIDE, splitEven, splitJob, type EpisodeSetup, type Executor } from '../../src/common/train/episodes';
+import type { LaneOut, RolloutJob } from '../../src/common/train/rollout';
 
-type Reply = { type: 'ready' } | { type: 'result'; id: number; out: Float64Array } | { type: 'error'; message: string };
+type Reply = { type: 'ready' } | { type: 'result'; id: number; out: Float64Array } | { type: 'lanes'; id: number; lanes: LaneOut[] } | { type: 'error'; message: string };
 
 export class NodePool implements Executor {
   private ws: Worker[] = [];
@@ -38,6 +39,14 @@ export class NodePool implements Executor {
       out.set(r.out, parts[k][0] * this.nT * RESULT_STRIDE);
     });
     return out;
+  }
+  async rollout(job: RolloutJob): Promise<LaneOut[]> {
+    const jobs = splitJob(job, this.ws.length);
+    const replies = await Promise.all(jobs.map((j, k) => this.ask(this.ws[k], { type: 'rollout', id: this.seq++, job: j })));
+    return replies.flatMap((r) => {
+      if (r.type !== 'lanes') throw new Error('nodePool: unexpected reply');
+      return r.lanes;
+    });
   }
   async close(): Promise<void> { await Promise.all(this.ws.map((w) => w.terminate())); this.ws = []; }
 }

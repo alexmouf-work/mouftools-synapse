@@ -74,11 +74,8 @@ export class Runner {
         rec.ticks = k + 1;
       }
       if (o.earlyStop) {
-        if (c.prog < TR.backLimit) break;
-        if (c.tick % TR.stallTicks === 0) {
-          if (c.maxProg - mark < TR.stallMetres) break;
-          mark = c.maxProg;
-        }
+        mark = stopCheck(c, mark);
+        if (mark < 0) break;
       }
     }
     return { ticks: c.tick, prog: c.prog, maxProg: c.maxProg, wallTicks: c.wallTicks };
@@ -86,9 +83,14 @@ export class Runner {
 
   /**
    * One brain tick + physics for car c. actionNoise (training-only exploration, 4 values) is added to the wheel
-   * outputs before physics; races never pass it.
+   * outputs before physics; races never pass it. `act` (training only) sees every node's value after the brain ran
+   * and before physics, and may rewrite the wheel outputs vals[outStart .. outStart + 3] (a teacher taking over,
+   * sampled or noisy actions); the energy of the brain's own tick is charged either way.
    */
-  tick(net: Net, t: Track, c: CarState, pool: number, noiseSeed: number, actionNoise?: ArrayLike<number>): boolean {
+  tick(
+    net: Net, t: Track, c: CarState, pool: number, noiseSeed: number, actionNoise?: ArrayLike<number>,
+    act?: (vals: Float64Array, outStart: number) => void,
+  ): boolean {
     if (this.vals.length < net.nNodes) this.vals = new Float64Array(net.nNodes);
     c.noiseA = noiseLevel(c.energyUsed, pool);
     readSensors(c, t, net.inUsed, pool, this.inputs);
@@ -98,6 +100,7 @@ export class Runner {
     if (actionNoise) {
       for (let k = 0; k < 4; k++) { const x = v[o + k] + actionNoise[k]; v[o + k] = x < -1 ? -1 : x > 1 ? 1 : x; }
     }
+    if (act) act(v, o);
     const wall = stepPhysics(c, t, v[o], v[o + 1], v[o + 2], v[o + 3]);
     c.energyPrev = used;
     c.energyUsed += used; // taken from the pool
@@ -108,7 +111,22 @@ export class Runner {
   lastValues(): Float64Array { return this.vals; }
 }
 
-export const fitnessOf = (r: RunResult): number => r.prog - TR.wallPenalty * r.wallTicks;
+/**
+ * THE training stop rule (episodes, and gradient trainers' lanes): call after each tick with the mark returned last
+ * time (0 at the start). Returns the new mark, or −1 when the episode ends: progress below backLimit, or max progress
+ * grew less than stallMetres over the last stallTicks.
+ */
+export function stopCheck(c: CarState, mark: number): number {
+  if (c.prog < TR.backLimit) return -1;
+  if (c.tick % TR.stallTicks === 0) {
+    if (c.maxProg - mark < TR.stallMetres) return -1;
+    return c.maxProg;
+  }
+  return mark;
+}
+
+/** THE training fitness of one run: progress minus the wall penalty. */
+export const fitnessOf = (r: { prog: number; wallTicks: number }): number => r.prog - TR.wallPenalty * r.wallTicks;
 
 /** Hash of a recording: frames, energy and every node's output, bit for bit. */
 export function recordingHash(rec: Recording): string {

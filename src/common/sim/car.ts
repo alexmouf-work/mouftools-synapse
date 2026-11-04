@@ -34,8 +34,8 @@ export interface CarState {
   padLap: number[];
 }
 
-export function startCar(t: Track): CarState {
-  const i = t.startIdx;
+/** A car at rest at sample i (the start line by default; gradient trainers also start lanes elsewhere). */
+export function startCar(t: Track, i: number = t.startIdx): CarState {
   return {
     x: t.px[i], y: t.py[i], hdg: t.th[i], v: 0, idx: i, s: i * t.ds, off: 0, prog: 0, maxProg: 0, wallTicks: 0,
     energyPrev: 0, energyUsed: 0, noiseA: 0, tick: 0, padLap: t.pads.map(() => NO_LAP),

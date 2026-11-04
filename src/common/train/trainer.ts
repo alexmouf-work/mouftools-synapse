@@ -1,7 +1,7 @@
 // Trainer seam (solo-loop plan §3b). A trainer changes weights only, never the architecture, and reaches the sim only
-// through the metered Env. Only neuroevolution exists this milestone; later trainers (backprop, actor-critic, A_RP)
-// plug in here and must pass contract.test.ts.
-import type { Genome } from '../sim/spec';
+// through the metered Env. Every registered trainer must pass contract.test.ts: evolution (neuroevo.ts) and backprop
+// (backprop.ts) so far; actor-critic and A_RP plug in the same way.
+import type { BrainSpec, Genome } from '../sim/spec';
 import type { Env } from './env';
 
 /** What the brain panel can draw. Every trainer has `signal`; gradient trainers add the others. */
@@ -42,17 +42,32 @@ export interface TrainerOptions {
 }
 
 export type TrainerFactory = (o: TrainerOptions) => Trainer;
-const registry = new Map<string, TrainerFactory>();
 
-export function registerTrainer(id: string, f: TrainerFactory): void {
+export interface TrainerInfo {
+  /** The name the player sees. */
+  label: string;
+  /** Why this trainer cannot train a brain of this shape (a sentence the workbench can show), or null. */
+  refusal(spec: BrainSpec): string | null;
+}
+
+const registry = new Map<string, { f: TrainerFactory; info: TrainerInfo }>();
+
+export function registerTrainer(id: string, f: TrainerFactory, info: TrainerInfo): void {
   if (registry.has(id)) throw new Error(`trainer: ${id} registered twice`);
-  registry.set(id, f);
+  registry.set(id, { f, info });
 }
 
-export function createTrainer(id: string, o: TrainerOptions): Trainer {
-  const f = registry.get(id);
-  if (!f) throw new Error(`trainer: unknown ${id}`);
-  return f(o);
+function entry(id: string) {
+  const e = registry.get(id);
+  if (!e) throw new Error(`trainer: unknown ${id}`);
+  return e;
 }
+
+export function createTrainer(id: string, o: TrainerOptions): Trainer { return entry(id).f(o); }
+
+export const trainerInfo = (id: string): TrainerInfo => entry(id).info;
+
+/** Why trainer id refuses this brain, or null; init() throws the same sentence. */
+export const trainerRefusal = (id: string, spec: BrainSpec): string | null => entry(id).info.refusal(spec);
 
 export const trainerIds = (): string[] => [...registry.keys()];

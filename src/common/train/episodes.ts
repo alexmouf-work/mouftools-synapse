@@ -7,6 +7,8 @@ import { compile, setWeights, zeroGenome, type Net } from '../sim/brain';
 import { newRecording, Runner, type Recording } from '../sim/race';
 import type { BrainSpec } from '../sim/spec';
 import { generateTrack, type Track } from '../sim/track';
+import { KERNELS } from './kernels';
+import { RolloutCore, type LaneOut, type RolloutJob } from './rollout';
 
 export interface EpisodeSetup {
   spec: BrainSpec;
@@ -41,6 +43,8 @@ export interface Executor {
   setup(s: EpisodeSetup): Promise<void>;
   /** w holds `count` weight vectors back to back; returns count × tracks × RESULT_STRIDE values in policy order. */
   run(w: Float64Array, count: number): Promise<Float64Array>;
+  /** A gradient trainer's round (train/rollout.ts): lanes split with splitEven, results in lane order. */
+  rollout(job: RolloutJob): Promise<LaneOut[]>;
   close(): Promise<void>;
   /** If the executor supports it: record track-0 paths on the next run into lastPaths (display only). */
   record?: boolean;
@@ -67,10 +71,14 @@ export class EpisodeCore {
   private readonly net: Net;
   private readonly runner = new Runner();
   private rec: Recording | null = null;
+  private lanes: RolloutCore | null = null;
   constructor(readonly s: EpisodeSetup) {
     if (s.trackSeeds.length !== s.noiseSeeds.length) throw new Error('episodes: one noise seed per track');
     this.tracks = s.trackSeeds.map(generateTrack);
     this.net = compile(zeroGenome(s.spec));
+  }
+  rollout(job: RolloutJob): LaneOut[] {
+    return (this.lanes ??= new RolloutCore(this.s, this.tracks, KERNELS)).run(job);
   }
   run(w: Float64Array, count: number, record = false): { out: Float64Array; paths: Paths | null } {
     const nW = this.s.spec.conns.length, nT = this.tracks.length;
@@ -105,6 +113,11 @@ export class EpisodeCore {
   }
 }
 
+/** Split a round's lanes into per-worker jobs (contiguous, splitEven), for the pools. */
+export function splitJob(job: RolloutJob, workers: number): RolloutJob[] {
+  return splitEven(job.lanes.length, workers).map(([a, b]) => ({ ...job, lanes: job.lanes.slice(a, b) }));
+}
+
 /** Join per-worker path blocks (in policy order) into one. */
 export function joinPaths(parts: Paths[], samples: number): Paths {
   const count = parts.reduce((a, p) => a + p.count, 0);
@@ -126,6 +139,10 @@ export class InlineExecutor implements Executor {
     if (r.paths) this.lastPaths = r.paths;
     this.record = false;
     return r.out;
+  }
+  async rollout(job: RolloutJob): Promise<LaneOut[]> {
+    if (!this.core) throw new Error('episodes: rollout before setup');
+    return this.core.rollout(job);
   }
   async close(): Promise<void> { this.core = null; }
 }

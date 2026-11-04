@@ -2,7 +2,7 @@
 // The board reads left to right: the car is the input layer, hidden neurons sit in flat lines, the wheels are the
 // output line. Every change to the brain is a pure op from src/common/sim/brain.ts; every energy figure comes from
 // src/common/sim/energy.ts; the brain is saved after every change.
-import { CONFIG, type Act } from '../../../common/config';
+import { CONFIG, OFFERED_ACTS, type Act } from '../../../common/config';
 import {
   addLayer, addNeuron, addWire, clearWires, draftOf, PRESETS, removeNeuron, removeWire, setAct, unplug, zeroGenome,
   type Draft, type EditRefusal, type PresetName,
@@ -337,7 +337,7 @@ function side() {
   }
   if (!n) { box2.innerHTML = '<h2>Selected</h2><p class="note">Nothing. Click a neuron to change how it responds, or a sensor or wheel to see what it does.</p>'; return; }
   const ins = s.conns.filter((c) => c.to === n.id).length, outs = s.conns.filter((c) => c.from === n.id).length;
-  const acts = Object.keys(FX) as Act[];
+  const acts = OFFERED_ACTS;
   box2.innerHTML = `<h2>Neuron · hidden layer ${n.layer}</h2>
     <div class="fx" role="group" aria-label="Transfer function">${acts.map((k) => `<button type="button" id="fx-${k}" data-fx="${k}" aria-pressed="${n.act === k}"><svg viewBox="-10 -7 20 14"><path d="${FX[k].g}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>${FX[k].n}</span><small>${pct(upkeepCost(k))}</small></button>`).join('')}</div>
     <p class="note" style="margin-top:8px">${FX[n.act].d}</p>
@@ -435,6 +435,10 @@ export function start(o: { onTrain: (s: Saved) => void; onDrive: (s: Saved) => v
     console.warn(`workbench: saved brain unreadable (${loaded.why}); starting from Starter`);
     toast('Your saved brain couldn’t be read, so this is a fresh Starter.');
     persist();
+  } else if (loaded.migrated?.length) {
+    const ids = loaded.migrated;
+    toast(`Step neurons are gone, so ${ids.length === 1 ? `${ids[0]} is` : `${ids.join(', ')} are`} Linear now. Retrain to suit.`);
+    persist(); // once: the save no longer has step neurons
   } else if (loaded.status === 'unavailable') {
     saveWarned = true;
     toast('This browser won’t keep your brain, so changes last until you close the tab.');

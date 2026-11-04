@@ -34,8 +34,10 @@ export const ABOUT: Record<InputKind | 'wheel', string> = {
 };
 
 export const FX = {
-  step: { n: 'Step', g: 'M-8 4 H0 V-4 H8', d: 'On or off. Cheapest, but it has no slope, so backprop can’t learn through it.' },
+  linear: { n: 'Linear', g: 'M-8 5 L8 -5', d: 'Passes its input straight on, kept within −1 to 1. Cheapest, and every trainer can learn through it.' },
   relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', d: 'Zero below 0, a straight line above. Cheap. It can’t go negative, so it can’t reverse a wheel alone.' },
   sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4', d: 'Smooth from 0 to 1. Dearer to compute.' },
   tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', d: 'Smooth from −1 to 1, so it can drive a wheel forwards or backwards. Dearer to compute.' },
+  // no longer offered (principal 2026-11-04); old saves are migrated to linear on load (store.ts), so this only draws
+  step: { n: 'Step', g: 'M-8 4 H0 V-4 H8', d: 'On or off. No longer offered: it becomes Linear.' },
 } as const;

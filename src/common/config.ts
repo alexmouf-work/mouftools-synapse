@@ -34,8 +34,12 @@ export const CONFIG = {
     estimateActivity: 0.5,
   },
 
-  /** Neuron upkeep per tick by transfer function (hidden neurons; wheel outputs have no transfer function). */
-  upkeep: { step: 0.2, relu: 0.25, sigmoid: 0.5, tanh: 0.5 },
+  /**
+   * Neuron upkeep per tick by transfer function (hidden neurons; wheel outputs have no transfer function). Linear
+   * takes step's old cost, the cheapest (principal 2026-11-04: "don't offer step as a function. offer linear as well
+   * as ReLU."); step stays only so old saves can be read and migrated.
+   */
+  upkeep: { linear: 0.2, relu: 0.25, sigmoid: 0.5, tanh: 0.5, step: 0.2 },
 
   brain: {
     weightCap: 4,
@@ -112,6 +116,30 @@ export const CONFIG = {
     stallTicks: 60, // 3 s …
     stallMetres: 5, // … with max progress growing less than this ends the episode
     backLimit: -20, // m: progress below this ends the episode
+    /** Gradient trainers (train/gradTrainer.ts): lanes of cars sharing the weights, one update per round. */
+    grad: {
+      lanes: 16, // cars driving at once (split over the workers; the result never depends on how)
+      roundTicks: 400, // ticks every lane drives per update (20 s), so one update sees lanes × this samples
+      evalEvery: 150_000, // car-ticks of training between fitness checks (each: the weights on both training tracks, 60 s)
+      initSd: 0.1, // fresh start: w ~ N(0, this): small, so no tanh starts saturated (all-zero weights have no gradient)
+    },
+    backprop: {
+      lr: 0.6, // η in Δw = η · δ · x (per sample, averaged over a round); constant (a falling η measured worse)
+      betaStart: 0.5, // DAgger mixing: the chance an episode is driven by the teacher, at the start …
+      betaUntil: 0.25, // … falling linearly to 0 by this fraction of T (then the brain always drives)
+    },
+  },
+
+  /** The scripted pure-pursuit teacher that backprop copies (sim/teacher.ts). */
+  teacher: {
+    lookMin: 10, // m: pure-pursuit look-ahead at rest …
+    lookPerSpeed: 0.4, // … plus this × speed (m per m/s) …
+    lookMax: 30, // … up to this
+    vMin: 40, // m/s: steering is computed for at least this speed (so it steers firmly from rest or off a wall)
+    steerGain: 3, // × the pure-pursuit yaw rate (the grip caps the yaw anyway)
+    gripUse: 0.85, // fraction of the lateral grip a corner may use
+    brakeUse: 0.8, // fraction of the braking rate it plans with
+    speedLook: 10, // m: extra look-ahead for corners beyond the braking distance
   },
 
   race: {
@@ -128,5 +156,8 @@ export const CONFIG = {
 } as const;
 
 export type Act = keyof typeof CONFIG.upkeep;
-export const ACTS: readonly Act[] = ['step', 'relu', 'sigmoid', 'tanh'];
+/** Every transfer function the engine can run (validation; step only for old saves). */
+export const ACTS: readonly Act[] = ['linear', 'relu', 'sigmoid', 'tanh', 'step'];
+/** The ones the workbench offers. */
+export const OFFERED_ACTS: readonly Act[] = ['linear', 'relu', 'sigmoid', 'tanh'];
 export const DT = 1 / (CONFIG.tick.hz * CONFIG.tick.substeps);

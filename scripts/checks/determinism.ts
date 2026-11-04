@@ -1,6 +1,6 @@
 // Determinism golden hashes (3 seeds): track geometry, a recorded 600-tick race (under budget and over budget, so the
-// noise path is covered), and a short training phase run inline and on 4 worker_threads (must match each other and
-// the golden). golden.json is written only by this script:
+// noise path is covered), and a short training phase per trainer (evolution, backprop) run inline and on 4
+// worker_threads (must match each other and the golden). golden.json is written only by this script:
 //   npx tsx scripts/checks/determinism.ts            check
 //   npx tsx scripts/checks/determinism.ts --update   regenerate (say why in the commit)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -40,7 +40,10 @@ async function main() {
     const inline = await runPhase(new InlineExecutor(), starterSpec(), seed, { T: PHASE_T });
     const pooled = await runPhase(pool, starterSpec(), seed, { T: PHASE_T });
     if (inline.hash !== pooled.hash) { bad++; console.error(`seed ${seed}: inline ${inline.hash} ≠ 4 workers ${pooled.hash}`); }
-    got[seed] = { track, race: raceHash(seed, CONFIG.budget[0]), raceOverBudget: raceHash(seed, 3), phase: inline.hash };
+    const bpInline = await runPhase(new InlineExecutor(), starterSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
+    const bpPooled = await runPhase(pool, starterSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
+    if (bpInline.hash !== bpPooled.hash) { bad++; console.error(`seed ${seed} backprop: inline ${bpInline.hash} ≠ 4 workers ${bpPooled.hash}`); }
+    got[seed] = { track, race: raceHash(seed, CONFIG.budget[0]), raceOverBudget: raceHash(seed, 3), phase: inline.hash, phaseBackprop: bpInline.hash };
   }
   await pool.close();
   if (update) {
@@ -54,7 +57,7 @@ async function main() {
     if (golden[seed]?.[k] !== got[seed][k]) { bad++; console.error(`seed ${seed} ${k}: got ${got[seed][k]}, golden ${golden[seed]?.[k]}`); }
   }
   if (bad) { console.error(`determinism: ${bad} mismatch(es)`); process.exit(1); }
-  console.log(`determinism: ${SEEDS.length} seeds match golden (track, race, over-budget race, phase inline = 4 workers)`);
+  console.log(`determinism: ${SEEDS.length} seeds match golden (track, race, over-budget race, evolution and backprop phases inline = 4 workers)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

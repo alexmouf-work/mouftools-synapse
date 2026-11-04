@@ -1,4 +1,4 @@
-// Spec → compiled net, evaluation with the four transfer functions and over-budget noise, presets, canonical genome
+// Spec → compiled net, evaluation with the transfer functions (linear, ReLU, sigmoid, tanh; step for old saves) and over-budget noise, presets, canonical genome
 // JSON and its hash. Node order: 10 inputs, hidden neurons by (layer, spec order), 4 wheel outputs. Each node sums
 // its incoming wires in spec order, so adding a wire with w = 0 adds an exact +0 and changes nothing.
 import { CONFIG, type Act } from '../config';
@@ -10,7 +10,7 @@ import {
   depthOf, INPUTS, OUTPUTS, inputIdx, outputIdx, validateGenome, type BrainSpec, type ConnSpec, type Genome, type NodeSpec,
 } from './spec';
 
-const ACT_CODE: Record<Act, number> = { step: 0, relu: 1, sigmoid: 2, tanh: 3 };
+const ACT_CODE: Record<Act, number> = { step: 0, relu: 1, sigmoid: 2, tanh: 3, linear: 5 };
 const OUT = 4; // wheel output: clamp(sum, −1, 1), no transfer function
 const NOISE_KEY_HIDDEN = 100; // noise keys: pins by index, hidden neurons 100 + their id number
 
@@ -94,7 +94,26 @@ export function transfer(code: number, x: number): number {
     case 2: return sigmoid(x);
     case 3: return tanh(x);
     case OUT: return x < -1 ? -1 : x > 1 ? 1 : x;
+    case 5: return x < -1 ? -1 : x > 1 ? 1 : x; // linear: z itself, kept in tanh's range −1..1
     default: throw new Error(`brain: transfer code ${code}`);
+  }
+}
+
+/** Transfer code of the wheel outputs (clamp, no transfer function). */
+export const OUT_CODE = OUT;
+
+/**
+ * f′(z) of a hidden transfer function, for gradient trainers. Step has no gradient (0 wherever it is defined), so
+ * those trainers refuse a brain with step neurons instead of learning nothing (train/trainer.ts, `refusal`).
+ */
+export function transferSlope(code: number, z: number): number {
+  switch (code) {
+    case 0: return 0;
+    case 1: return z > 0 && z < CONFIG.brain.reluCap ? 1 : 0;
+    case 2: { const y = sigmoid(z); return y * (1 - y); }
+    case 3: { const y = tanh(z); return 1 - y * y; }
+    case 5: return z > -1 && z < 1 ? 1 : 0;
+    default: throw new Error(`brain: no slope for transfer code ${code}`);
   }
 }
 

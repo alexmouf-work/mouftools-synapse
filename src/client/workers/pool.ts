@@ -1,10 +1,13 @@
 // Browser worker pool executor. Same split as the Node pool (splitEven); results reassembled in policy order, so the
 // worker count can never change a result.
 import {
-  joinPaths, pathSamples, RESULT_STRIDE, splitEven, type EpisodeSetup, type Executor, type Paths,
+  joinPaths, pathSamples, RESULT_STRIDE, splitEven, splitJob, type EpisodeSetup, type Executor, type Paths,
 } from '../../common/train/episodes';
+import type { LaneOut, RolloutJob } from '../../common/train/rollout';
 
-type Reply = { type: 'ready' } | { type: 'result'; id: number; out: Float64Array; paths: Paths | null } | { type: 'error'; message: string };
+type Reply =
+  | { type: 'ready' } | { type: 'result'; id: number; out: Float64Array; paths: Paths | null } | { type: 'lanes'; id: number; lanes: LaneOut[] }
+  | { type: 'error'; message: string };
 
 export class BrowserPool implements Executor {
   private ws: Worker[] = [];
@@ -53,6 +56,14 @@ export class BrowserPool implements Executor {
       this.lastPaths = joinPaths(ps as Paths[], this.samples);
     }
     return out;
+  }
+  async rollout(job: RolloutJob): Promise<LaneOut[]> {
+    const jobs = splitJob(job, this.ws.length);
+    const replies = await Promise.all(jobs.map((j, k) => this.ask(this.ws[k], { type: 'rollout', id: this.seq++, job: j })));
+    return replies.flatMap((r) => {
+      if (r.type !== 'lanes') throw new Error('pool: unexpected reply');
+      return r.lanes;
+    });
   }
   async close(): Promise<void> { for (const w of this.ws) w.terminate(); this.ws = []; }
 }

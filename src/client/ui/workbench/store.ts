@@ -15,6 +15,16 @@ export interface Saved { name: string; draft: Draft; train: TrainInfo }
 export const NO_TRAINING: TrainInfo = { seed: null, phases: 0 };
 export type LoadStatus = 'ok' | 'missing' | 'corrupt' | 'unavailable';
 
+/**
+ * Step is no longer offered (principal 2026-11-04: "don't offer step as a function. offer linear as well as ReLU."):
+ * a save with step neurons loads with them turned Linear (weights kept), and says which.
+ */
+function migrateStep(g: Genome): { genome: Genome; migrated: string[] } {
+  const migrated = g.spec.nodes.filter((n) => n.act === 'step').map((n) => n.id);
+  if (!migrated.length) return { genome: g, migrated };
+  return { genome: { ...g, spec: { ...g.spec, nodes: g.spec.nodes.map((n) => (n.act === 'step' ? { ...n, act: 'linear' } : n)) } }, migrated };
+}
+
 export const starterSaved = (): Saved => ({ name: DEFAULT_NAME, draft: draftOf(zeroGenome(starterSpec())), train: NO_TRAINING });
 
 export function serialize(s: Saved): string {
@@ -28,7 +38,7 @@ export function serialize(s: Saved): string {
 }
 
 /** Parse a stored value; anything unreadable is 'corrupt' (never thrown), with the reason for the console. */
-export function parse(text: string | null): { status: 'ok' | 'missing' | 'corrupt'; saved: Saved; why?: string } {
+export function parse(text: string | null): { status: 'ok' | 'missing' | 'corrupt'; saved: Saved; why?: string; migrated?: string[] } {
   if (text === null) return { status: 'missing', saved: starterSaved() };
   try {
     const o = JSON.parse(text) as { v?: unknown; name?: unknown; nextId?: unknown; genome?: Genome; train?: TrainInfo };
@@ -39,13 +49,17 @@ export function parse(text: string | null): { status: 'ok' | 'missing' | 'corrup
     if (typeof o.name !== 'string' || !o.name.trim()) throw new Error('save name');
     if (typeof o.nextId !== 'number' || !Number.isInteger(o.nextId)) throw new Error('save nextId');
     if (!o.genome) throw new Error('save genome');
-    return { status: 'ok', saved: { name: o.name, draft: draftOf(o.genome, o.nextId), train: { seed: train.seed, phases: train.phases } } };
+    const m = migrateStep(o.genome);
+    return {
+      status: 'ok', saved: { name: o.name, draft: draftOf(m.genome, o.nextId), train: { seed: train.seed, phases: train.phases } },
+      ...(m.migrated.length ? { migrated: m.migrated } : {}),
+    };
   } catch (e) {
     return { status: 'corrupt', saved: starterSaved(), why: e instanceof Error ? e.message : String(e) };
   }
 }
 
-export function load(): { status: LoadStatus; saved: Saved; why?: string } {
+export function load(): { status: LoadStatus; saved: Saved; why?: string; migrated?: string[] } {
   let text: string | null;
   try {
     text = localStorage.getItem(SAVE_KEY);
