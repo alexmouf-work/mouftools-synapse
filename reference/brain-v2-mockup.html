@@ -35,11 +35,11 @@ html, body { overflow: hidden; }
 .split { position: relative; width: 140px; height: 10px; border-radius: 5px; background: var(--speed); overflow: hidden; flex: none; }
 .split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .2s ease; }
 .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
-.btn { min-height: 30px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px; border-radius: 9px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; font-size: 12px; }
+.btn { min-height: 30px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px; border-radius: 0; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; font-size: 12px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .rulebar { display: flex; align-items: center; justify-content: center; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 .tr { display: flex; gap: 2px; flex: none; }
-.tr button { height: 22px; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; font-size: 11px; padding: 0 7px; }
+.tr button { height: 22px; border: 1px solid transparent; background: transparent; border-radius: 0; cursor: pointer; font-size: 11px; padding: 0 7px; }
 .tr button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .eq { font-size: 12.5px; white-space: nowrap; color: var(--text); }
 .eq span { font-family: var(--mono); }
@@ -50,7 +50,7 @@ html, body { overflow: hidden; }
   background: radial-gradient(var(--dot) 1px, transparent 1.1px) 0 0 / 16px 16px, var(--canvas); }
 .tray { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px; z-index: 1; background: var(--panel); border-right: 1px solid var(--line); }
 .tray .sense { height: 40px; flex: none; }
-.sense { position: relative; border: 1px solid var(--line); border-radius: 9px; background: transparent; cursor: pointer; padding: 0; }
+.sense { position: relative; border: 1px solid var(--line); border-radius: 0; background: transparent; cursor: pointer; padding: 0; }
 .sense:active { transform: scale(.96); }
 .sense .nm { display: none; }
 .sense .plus { position: absolute; right: 2px; top: 0; color: var(--accent); font-weight: 700; font-size: 10px; }
@@ -63,12 +63,15 @@ html, body { overflow: hidden; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; margin: 0; font-size: 11.5px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); font-size: 11px; text-align: right; }
 .fx { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.fx button { min-height: 28px; border: 1px solid var(--line); background: transparent; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 11px; }
+.fx button { min-height: 28px; border: 1px solid var(--line); background: transparent; border-radius: 0; cursor: pointer; display: flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 11px; }
 .fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .fx svg { width: 16px; height: 10px; flex: none; }
 .acts { display: grid; gap: 4px; }
 .acts .btn { box-shadow: none; text-align: left; white-space: normal; padding: 5px 9px; line-height: 1.25; font-size: 11.5px; }
 .acts .danger { color: var(--minus); }
+.desc { margin: 0 0 4px; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bin { margin-top: auto; align-self: flex-end; height: 36px; width: 36px; border: 0; border-radius: 50%; background: #d9465b; color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
+.bin:active { transform: scale(.97); }
 #graph { display: block; width: 100%; aspect-ratio: 1; margin: 2px 0 6px; }
 #insp { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.4; }
@@ -91,7 +94,7 @@ html, body { overflow: hidden; }
       <span>Speed <b id="aSpeed"></b></span>
     </div>
     <button class="btn" type="button" id="drive" aria-pressed="false">Drive</button>
-    <button class="btn primary" type="button">Train</button>
+    <button class="btn primary" type="button" id="train">Train</button>
   </header>
   <div class="rulebar" aria-label="Learning rule"><div class="eq" id="eq"></div></div>
   <main class="work">
@@ -130,14 +133,14 @@ const FX = {
 const spread = (k, n) => (n === 1 ? 0 : -90 + 180 * k / (n - 1));
 const dirTag = (d) => (Math.abs(d) < 1 ? 'ahead' : `${d < 0 ? 'left' : 'right'} ${Math.abs(Math.round(d))}°`);
 const SENSES = [
-  { id: 'boundary', name: 'Boundary cells', sym: 'wall', cost: 3, max: 7, about: 'Fire the nearer a wall is inside their field, which faces one way from the car. Like the border and boundary-vector cells of a rat. More cells spread their fields across the front.', tag: (k, n) => dirTag(spread(k, n)) },
-  { id: 'object', name: 'Object-vector cells', sym: 'flag', cost: 3, max: 5, about: 'Fire the nearer the finish line is inside their field, like the object-vector cells of the entorhinal cortex.', tag: (k, n) => dirTag(spread(k, n)) },
+  { id: 'boundary', name: 'Boundary vector cells', sym: 'wall', cost: 3, max: 7, about: 'Fire the nearer a wall is inside their field, which faces one way from the car. Like the border and boundary-vector cells of a rat. More cells spread their fields across the front.', tag: (k, n) => dirTag(spread(k, n)) },
+  { id: 'object', name: 'Landmark cells', sym: 'flag', cost: 3, max: 5, about: 'Fire the nearer the finish line is inside their field, like the object-vector cells of the entorhinal cortex.', tag: (k, n) => dirTag(spread(k, n)) },
   { id: 'hd', name: 'Head direction', sym: 'arrow', cost: 2, max: 8, about: 'Fires as a cosine of the car’s compass heading. One cell can’t tell left from right; two (cosine and sine) pin the heading down.', tag: (k, n) => `prefers ${Math.round(360 * k / n * (n === 2 ? 0.5 : 1))}°` },
   { id: 'grid', name: 'Grid cells', sym: 'hex', cost: 2, max: 6, about: 'Fire at the corners of a hexagonal grid laid over the ground. The first two take two scales; more take spread phases.', tag: (k) => `${k % 2 ? 'large' : 'small'} scale, phase ${Math.floor(k / 2) + 1}` },
   { id: 'speed', name: 'Speed cells', sym: 'gauge', cost: 2, max: 1, about: 'Fire faster the faster the car goes.', tag: () => '' },
 ];
 const WHEELS = [['fl', 'Front-left'], ['fr', 'Front-right'], ['rl', 'Rear-left'], ['rr', 'Rear-right']].map(([id, label]) => ({ id: 'o:' + id, label }));
-const S = { count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, trainer: 'backprop', layers: [{ n: 3, fn: 'tanh' }], off: new Set(), sel: null };
+const S = { count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, trainer: 'backprop', trainedAs: null, layers: [{ n: 3, fn: 'tanh' }], off: new Set(), sel: null };
 const WIRE_COST = 0.15, WHEEL_COST = 1.5;
 
 // ---- ids, wires (default: every layer fully connected to the previous) ----
@@ -197,8 +200,8 @@ function layout() {
   const perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol), colGap = 30;
   ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: regions[0].cx + (col - (cols - 1) / 2) * colGap, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' }); });
   S.layers.forEach((l, L) => {
-    const x = regions[L + 1].cx, step = Math.max(27, Math.min(34, (box.h - 110) / Math.max(l.n - 1, 1)));
-    layerIds(L).forEach((id, k) => P.set(id, { x, y: box.h / 2 + 8 + (k - (l.n - 1) / 2) * step, kind: 'mid', L }));
+    const x = regions[L + 1].cx, step = Math.min(34, (box.h - 122) / Math.max(l.n - 1, 1));
+    layerIds(L).forEach((id, k) => P.set(id, { x, y: box.h / 2 + 25 + (k - (l.n - 1) / 2) * step, kind: 'mid', L }));
   });
   const last = regions[C - 1], carW = Math.min(bw * 0.86, 160), carH = carW * 0.52;
   car = { cx: last.cx, cy: box.h / 2 + 8, W: carW, H: carH };
@@ -206,8 +209,9 @@ function layout() {
 }
 const wireColour = (w) => { const m = Math.min(1, Math.abs(w)); return w >= 0 ? `rgb(${Math.round(17 + m * 30)},${Math.round(17 + m * 151)},${Math.round(17 + m * 62)})` : `rgb(${Math.round(17 + m * 200)},${Math.round(17 + m * 53)},${Math.round(17 + m * 74)})`; };
 
+const brainSig = () => JSON.stringify([S.count, S.layers]);
 function render() {
-  layout(); svg.innerHTML = '';
+  layout(); svg.innerHTML = ''; S.trained = S.trainedAs === brainSig();
   const bg = el('rect', { x: trayW, y: 0, width: box.w - trayW, height: box.h, fill: 'transparent', class: 'hit' }, svg);
   regions.forEach((r, i) => { if (i % 2 === 0) el('rect', { x: r.x0, y: 0, width: r.x1 - r.x0, height: box.h, style: 'fill:var(--band)', 'pointer-events': 'none' }, svg); });
   bg.addEventListener('click', () => { S.sel = null; render(); });
@@ -218,9 +222,9 @@ function render() {
   S.layers.forEach((l, L) => {
     const p = P.get(layerIds(L)[0]); if (!p) return;
     const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Layer ${L + 1}: ${FX[l.fn].n}. Tap to change.` }, svg);
-    el('rect', { x: p.x - 32, y: 6, width: 64, height: 22, rx: 7, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
-    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 18} 17) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
-    const e = t(p.x + 7, 21, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none');
+    el('rect', { x: p.x - 32, y: 30, width: 64, height: 22, rx: 0, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
+    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 18} 41) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    const e = t(p.x + 7, 45, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none'); g.appendChild(e);
     g.addEventListener('click', (ev) => { ev.stopPropagation(); S.sel = `layer:${L}`; render(); });
   });
   // car, front to the right
@@ -233,7 +237,7 @@ function render() {
     const p = P.get(a), q = P.get(b); if (!p || !q) continue;
     const m = Math.min(1, Math.abs(wt)), hot = S.sel && (a === S.sel || b === S.sel);
     const x1 = p.x + (p.kind === 'in' ? R : 11), x2 = q.x - (q.kind === 'out' ? 9 : 11), dx = x2 - x1;
-    el('path', { d: `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`, fill: 'none', style: `stroke:${wireColour(wt)}`, 'stroke-width': 0.6 + Math.abs(wt) * 1.3, opacity: S.sel && !S.sel.startsWith('layer') && !hot ? .1 : 0.25 + m * 0.6, 'stroke-linecap': 'round' }, wg);
+    el('path', { d: `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`, fill: 'none', style: `stroke:${S.trained ? wireColour(wt) : 'var(--muted)'}`, 'stroke-width': S.trained ? 0.6 + Math.abs(wt) * 1.3 : 1, opacity: S.sel && !S.sel.startsWith('layer') && !hot ? .1 : S.trained ? 0.25 + m * 0.6 : 0.45, 'stroke-linecap': 'round' }, wg);
   }
   // cells (tap to select; tap a second cell to wire/unwire)
   for (const [id, p] of P) {
@@ -257,9 +261,20 @@ function render() {
   S.layers.forEach((l, L) => {
     const ids = layerIds(L), last = P.get(ids[ids.length - 1]); if (!last) return;
     const add = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Add a neuron to layer ${L + 1}` }, svg);
-    el('circle', { cx: last.x, cy: last.y + 24, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
-    el('path', { d: `M ${last.x - 4} ${last.y + 24} H ${last.x + 4} M ${last.x} ${last.y + 20} V ${last.y + 28}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
+    el('circle', { cx: last.x, cy: last.y + 22, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
+    el('path', { d: `M ${last.x - 4} ${last.y + 22} H ${last.x + 4} M ${last.x} ${last.y + 18} V ${last.y + 26}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
     add.addEventListener('click', (ev) => { ev.stopPropagation(); if (l.n >= 8) return toast('Eight neurons per layer is the limit here.'); tryChange(() => l.n++, () => l.n--, 'Another neuron'); render(); inspect(); });
+  });
+  const minus = (x, y, r, label, fn) => {
+    const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': label }, svg);
+    el('circle', { cx: x, cy: y, r, style: 'fill:var(--panel);stroke:var(--minus)', 'stroke-width': 1.4 }, g);
+    el('path', { d: `M ${x - r * .45} ${y} H ${x + r * .45}`, style: 'stroke:var(--minus)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, g);
+    g.addEventListener('click', (ev) => { ev.stopPropagation(); fn(); S.sel = null; render(); });
+  };
+  S.layers.forEach((l, L) => {
+    const first = P.get(layerIds(L)[0]); if (!first) return;
+    if (l.n > 1) minus(first.x, first.y - 22, 8, `Remove a neuron from layer ${L + 1}`, () => l.n--);
+    if (S.layers.length > 1) minus(regions[L + 1].cx, 15, 11, `Remove layer ${L + 1}`, () => S.layers.splice(L, 1));
   });
   // a "+" at the bottom of each boundary between columns inserts a hidden layer there
   if (S.layers.length < 3) for (let i = 0; i < regions.length - 1; i++) {
@@ -275,31 +290,39 @@ function render() {
 function tap(id) { S.sel = S.sel === id ? null : id; render(); }
 
 // ---- side panel ----
+// one line about what each kind of cell does
+const DESC = {
+  boundary: 'Fires as a wall nears its side.', object: 'Fires near the finish line.',
+  hd: 'Fires when facing its angle.', grid: 'Fires on a hexagonal grid.', speed: 'Fires faster at speed.',
+  neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.', layer: 'Every neuron here works the same way.',
+};
+const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const binBtn = (id, label) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
 function inspect() {
   const box2 = $('insp'), id = S.sel;
   if (!id) { box2.innerHTML = '<p class="empty">Tap a neuron<br>to inspect it</p>'; return; }
   if (id.startsWith('layer:')) {
     const L = +id.slice(6), l = S.layers[L];
-    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><dl class="kv" style="margin-top:8px"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl><div class="acts" style="margin-top:8px">${S.layers.length > 1 ? '<button class="btn danger" id="rmL" type="button">Remove layer</button>' : ''}</div>`;
+    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><p class="desc">${DESC.layer}</p><dl class="kv"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl>${S.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
     box2.querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => { const old = l.fn; tryChange(() => (l.fn = b.dataset.fx), () => (l.fn = old), 'That function'); render(); }));
     if ($('rmL')) $('rmL').onclick = () => { S.layers.splice(L, 1); S.sel = null; render(); };
     return;
   }
   if (id.startsWith('i:')) {
     const [, sid, ks] = id.split(':'), s = SENSES.find((q) => q.id === sid), k = +ks, n = S.count[sid];
-    box2.innerHTML = `<h2>${s.name}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><dl class="kv"><dt>Energy</dt><dd>${s.cost}%</dd></dl><div class="acts" style="margin-top:8px"><button class="btn danger" id="rm" type="button">Remove</button></div>`;
+    box2.innerHTML = `<h2>${s.name.replace(/s$/, '')}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC[sid]}</p><dl class="kv"><dt>Energy</dt><dd>${s.cost}%</dd></dl>${binBtn('rm', 'Remove this cell')}`;
     graphSense(sid, k, n);
     $('rm').onclick = () => { S.count[sid]--; S.sel = null; render(); };
     return;
   }
   if (id.startsWith('h')) {
-    const L = depth(id) - 1, prev = allLayers()[L];
-    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><div class="acts">${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove</button>' : ''}</div>`;
+    const L = depth(id) - 1;
+    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.neuron}</p>${S.layers[L].n > 1 ? binBtn('rmN', 'Remove this neuron') : ''}`;
     graphCurve(S.layers[L].fn, 'input');
     if ($('rmN')) $('rmN').onclick = () => { S.layers[L].n--; S.sel = null; render(); };
     return;
   }
-  box2.innerHTML = `<h2>${WHEELS.find((q) => q.id === id).label} wheel</h2><canvas id="graph" aria-label="Activation pattern"></canvas>`;
+  box2.innerHTML = `<h2>${WHEELS.find((q) => q.id === id).label} wheel</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.wheel}</p>`;
   graphCurve('tanh', 'input', 'wheel speed');
 }
 
@@ -329,16 +352,26 @@ function polar(fieldDeg, range, width, ringStep, unit = 'm') {
   g.globalAlpha = 1;
   g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(c, c - 7); g.lineTo(c + 4.5, c + 5); g.lineTo(c - 4.5, c + 5); g.closePath(); g.fill();
 }
-// a wave: angle on x (degrees), activation on y
+// x/y plot frame: faint grid, solid axes through 0, tick labels, axis titles
+function plot(o) {
+  const { g, w } = gctx(), l = 30, r = w - 8, t = 8, b = w - 30;
+  const X = (v) => l + (r - l) * (v - o.x[0]) / (o.x[1] - o.x[0]), Y = (v) => b - (b - t) * (v - o.y[0]) / (o.y[1] - o.y[0]);
+  g.font = `9px ${css('--mono')}`; g.lineWidth = 1; g.strokeStyle = css('--line');
+  for (const v of o.xt) { g.beginPath(); g.moveTo(X(v), t); g.lineTo(X(v), b); g.stroke(); }
+  for (const v of o.yt) { g.beginPath(); g.moveTo(l, Y(v)); g.lineTo(r, Y(v)); g.stroke(); }
+  const x0 = X(clamp(0, o.x[0], o.x[1])), y0 = Y(clamp(0, o.y[0], o.y[1]));
+  g.strokeStyle = css('--text'); g.lineWidth = 1.2; g.beginPath(); g.moveTo(l, y0); g.lineTo(r, y0); g.moveTo(x0, t); g.lineTo(x0, b); g.stroke();
+  g.fillStyle = css('--muted'); g.textAlign = 'center'; for (const v of o.xt) g.fillText(String(v), X(v), b + 11);
+  g.textAlign = 'right'; for (const v of o.yt) g.fillText(String(v), l - 4, Y(v) + 3);
+  g.fillStyle = css('--text'); g.textAlign = 'center'; g.fillText(o.xl, (l + r) / 2, b + 24);
+  g.save(); g.translate(9, (t + b) / 2); g.rotate(-Math.PI / 2); g.fillText(o.yl, 0, 0); g.restore(); g.textAlign = 'start';
+  return { g, X, Y };
+}
+const line = (g, n, xy) => { g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath(); for (let i = 0; i <= n; i++) { const [x, y] = xy(i / n); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); };
+// a wave: heading in degrees on x, activation on y
 function wave(prefDeg) {
-  const { g, w } = gctx(), l = 22, r = w - 14, t = 8, b = w - 22;
-  g.strokeStyle = css('--line'); g.lineWidth = 1; g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted'); g.textAlign = 'center';
-  for (const deg of [0, 90, 180, 270, 360]) { const x = l + (r - l) * deg / 360; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(`${deg}°`, x, b + 12); }
-  g.textAlign = 'start';
-  for (const v of [-1, 0, 1]) { const y = b - (b - t) * (v + 1) / 2; g.beginPath(); g.moveTo(l, y); g.lineTo(r, y); g.stroke(); g.fillText(String(v), 4, y + 3); }
-  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath();
-  for (let i = 0; i <= 180; i++) { const deg = i * 2, y = b - (b - t) * (Math.cos((deg - prefDeg) * Math.PI / 180) + 1) / 2, x = l + (r - l) * deg / 360; i ? g.lineTo(x, y) : g.moveTo(x, y); }
-  g.stroke();
+  const { g, X, Y } = plot({ x: [0, 360], y: [-1, 1], xt: [0, 90, 180, 270, 360], yt: [-1, 0, 1], xl: 'heading (°)', yl: 'activation' });
+  line(g, 180, (u) => [X(u * 360), Y(Math.cos((u * 360 - prefDeg) * Math.PI / 180))]);
 }
 // a track map with the grid cell's firing over it; the track drawn on top so it stays visible
 function gridMap(k) {
@@ -355,22 +388,14 @@ function gridMap(k) {
   g.fillStyle = '#ffffff'; g.font = `bold 9px ${css('--mono')}`; const bar = 50 * m2p; g.fillRect(6, w - 8, bar, 2); g.fillText('50 m', 8 + bar, w - 4);
 }
 // x/y curve: transfer functions and speed
-function graphCurve(fn, xl, yl) {
-  const { g, w } = gctx(), l = 22, r = w - 6, t = 8, b = w - 22, f = FX[fn];
-  const ymin = fn === 'tanh' ? -1 : fn === 'linear' ? -4 : 0, ymax = fn === 'relu' || fn === 'linear' ? 4 : 1;
-  g.strokeStyle = css('--line'); g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
-  for (const xv of [-4, 0, 4]) { const x = l + (r - l) * (xv + 4) / 8; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(String(xv), x - 4, b + 12); }
-  for (const yv of [ymin, ymax]) { const y = b - (b - t) * (yv - ymin) / (ymax - ymin); g.fillText(String(yv), 4, y + 3); }
-  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath();
-  for (let i = 0; i <= 160; i++) { const xv = -4 + 8 * i / 160, y = b - (b - t) * (clamp(f.f(xv), ymin, ymax) - ymin) / (ymax - ymin), x = l + (r - l) * i / 160; i ? g.lineTo(x, y) : g.moveTo(x, y); }
-  g.stroke();
+function graphCurve(fn, xl, yl = 'output') {
+  const f = FX[fn], ymin = fn === 'tanh' ? -1 : fn === 'linear' ? -4 : 0, ymax = fn === 'relu' || fn === 'linear' ? 4 : 1;
+  const { g, X, Y } = plot({ x: [-4, 4], y: [ymin, ymax], xt: [-4, 0, 4], yt: [...new Set([ymin, 0, ymax])], xl, yl });
+  line(g, 160, (u) => { const xv = -4 + 8 * u; return [X(xv), Y(clamp(f.f(xv), ymin, ymax))]; });
 }
 function speedLine() {
-  const { g, w } = gctx(), l = 22, r = w - 6, t = 8, b = w - 22;
-  g.strokeStyle = css('--line'); g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
-  for (const v of [0, 30, 60]) { const x = l + (r - l) * v / 60; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(`${v}`, x - 5, b + 12); }
-  g.fillText('m/s', r - 18, b - 4); g.fillText('1', 6, t + 3); g.fillText('0', 6, b + 3);
-  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath(); g.moveTo(l, b); g.lineTo(r, t); g.stroke();
+  const { g, X, Y } = plot({ x: [0, 60], y: [0, 1], xt: [0, 30, 60], yt: [0, 1], xl: 'speed (m/s)', yl: 'activation' });
+  line(g, 1, (u) => [X(u * 60), Y(u)]);
 }
 function graphSense(sid, k, n) {
   if (sid === 'boundary') polar(spread(k, n), 20, n > 1 ? 150 / n : 60, 5);
@@ -385,7 +410,7 @@ function buildTray() {
   const tr = $('tray'); tr.querySelectorAll('.sense').forEach((n) => n.remove());
   for (const s of SENSES) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'sense'; b.dataset.s = s.id;
-    b.setAttribute('aria-label', `Add a ${s.name.replace(/s$/, '')} cell`);
+    b.setAttribute('aria-label', `Add a ${s.name.replace(/ cells$/, '').toLowerCase()} cell`);
     b.innerHTML = `<span class="ic"></span><span class="nm">${s.name.replace(/ cells$/, '')}<span class="ct">${s.cost}%</span></span><span class="plus" aria-hidden="true">+</span>`;
     b.addEventListener('click', () => {
       if (S.count[s.id] >= s.max) return toast(`${s.name}: ${s.max} is the most${s.max === 1 ? ' (one is enough)' : ''}.`);
@@ -478,6 +503,7 @@ function frame(now) {
 let SCALE = 1;
 function fit() { const a = document.querySelector('.app'); SCALE = Math.min(innerWidth / 860, innerHeight / 400); a.style.transform = `translate(${(innerWidth - 860 * SCALE) / 2}px, ${(innerHeight - 400 * SCALE) / 2}px) scale(${SCALE})`; renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * SCALE); }
 addEventListener('resize', () => { fit(); render(); }); fit();
+$('train').onclick = () => { S.trainedAs = brainSig(); render(); };
 $('drive').onclick = () => { active = !active; $('drive').setAttribute('aria-pressed', String(active)); $('drive').textContent = active ? 'Stop' : 'Drive'; };
 buildTray(); buildTrainers(); render(); requestAnimationFrame(frame);
 </script>

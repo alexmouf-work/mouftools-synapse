@@ -37,9 +37,9 @@ that fires flashes yellow at its own rate, so you can watch the computation happ
 
 | Sense | Symbol (animated, matte low-poly) | Each cell fires… | More cells of the type |
 |---|---|---|---|
-| Boundary cells | a wall section | the nearer a wall within its field, which faces one way from the car | fields spread across the front: 1 ahead, 2 at ±45°, 3 left/ahead/right … |
+| Boundary vector cells | a wall section | the nearer a wall within its field, which faces one way from the car | fields spread across the front: 1 ahead, 2 at ±45°, 3 left/ahead/right … |
 | Whisker cells | whiskers | only when a wall is very close (short range, cheap) | spread around the car's sides |
-| Object-vector cells | a chequered flag | the nearer the finish line within its field | as boundary cells |
+| Landmark cells (were object-vector) | a chequered flag | when the finish line is within range | as boundary cells |
 | Place cells | a tree | when the car is inside its place field on the track | fields spread evenly round the lap; remap on a new track |
 | Head direction | a turning circular arrow | as cos(heading − preferred angle) | preferred angles spread evenly (2 = cosine and sine) |
 | Grid cells | a sliding hexagonal lattice | at the vertices of its hexagonal grid | first two take two scales; more take spread phases |
@@ -73,7 +73,10 @@ The player can only inspect cells, add or remove cells (and layers of cells), an
 forgiving tap-to-wire idea from round 2 is dropped.
 
 - Lines of identical neurons, as today. Default: each layer fully connected to the one before (ruling 2026-11-04).
-- Wires keep their weight colours: red −1, black 0, green +1, thicker and brighter with size.
+- Wires keep their weight colours: red −1, black 0, green +1, thicker and brighter with size, but only once the
+  brain is trained; before that (and after any edit) they are plain grey (2026-11-04).
+- A "+" under each layer's neurons adds one and a "−" above them removes one; a "+" at the foot of each column
+  boundary inserts a layer and a "−" at the top of each hidden column removes it (2026-11-04).
 - Click any cell to see what it does and what it costs. A full "inside the neuron" view (sum of inputs × weights →
   function → rate) can follow once the layout is agreed.
 
@@ -90,11 +93,13 @@ training or driving. The sense symbols keep a gentle idle motion.
 Functions offered (2026-11-04): Linear, ReLU, Sigmoid, Tanh (no step). Heatmaps run cold to hot: blue, green,
 yellow, red.
 Tapping a cell shows a graph of what makes it fire, in the right-hand panel (no "tuning" text):
-- Boundary and object-vector cells: a circular map around the car, distance rings labelled in metres (boundary 20 m,
+- Boundary vector and landmark cells: a circular map around the car, distance rings labelled in metres (boundary 20 m,
   object-vector 40 m; an object-vector cell fires when its landmark is within range).
 - Head direction: a wave, heading in degrees on x, activation on y.
 - Grid cells: a heatmap over a map of the track, track drawn on top, a 50 m scale bar.
 - Speed: activation against m/s. Neurons and wheels: their layer's transfer curve.
+- x/y charts carry axis titles and draw both axes through 0. Under each graph, one line on what the cell does; the
+  remove control is a round red bin, white icon, in the panel's bottom-right corner. Buttons are square (2026-11-04).
 
 ## 7. Look
 One font across the whole site: Arial, regular or bold (2026-11-04).

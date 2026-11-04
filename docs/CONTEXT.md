@@ -141,3 +141,13 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "the container on the right should say \"tap a neuron to inspect it\""
 - "make sure that the tap neuron text is justified to the middle horizontally and vertically, and is split across two
   lines." · "use only one font across the entire site, Arial. you can use bold or standard type."
+- "add a tiny single line of description about each neuron underneath it, above the remove button. remove button goes
+  at the bottom. and is swapped to a bin icon, white on a red button." · "the bin button is in the bottom right only, in
+  the corner, and is round. make the buttons on the site into squares rather than squircles."
+- "show axis titles on the charts, and show the x and y axis at their 0 values"
+- "rename each neuron to just say \"boundary vector cell\" rather than \"boundary cell\" and rename the flag cell to
+  \"landmark cell\" rather than boundary vector cell. keep head direction and grid."
+- "add a minus sign at the top to match the + sign at the bottom of each layer, and of each set of neurons. don't show
+  positive and negative weights until after training." → a "−" above each layer's neurons removes one; a "−" at the top
+  of each hidden column removes that layer (shown while there is more than one); wires are plain grey until the brain
+  is trained, and any edit returns them to grey.
