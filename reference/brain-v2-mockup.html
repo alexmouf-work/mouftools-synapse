@@ -40,17 +40,19 @@ html, body { overflow: hidden; }
 .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
 .btn { min-height: 30px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px; border-radius: 9px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; font-size: 12px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-.rulebar { display: flex; align-items: center; gap: 10px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0 4px 0 4px; }
+.rulebar { display: flex; align-items: center; justify-content: center; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 .tr { display: flex; gap: 2px; flex: none; }
 .tr button { height: 22px; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; font-size: 11px; padding: 0 7px; }
 .tr button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
-.eq { font-family: var(--mono); font-size: 12px; white-space: nowrap; color: var(--text); flex: none; }
+.eq { font-size: 12.5px; white-space: nowrap; color: var(--text); }
+.eq span { font-family: var(--mono); }
 .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
 .nums b { color: var(--text); font-weight: 500; }
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 6px; min-height: 0; }
 .board { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
   background: radial-gradient(var(--dot) 1px, transparent 1.1px) 0 0 / 16px 16px, var(--canvas); }
-.tray { position: absolute; left: 6px; top: 6px; bottom: 6px; width: 76px; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 36px; gap: 4px; z-index: 1; }
+.tray { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px; z-index: 1; background: var(--panel); border-right: 1px solid var(--line); }
+.tray .sense { height: 40px; flex: none; }
 .sense { position: relative; border: 1px solid var(--line); border-radius: 9px; background: transparent; cursor: pointer; padding: 0; }
 .sense:active { transform: scale(.96); }
 .sense .nm { display: none; }
@@ -82,6 +84,7 @@ html, body { overflow: hidden; }
   <header class="top">
     <span class="word">Synapse</span>
     
+    <div class="tr" id="trainers" role="group" aria-label="Trainer"></div>
     <div class="alloc" aria-label="Energy split: brain power against speed">
       <span>Brain <b id="aBrain"></b></span>
       <div class="split"><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
@@ -90,7 +93,7 @@ html, body { overflow: hidden; }
     <button class="btn" type="button">Drive</button>
     <button class="btn primary" type="button">Train</button>
   </header>
-  <div class="rulebar" aria-label="Learning rule"><div class="tr" id="trainers"></div><div class="eq" id="eq"></div><div class="nums" id="nums"></div></div>
+  <div class="rulebar" aria-label="Learning rule"><div class="eq" id="eq"></div></div>
   <main class="work">
     <div class="board" id="board">
       <div class="tray" id="tray"></div>
@@ -230,7 +233,6 @@ function render() {
     const x1 = p.x + (p.kind === 'in' ? R : 11), x2 = q.x - (q.kind === 'out' ? 9 : 11), dx = x2 - x1;
     el('path', { d: `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`, fill: 'none', style: `stroke:${wireColour(wt)}`, 'stroke-width': 0.6 + Math.abs(wt) * 1.3, opacity: S.sel && !S.sel.startsWith('layer') && !hot ? .1 : 0.25 + m * 0.6, 'stroke-linecap': 'round' }, wg);
   }
-  el('path', { id: 'ruleWire', d: '', fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 3.5, opacity: .35, 'stroke-linecap': 'round', 'pointer-events': 'none' }, svg);
   // cells (tap to select; tap a second cell to wire/unwire)
   for (const [id, p] of P) {
     const g = el('g', { class: 'hit', 'data-id': id, role: 'button', tabindex: 0 }, svg);
@@ -348,7 +350,7 @@ const TRAINERS = {
 };
 const dF = (fn, y) => fn === 'tanh' ? 1 - y * y : fn === 'sigmoid' ? y * (1 - y) : fn === 'relu' ? (y > 0 ? 1 : 0) : 0;
 const label = (id) => id.startsWith('i:') ? (() => { const [, sid, k] = id.split(':'), s = SENSES.find((q) => q.id === sid); const tg = s.tag(+k, S.count[sid]); return `${s.name.replace(/ cells$/, '')}${tg ? ` (${tg})` : ''}`; })() : id.startsWith('o:') ? WHEELS.find((w) => w.id === id).label + ' wheel' : `layer ${depth(id)} neuron ${+id.split(':')[1] + 1}`;
-function buildTrainers() { $('trainers').innerHTML = Object.entries(TRAINERS).map(([k, v]) => `<button type="button" data-tr="${k}" aria-pressed="${S.trainer === k}">${v.n}</button>`).join(''); $('trainers').querySelectorAll('[data-tr]').forEach((b) => b.onclick = () => { if (b.dataset.tr !== 'evolution' && S.layers.some((l) => l.fn === 'step')) return toast(`${TRAINERS[b.dataset.tr].n.replace(/<[^>]+>/g, '')} needs a slope to follow; a step layer has none. Change it first.`); S.trainer = b.dataset.tr; buildTrainers(); }); $('eq').innerHTML = TRAINERS[S.trainer].eq; }
+function buildTrainers() { $('trainers').innerHTML = Object.entries(TRAINERS).map(([k, v]) => `<button type="button" data-tr="${k}" aria-pressed="${S.trainer === k}">${v.n}</button>`).join(''); $('trainers').querySelectorAll('[data-tr]').forEach((b) => b.onclick = () => { if (b.dataset.tr !== 'evolution' && S.layers.some((l) => l.fn === 'step')) return toast(`${TRAINERS[b.dataset.tr].n.replace(/<[^>]+>/g, '')} needs a slope to follow; a step layer has none. Change it first.`); S.trainer = b.dataset.tr; buildTrainers(); }); $('eq').innerHTML = `Learning Rule : <span>${TRAINERS[S.trainer].eq}</span>`; }
 let ruleT = 0;
 function showRule(act, t) {
   ruleT += 1; if (ruleT % 12) return;
@@ -386,7 +388,6 @@ function frame(now) {
     else { let ph = (phase.get(id) ?? Math.random()) + rate * MAX_HZ * dt, fl = flash.get(id) ?? 0; if (ph >= 1) { ph -= Math.floor(ph); fl = 1; } fl = Math.max(0, fl - dt * 9); phase.set(id, ph); flash.set(id, fl); node.setAttribute('opacity', fl.toFixed(2)); }
     if (id.startsWith('o:')) { const p = P.get(id), a = svg.querySelector(`[data-arrow="${CSS.escape(id)}"]`); if (a && p) { const sp = v, s = Math.sign(sp || 1), x0 = p.x + 11 * s; a.setAttribute('d', Math.abs(sp) < 0.05 ? '' : `M ${x0} ${p.y} h ${14 * sp} l ${-3 * s} -3 m ${3 * s} 3 l ${-3 * s} 3`); } }
   }
-  showRule(act, simT);
   drawSymbols(simT, w);
   requestAnimationFrame(frame);
 }

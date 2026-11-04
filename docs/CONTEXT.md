@@ -114,3 +114,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   wheels are neurons\""
 - "move delta rule to the top across the top, make the neurons smaller per unit space on the screen, make the laptop
   version look like the phone app just scaled up." → one phone-landscape layout (860 × 400) scaled to fit every screen.
+- "remove the dotted background from the input neuron selection, and line them all up alongside each other in a column
+  of 5 elements. show only the formula for the delta rule, no calculation directly happening. don't show the neuron
+  selected in that area either. centre the delta rule, and directly call it \"Learning Rule : [equation]\""
