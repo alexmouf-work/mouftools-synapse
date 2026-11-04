@@ -199,3 +199,10 @@ Rulings from the principal, verbatim where quoted. Newest last.
   permission". · "music sounds really good to me, across the board. please implement it all." → builder.
 - "here's some more music, named appropriately." (sandbox music: "Airport Lounge", Kevin MacLeod; winner music) ·
   winner music rights: "I have a licence for it" · when it plays: "When you win a race (Recommended)".
+- "in the brain builder, remove the \"All neurons here work alike.\" like entirely. keep some space between the
+  processing rule and the energy per neuron line. allow up to 10 layers of neurons to be added in, and move them so
+  that elements on the page don't overlap. remove the plus sign if the limit is hit, rather than showing a warning
+  that it isn't possible to add more."
+- "create a favicon and app icon using the grid cell icon. make sure it's compatible with being turned into a web app.
+  it should be called \"Synapse\"" → `docs/plans/2026-11-04-icons.md`.
+- "is the builder opus 5.5? it should be." → checked: every builder response served by that model.

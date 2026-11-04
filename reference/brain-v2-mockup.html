@@ -53,6 +53,8 @@ html, body { overflow: hidden; }
 .tray .sense { height: 40px; flex: none; }
 .sense { position: relative; border: 1px solid var(--line); border-radius: 0; background: transparent; cursor: pointer; padding: 0; }
 .sense:active { transform: scale(.96); }
+.sense.full { cursor: default; opacity: .55; }
+.sense.full:active { transform: none; }
 .sense .nm { display: none; }
 .sense .plus { position: absolute; right: 2px; top: 0; color: var(--accent); font-weight: 700; font-size: 10px; }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
@@ -222,11 +224,17 @@ function layout() {
   box = { w: board.clientWidth, h: board.clientHeight }; svg.setAttribute('viewBox', `0 0 ${box.w} ${box.h}`);
   trayW = $('tray').offsetLeft + $('tray').offsetWidth;
   P = new Map();
-  const C = S.layers.length + 2, bw = (box.w - trayW) / C;
-  regions = Array.from({ length: C }, (_, i) => ({ x0: trayW + bw * i, x1: trayW + bw * (i + 1), cx: trayW + bw * (i + 0.5) }));
+  const C = S.layers.length + 2, Wb = box.w - trayW;
   R = 10.5;
-  const ins = inputIds(), top = 34, avail = box.h - top - 14, pitch = 2 * R + 9;
-  const perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol), colGap = 30;
+  const insN = inputIds().length, perCol0 = Math.max(1, Math.floor((box.h - 34 - 40) / (2 * R + 9))), inCols = Math.max(1, Math.ceil(insN / perCol0));
+  const needIn = inCols * (2 * R + 9) + 10, needCar = 112;
+  let widths = Array(C).fill(Wb / C);
+  if (Wb / C < needIn || Wb / C < needCar) { const wIn = Math.max(needIn, 0), wCar = needCar, rest = (Wb - wIn - wCar) / S.layers.length; widths = [wIn, ...Array(S.layers.length).fill(rest), wCar]; }
+  let acc = trayW;
+  regions = widths.map((w) => { const r = { x0: acc, x1: acc + w, cx: acc + w / 2 }; acc += w; return r; });
+  const bw = widths[C - 1];
+  const ins = inputIds(), top = 34, avail = box.h - top - 40, pitch = 2 * R + 9; // the bottom row stays clear for the layer buttons
+  const perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol), colGap = Math.min(30, (regions[0].x1 - regions[0].x0 - 10) / Math.max(cols, 1));
   ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: regions[0].cx + (col - (cols - 1) / 2) * colGap, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' }); });
   S.layers.forEach((l, L) => {
     const x = regions[L + 1].cx, step = Math.min(34, (box.h - 85) / (l.n + 1));
@@ -239,6 +247,10 @@ function layout() {
 const wireColour = (w) => { const m = Math.min(1, Math.abs(w)); return w >= 0 ? `rgb(${Math.round(17 + m * 30)},${Math.round(17 + m * 151)},${Math.round(17 + m * 62)})` : `rgb(${Math.round(17 + m * 200)},${Math.round(17 + m * 53)},${Math.round(17 + m * 74)})`; };
 
 const brainSig = () => JSON.stringify([S.count, S.layers]);
+const MAX_LAYERS = 10, MAX_NEURONS = 8;
+window.__mock = { get S() { return S; }, render: () => render(), tray: () => buildTray() }; // for the layout checks
+// bottom-row buttons shrink so a "+" on a boundary and the "−" mid-column never touch
+const rowR = () => { const hw = Math.min(...regions.slice(1, -1).map((r) => r.x1 - r.x0), 999); return Math.max(9.5, Math.min(11, hw / 4 - 1)); };
 function render() {
   layout(); svg.innerHTML = ''; S.trained = S.trainedAs === brainSig();
   const bg = el('rect', { x: trayW, y: 0, width: box.w - trayW, height: box.h, fill: 'transparent', class: 'hit' }, svg);
@@ -251,9 +263,10 @@ function render() {
   S.layers.forEach((l, L) => {
     const p = P.get(layerIds(L)[0]); if (!p) return;
     const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Layer ${L + 1}: ${FX[l.fn].n}. Tap to change.` }, svg);
-    el('rect', { x: p.x - 32, y: 6, width: 64, height: 22, rx: 0, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
-    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 18} 17) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
-    const e = t(p.x + 7, 21, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none'); g.appendChild(e);
+    const cw = Math.min(64, regions[L + 1].x1 - regions[L + 1].x0 - 8), narrow = cw < 60;
+    el('rect', { x: p.x - cw / 2, y: 6, width: cw, height: 22, rx: 0, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
+    el('path', { d: FX[l.fn].g, transform: `translate(${narrow ? p.x : p.x - 18} 17) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    if (!narrow) { const e = t(p.x + 7, 21, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none'); g.appendChild(e); }
     g.addEventListener('click', (ev) => { ev.stopPropagation(); S.sel = `layer:${L}`; render(); });
   });
   // car, front to the right
@@ -288,30 +301,32 @@ function render() {
     g.addEventListener('click', (ev) => { ev.stopPropagation(); tap(id); });
   }
   S.layers.forEach((l, L) => {
-    const ids = layerIds(L), last = P.get(ids[ids.length - 1]); if (!last) return;
+    const ids = layerIds(L), last = P.get(ids[ids.length - 1]); if (!last || l.n >= MAX_NEURONS) return;
     const add = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Add a neuron to layer ${L + 1}` }, svg);
     el('circle', { cx: last.x, cy: last.y + last.step, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
     el('path', { d: `M ${last.x - 4} ${last.y + last.step} H ${last.x + 4} M ${last.x} ${last.y + last.step - 4} V ${last.y + last.step + 4}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
-    add.addEventListener('click', (ev) => { ev.stopPropagation(); if (l.n >= 8) return toast('Eight neurons per layer is the limit here.'); tryChange(() => l.n++, () => l.n--, 'Another neuron'); render(); inspect(); });
+    add.addEventListener('click', (ev) => { ev.stopPropagation(); tryChange(() => l.n++, () => l.n--, 'Another neuron'); render(); inspect(); });
   });
   const minus = (x, y, r, label, fn) => {
     const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': label }, svg);
     const big = r > 9; // same ring and stroke as the matching "+"
+    const a = big ? r * 0.45 : 4;
     el('circle', { cx: x, cy: y, r, style: `fill:var(--panel);stroke:${big ? 'var(--accent)' : 'var(--line)'}`, 'stroke-width': big ? 1.4 : 1.5 }, g);
-    el('path', { d: `M ${x - (big ? 5 : 4)} ${y} H ${x + (big ? 5 : 4)}`, style: 'stroke:var(--accent)', 'stroke-width': big ? 2 : 2.2, 'stroke-linecap': 'round' }, g);
+    el('path', { d: `M ${x - a} ${y} H ${x + a}`, style: 'stroke:var(--accent)', 'stroke-width': big ? 2 : 2.2, 'stroke-linecap': 'round' }, g);
     g.addEventListener('click', (ev) => { ev.stopPropagation(); fn(); S.sel = null; render(); });
   };
   S.layers.forEach((l, L) => {
     const first = P.get(layerIds(L)[0]); if (!first) return;
     if (l.n > 1) minus(first.x, first.y - first.step, 8, `Remove a neuron from layer ${L + 1}`, () => l.n--);
-    if (S.layers.length > 1) minus(regions[L + 1].cx, box.h - 22, 11, `Remove layer ${L + 1}`, () => S.layers.splice(L, 1));
+    if (S.layers.length > 1) minus(regions[L + 1].cx, box.h - 22, rowR(), `Remove layer ${L + 1}`, () => S.layers.splice(L, 1));
   });
   // a "+" at the bottom of each boundary between columns inserts a hidden layer there
-  if (S.layers.length < 3) for (let i = 0; i < regions.length - 1; i++) {
+  if (S.layers.length < MAX_LAYERS) for (let i = 0; i < regions.length - 1; i++) {
     const x = regions[i].x1, y = box.h - 22;
     const add = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': 'Add a layer here' }, svg);
-    el('circle', { cx: x, cy: y, r: 11, style: 'fill:var(--panel);stroke:var(--accent)', 'stroke-width': 1.4 }, add);
-    el('path', { d: `M ${x - 5} ${y} H ${x + 5} M ${x} ${y - 5} V ${y + 5}`, style: 'stroke:var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round' }, add);
+    const r = rowR(), a = r * 0.45;
+    el('circle', { cx: x, cy: y, r, style: 'fill:var(--panel);stroke:var(--accent)', 'stroke-width': 1.4 }, add);
+    el('path', { d: `M ${x - a} ${y} H ${x + a} M ${x} ${y - a} V ${y + a}`, style: 'stroke:var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round' }, add);
     add.addEventListener('click', (ev) => { ev.stopPropagation(); tryChange(() => S.layers.splice(i, 0, { n: 3, fn: 'tanh' }), () => S.layers.splice(i, 1), 'A new layer'); S.sel = null; render(); });
   }
   showAlloc(); inspect();
@@ -324,7 +339,7 @@ function tap(id) { S.sel = S.sel === id ? null : id; render(); }
 const DESC = {
   boundary: 'Fires faster when approaching a wall.', object: 'Fires faster when the finish line is in view.',
   hd: 'Fires faster when facing a given angle.', grid: 'Fires on a hexagonal grid.', speed: 'Fires faster at higher speeds.',
-  neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.', layer: 'All neurons here work alike.',
+  neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.',
 };
 const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const binBtn = (id, label) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
@@ -333,7 +348,7 @@ function inspect() {
   if (!id) { box2.innerHTML = '<p class="empty">Tap a neuron<br>to inspect it</p>'; return; }
   if (id.startsWith('layer:')) {
     const L = +id.slice(6), l = S.layers[L];
-    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><p class="desc">${DESC.layer}</p><dl class="kv"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl>${S.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
+    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><dl class="kv" style="margin-top:14px"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl>${S.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
     box2.querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => { const old = l.fn; tryChange(() => (l.fn = b.dataset.fx), () => (l.fn = old), 'That function'); render(); }));
     if ($('rmL')) $('rmL').onclick = () => { S.layers.splice(L, 1); S.sel = null; render(); };
     return;
@@ -441,9 +456,11 @@ function buildTray() {
   for (const s of SENSES) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'sense'; b.dataset.s = s.id;
     b.setAttribute('aria-label', `Add a ${s.name.replace(/ cells$/, '').toLowerCase()} cell`);
-    b.innerHTML = `<span class="ic"></span><span class="nm">${s.name.replace(/ cells$/, '')}<span class="ct">${s.cost}%</span></span><span class="plus" aria-hidden="true">+</span>`;
+    const full = S.count[s.id] >= s.max;
+    b.innerHTML = `<span class="ic"></span><span class="nm">${s.name.replace(/ cells$/, '')}<span class="ct">${s.cost}%</span></span>${full ? '' : '<span class="plus" aria-hidden="true">+</span>'}`;
+    if (full) { b.disabled = true; b.classList.add('full'); }
     b.addEventListener('click', () => {
-      if (S.count[s.id] >= s.max) return toast(`${s.name}: ${s.max} is the most${s.max === 1 ? ' (one is enough)' : ''}.`);
+      if (S.count[s.id] >= s.max) return;
       if (tryChange(() => S.count[s.id]++, () => S.count[s.id]--, `A ${s.name.toLowerCase().replace(/s$/, '')}`)) { S.sel = `i:${s.id}:${S.count[s.id] - 1}`;  }
       buildTray(); render();
     });
