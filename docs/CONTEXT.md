@@ -105,3 +105,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
   between 5-20 random instances of the brain when training, depending on the device being used." → "show cars on track,
   with one of their brains at random. show the car moving at an accelerating rate, so that it slowly approaches the speed
   of the computer's training."
+- "build in the other training methods. show on screen the delta rule being used, at all times." · "remove whisker
+  cells. they don't intuitively have a different purpose to boundary vector cells. remove the tree cells too." ·
+  "change the representation of grid cells so that they show 7 button shapes (or spheres or whatever they are) in a
+  flat hexagonal grid + centre." · "make the buttons smaller, I don't want overlap at all."
