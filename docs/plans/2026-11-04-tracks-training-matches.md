@@ -43,7 +43,7 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   (my default: nowhere during training; it's in the drive view).
 
 ## 4. Matches ("Multiplayer"), and VS Computer
-- **VS Computer**: you against nine computer brains, 10 cars on one track, offline. The computer brains come from
+- **vs CPU**: you against nine computer brains, 10 cars on one track, offline. The computer brains come from
   trained presets of varied skill.
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
@@ -56,7 +56,15 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   how they reach the build safely is in `2026-11-04-legal-pages.md`.
 
 ## 5. Title screen (mock-up `reference/title-screen-mockup.html`)
-- "Synapse", one line ("Build a brain. Train it. Race it."), three buttons: **Sandbox**, **VS Computer**,
-  **Multiplayer** (was "Match").
+- "Synapse", one line ("Build a brain. Train it. Race it."), three buttons: **Multiplayer** (blue, the accent), **vs
+  CPU** (yellow), **Sandbox** (plain, quieter). "vs CPU" replaces "VS Computer"; Multiplayer replaces "Match".
 - Multiplayer opens: **Create a room**, or **join** with a 4-letter room code; "Up to 100 players"; Back.
 - Behind the card, a quiet fully wired brain whose cells flash at their own rates (still if reduced motion is set).
+
+## 6. Sandbox: no training budget; the player chooses how long (2026-11-04)
+- Sandbox has no limit on training. **Train opens a popup**: "Train for how many generations?" with 10, 25, 50, 100,
+  250, 500, 1000; **100 is selected by default**; Cancel or Train. (Mock-up: brain designer v2.)
+- The engine trains for that many generations instead of spending the fixed experience budget T. vs CPU and
+  Multiplayer keep a fixed, equal budget, so races stay fair.
+- My reading: "unlimited budget" is the training budget, not the brain's energy limit (designs still can't pass
+  100% flat out). To confirm.

@@ -191,3 +191,9 @@ Rulings from the principal, verbatim where quoted. Newest last.
   · "add sound effects for the car driving too, which will play appropriately for how fast the car is driving." →
   `docs/plans/2026-11-04-sound.md`.
 - "please let me know when it's ready on the dev branch. I've connected a preview deployment so that I can see."
+- "sandbox mode will have unlimited budget and allows choices on how long to train for. the user will get a popup when
+  they click train that asks them to choose how many generations for. the options are 10, 25, 50, 100, 250, 500, 1000.
+  default is 100 generations." · "\"vs CPU\" is what we will show instead of vs computer. Multiplayer will be
+  highlighted in blue, vs CPU in yellow, sandbox will look more boring."
+- Music rights: asked "Do you have the artist's permission (or a licence) to use it in Synapse?" → "Yes, I have
+  permission". · "music sounds really good to me, across the board. please implement it all." → builder.

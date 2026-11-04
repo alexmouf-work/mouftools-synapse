@@ -16,6 +16,8 @@ h1 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -.01em; }
 .btn { display: block; width: 100%; height: 46px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 0; font: inherit; font-size: 16px; cursor: pointer; }
 .btn + .btn { margin-top: 8px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.btn.cpu { background: var(--spike); border-color: var(--spike); color: #1d2330; font-weight: 700; }
+.btn.plain { background: transparent; color: var(--muted); font-size: 15px; }
 .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .join { display: flex; gap: 8px; margin-top: 8px; }
 .join input { flex: 1; min-width: 0; height: 46px; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 0; font: inherit; font-size: 18px; letter-spacing: .3em; text-align: center; text-transform: uppercase; }
@@ -40,9 +42,9 @@ h1 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -.01em; }
   <h1>Synapse</h1>
   <p class="tag">Build a brain. Train it. Race it.</p>
   <section id="home">
-    <button class="btn primary" type="button">Sandbox</button>
-    <button class="btn" type="button" id="toCpu">VS Computer</button>
-    <button class="btn" type="button" id="toMatch">Multiplayer</button>
+    <button class="btn primary" type="button" id="toMatch">Multiplayer</button>
+    <button class="btn cpu" type="button" id="toCpu">vs CPU</button>
+    <button class="btn plain" type="button">Sandbox</button>
   </section>
   <section id="match" hidden>
     <button class="btn primary" type="button">Create a room</button>

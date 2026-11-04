@@ -78,6 +78,12 @@ html, body { overflow: hidden; }
 .empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.4; }
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 0; z-index: 9; max-width: calc(100% - 32px); }
 #rotate { display: none; }
+dialog#trainDlg { border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); padding: 14px; width: 300px; box-shadow: var(--shadow); font-size: 12.5px; }
+dialog#trainDlg::backdrop { background: rgba(10, 14, 22, .45); }
+dialog#trainDlg p { margin: 0 0 10px; }
+.gens { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 12px; }
+.gens button { min-height: 34px; border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 0; font: inherit; font-size: 12.5px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.gens button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 dialog#confirm { border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); padding: 14px; width: 260px; box-shadow: var(--shadow); font-size: 12.5px; line-height: 1.4; }
 dialog#confirm::backdrop { background: rgba(10, 14, 22, .45); }
 dialog#confirm p { margin: 0 0 12px; }
@@ -117,6 +123,7 @@ dialog#confirm p { margin: 0 0 12px; }
 </div>
 <div id="rotate"><div><h1 style="margin:0 0 8px;font-size:20px">Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button" style="margin-top:12px">Continue in portrait</button></div></div>
 <div id="toast" hidden></div>
+<dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 
 <script type="importmap">
@@ -527,7 +534,13 @@ function frame(now) {
 let SCALE = 1;
 function fit() { const a = document.querySelector('.app'); SCALE = Math.min(innerWidth / 860, innerHeight / 400); a.style.transform = `translate(${(innerWidth - 860 * SCALE) / 2}px, ${(innerHeight - 400 * SCALE) / 2}px) scale(${SCALE})`; renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * SCALE); }
 addEventListener('resize', () => { fit(); render(); }); fit();
-$('train').onclick = () => { S.trainedAs = brainSig(); render(); };
+// Train asks how long to train for (sandbox: no training budget, the player chooses)
+const GENS = [10, 25, 50, 100, 250, 500, 1000];
+let gens = 100;
+function buildGens() { $('gens').innerHTML = GENS.map((g) => `<button type="button" data-g="${g}" aria-pressed="${g === gens}">${g}</button>`).join(''); $('gens').querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { gens = +b.dataset.g; buildGens(); })); }
+$('train').onclick = () => { buildGens(); $('trainDlg').showModal(); };
+$('tdNo').onclick = () => $('trainDlg').close();
+$('tdGo').onclick = () => { $('trainDlg').close(); S.trainedAs = brainSig(); render(); toast(`Training for ${gens} generations.`); };
 // reset goes back to the starting brain, only after a confirmation
 const START = () => ({ count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] });
 $('reset').onclick = () => $('confirm').showModal();
