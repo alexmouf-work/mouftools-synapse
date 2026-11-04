@@ -139,7 +139,7 @@ const SENSES = [
   { id: 'speed', name: 'Speed cells', sym: 'gauge', cost: 2, max: 1, about: 'Fire faster the faster the car goes.', tag: () => '' },
 ];
 const WHEELS = [['fl', 'Front-left'], ['fr', 'Front-right'], ['rl', 'Rear-left'], ['rr', 'Rear-right']].map(([id, label]) => ({ id: 'o:' + id, label }));
-const S = { count: { boundary: 3, object: 1, hd: 1, grid: 2, speed: 1 }, trainer: 'backprop', layers: [{ n: 5, fn: 'tanh' }], off: new Set(), sel: null };
+const S = { count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, trainer: 'backprop', layers: [{ n: 3, fn: 'tanh' }], off: new Set(), sel: null };
 const WIRE_COST = 0.15, WHEEL_COST = 1.5;
 
 // ---- ids, wires (default: every layer fully connected to the previous) ----

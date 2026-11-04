@@ -62,6 +62,11 @@ place cells are anchored to the world, so they pay off when it stays the same: s
 - Retired with it: the noise rule, the per-minute pool, the energy-left input.
 - Training still rewards distance, so evolution must find the balance. The speed curve is tuned with the benchmark.
 
+## 3c. The default brain (2026-11-04)
+One boundary cell, one head-direction cell, one hidden layer of three neurons, the four wheels. About 23% brain / 77%
+speed. When v2 is built, the learning benchmark must be re-run on this brain: a two-input brain may not lap, which is
+fine for a starting point but changes what the S1 criterion can promise.
+
 ## 4. The cortex: hidden layers
 **Wiring is fixed (2026-11-04):** every layer is fully connected to the next, always; there is no wiring or unwiring.
 The player can only inspect cells, add or remove cells (and layers of cells), and set each layer's function. The

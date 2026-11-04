@@ -130,3 +130,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   processing type." → wiring is fixed: every layer fully connected to the next; taps only inspect.
 - "when there are multiple layers, fit them more nicely so that the space is always used evenly." → inputs, each hidden
   layer and the wheels sit in evenly spaced columns.
+- "the default brain should start with just a single head direction cell and a single boundary vector cell. it should
+  have one hidden layer with three neurons, and that's it."
