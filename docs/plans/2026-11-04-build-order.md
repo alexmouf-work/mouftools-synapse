@@ -13,6 +13,7 @@ the next. The mock-ups in `reference/` and the plans below are the spec; `docs/C
 | B2c | Title screen first (brought forward): the page opens on it; music from the title on, quick smooth cross-fades, keeps playing when the tab isn't focused; Privacy · Terms · Cookies and music credits in a rail along the title's foot (out of the Learning Rule strip). Sandbox works; vs CPU and Multiplayer show as "soon" until B7/B8 | `2026-11-04-sound.md`, `reference/title-screen-mockup.html` |
 | B2d | Larger input cells on the board (radius 16, symbol 1.7× radius, columns spaced to fit); "Train again" → "Keep training"; Temperature slider in the Train popup (§3ac) | mock-up v26 |
 | B6 (brought forward) | Training view side panel: left section ≤ 1/5 of the width, its own section not an overlay, fitness per generation over a map of every shown car; random agents from each generation; camera fills the rest | `2026-11-04-tracks-training-matches.md` §3, `reference/training-view-mockup.html` |
+| B2e | Receptive fields learn (brain v2 plan §3ad); inspector graphs draw the learned field | plan §3ad |
 | B4 | Trainers T2 actor-critic, T3 A_RP (T1 backprop is in) | `2026-11-04-trainers.md` |
 | B5 | Track families (loop, kidney, hairpin, chicane, dogleg, clover, figure eight) and the figure eight's decks | `2026-11-04-tracks-training-matches.md` §1–2, `reference/track-shapes-mockup.html` |
 | B7 | Title screen (Multiplayer blue, vs CPU yellow, Sandbox plain) and vs CPU: 10 cars, countdown, winner music on a win | same plan §4–5, `reference/title-screen-mockup.html` |

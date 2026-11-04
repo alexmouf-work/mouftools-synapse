@@ -54,6 +54,24 @@ Boundary, whisker and object-vector cells read the surroundings, so they work on
 place cells are anchored to the world, so they pay off when it stays the same: sandbox keeps your track until
 "New track"; a match keeps one track for all rounds.
 
+## 3ad. Receptive fields learn (2026-11-04)
+"I want you to allow the input cells to vary their receptive fields / input fields / graphs as they learn." Each input
+cell's tuning becomes part of what training learns, within bounds:
+| Sense | Learns | Bounds |
+|---|---|---|
+| Boundary vector | field direction, field width, range | any direction; width 20–180°; range 5–20 m |
+| Landmark | field direction, field width, range | any direction; width 20–180°; range 10–40 m |
+| Head direction | preferred angle | any |
+| Grid | scale, phase (x, y), orientation | scale 10–60 m |
+| Speed | gain (how fast it saturates) | 0.5–2× |
+- New cells start where today's re-tuning puts them (spread evenly). Adding a cell to a trained brain keeps the other
+  cells' learned fields and puts the new one in the widest gap; removing one leaves the rest as they are.
+- Evolution mutates every field parameter (scaled by temperature). Backprop learns those with a gradient (head
+  direction, grid, speed, and boundary/landmark direction and width through the smooth angular tuning); where there is
+  none, the field stays as it is. Energy costs don't change with the field.
+- The inspector graphs (polar maps, the HD wave, the grid heatmap, the speed line) draw the learned field, so you can
+  watch a cell's field change from one training run to the next.
+
 ## 3ac. Temperature: how boldly training explores (2026-11-04)
 "let's add a temperature slider as well somewhere." → "Training exploration", "In the Train popup". Under the
 generations choice: Temperature, a log-scale multiplier ×0.25 to ×4 (default ×1, the tuned value), on the chosen

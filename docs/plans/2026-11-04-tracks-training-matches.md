@@ -31,6 +31,12 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
 - Deterministic: the deck is a pure function of the sample index; no new floating-point paths.
 
 ## 3. Training view (supersedes section 10 of the brain designer v2 plan)
+- **Stop = finishing early** (2026-11-04): "if the car is training and the user stops it mid-train, we take the best
+  performing agent that was discovered so far, and that becomes the one that is allowed to drive. stopping the training
+  should be functionally equivalent to hitting the limit on the number of generations." Stop ends the run exactly as
+  reaching the chosen generation count does: the best agent found so far (its best evaluated fitness, any generation)
+  is saved as the brain, and Drive and Keep training appear. Keep training continues from it. Stopping inside a
+  generation counts only the generations already evaluated.
 - One **info panel on the left**, full height, **at most a fifth of the width**, a section of its own (not an
   overlay); the camera fills the rest of the screen. Nothing on the right.
 - **Random agents from each generation**: as each generation is evaluated, a random handful of its agents (as many as

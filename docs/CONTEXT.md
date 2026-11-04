@@ -235,3 +235,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
   give the flag a checker pattern too with a black stem. put the flag on either side of the finish line."
 - "let's add a temperature slider as well somewhere." → asked what it controls: "Training exploration (Recommended)";
   where: "In the Train popup (Recommended)".
+- "if the car is training and the user stops it mid-train, we take the best performing agent that was discovered so far,
+  and that becomes the one that is allowed to drive. stopping the training should be functionally equivalent to hitting
+  the limit on the number of generations." · "I want you to allow the input cells to vary their receptive fields / input
+  fields / graphs as they learn."
