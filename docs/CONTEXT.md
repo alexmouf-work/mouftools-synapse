@@ -68,3 +68,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - (2026-10-31) Training episodes run the full 1-minute period with the full pool (measured: best on every
   criterion; see the table in docs/plans/2026-10-30-sandbox-loop.md, "Energy as a pool").
 
+## 2026-11-04
+- "domain is set up. you can access the site at synapse.mouftools.com"
+- "let's work on a development branch for now." → work happens on `development`; `main` (live) moves on the
+  principal's word.

@@ -1,6 +1,7 @@
 # Working rules
 
-- Work on `main`, commit there the whole way through (principal, 2026-10-30).
+- Work on `development` (principal, 2026-11-04: "let's work on a development branch for now"); `main` is what
+  synapse.mouftools.com serves and only moves when the principal says so. Commit as the principal, no AI references.
 - Plans first: one plan per feature in `docs/plans/`; one builder at a time, building only on the principal's go.
 - Rulings are verbatim in `docs/CONTEXT.md`; read it before design changes. What's next: `docs/ROADMAP.csv`.
 - The sim (`src/common/`) must stay deterministic: no Math.random/Date/performance, no engine trig (use fmath),
