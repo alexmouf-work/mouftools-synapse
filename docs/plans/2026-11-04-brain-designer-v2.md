@@ -63,6 +63,10 @@ place cells are anchored to the world, so they pay off when it stays the same: s
 - Training still rewards distance, so evolution must find the balance. The speed curve is tuned with the benchmark.
 
 ## 4. The cortex: hidden layers
+**Wiring is fixed (2026-11-04):** every layer is fully connected to the next, always; there is no wiring or unwiring.
+The player can only inspect cells, add or remove cells (and layers of cells), and set each layer's function. The
+forgiving tap-to-wire idea from round 2 is dropped.
+
 - Lines of identical neurons, as today. Default: each layer fully connected to the one before (ruling 2026-11-04).
 - Wires keep their weight colours: red −1, black 0, green +1, thicker and brighter with size.
 - Click any cell to see what it does and what it costs. A full "inside the neuron" view (sum of inputs × weights →

@@ -126,3 +126,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   distance around the car on graphs."
 - "don't offer step as a function. offer linear as well as ReLU." · "make the heatmap blue to green to yellow to red,
   cold to hot."
+- "don't allow removal of connections. only allow inspection of cells, adding ore removing of cells, and change of layer
+  processing type." → wiring is fixed: every layer fully connected to the next; taps only inspect.

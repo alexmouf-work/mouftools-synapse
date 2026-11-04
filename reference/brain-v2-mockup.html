@@ -148,7 +148,7 @@ const layerIds = (L) => Array.from({ length: S.layers[L].n }, (_, k) => `h${L}:$
 const allLayers = () => [inputIds(), ...S.layers.map((_, L) => layerIds(L)), WHEELS.map((w) => w.id)];
 const depth = (id) => id.startsWith('i:') ? 0 : id.startsWith('o:') ? S.layers.length + 1 : +id.slice(1, id.indexOf(':')) + 1;
 function hashW(key) { let h = 2166136261; for (const c of key) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (((h >>> 0) % 2001) / 1000 - 1) * 1.6; }
-function wires() { const L = allLayers(), out = []; for (let i = 0; i < L.length - 1; i++) for (const a of L[i]) for (const b of L[i + 1]) { const k = a + '|' + b; if (!S.off.has(k)) out.push([a, b, hashW(k)]); } return out; }
+function wires() { const L = allLayers(), out = []; for (let i = 0; i < L.length - 1; i++) for (const a of L[i]) for (const b of L[i + 1]) { const k = a + '|' + b; out.push([a, b, hashW(k)]); } return out; }
 
 // ---- energy: a fixed split, brain power against speed ----
 function brainShare() {
@@ -262,15 +262,8 @@ function render() {
   });
   showAlloc(); inspect();
 }
-function tap(id) {
-  if (S.sel && S.sel !== id && !S.sel.startsWith('layer') && Math.abs(depth(S.sel) - depth(id)) === 1) {
-    const [a, b] = depth(S.sel) < depth(id) ? [S.sel, id] : [id, S.sel]; const k = a + '|' + b;
-    if (S.off.has(k)) tryChange(() => S.off.delete(k), () => S.off.add(k), 'That wire'); else S.off.add(k);
-    render(); return;
-  }
-  if (S.sel && S.sel !== id && !S.sel.startsWith('layer') && Math.abs(depth(S.sel) - depth(id)) > 1) toast('Wires join neighbouring layers.');
-  S.sel = S.sel === id ? null : id; render();
-}
+// tapping only inspects; connections are fixed: every layer is fully wired to the next
+function tap(id) { S.sel = S.sel === id ? null : id; render(); }
 
 // ---- side panel ----
 function inspect() {
@@ -292,10 +285,8 @@ function inspect() {
   }
   if (id.startsWith('h')) {
     const L = depth(id) - 1, prev = allLayers()[L];
-    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><div class="acts"><button class="btn" id="wireAll" type="button">Wire all inputs</button><button class="btn" id="unwireAll" type="button">Unwire all inputs</button>${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove</button>' : ''}</div>`;
+    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><div class="acts">${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove</button>' : ''}</div>`;
     graphCurve(S.layers[L].fn, 'input');
-    $('wireAll').onclick = () => { const keys = prev.map((a) => a + '|' + id).filter((k) => S.off.has(k)); tryChange(() => keys.forEach((k) => S.off.delete(k)), () => keys.forEach((k) => S.off.add(k)), 'Those wires'); render(); };
-    $('unwireAll').onclick = () => { prev.forEach((a) => S.off.add(a + '|' + id)); render(); };
     if ($('rmN')) $('rmN').onclick = () => { S.layers[L].n--; S.sel = null; render(); };
     return;
   }
