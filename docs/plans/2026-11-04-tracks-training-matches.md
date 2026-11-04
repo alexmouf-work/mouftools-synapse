@@ -38,7 +38,13 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   as many cars as we had before, but load them more lazily so that we don't have a lag spike".)
 - **Loaded lazily**: car meshes are made once and reused; each generation's paths are prepared a few cars per frame (or
   off the main thread) ahead of when they're needed, so a new generation never causes a frame spike.
-- **Fast playback (12×, so a generation takes about 5 s), as much of the course as possible**: the shown cars replay their whole 60 s episode at 12×, so you see how
+- **Newer generations sooner, each starting further along** (2026-11-04, revises the whole-episode replay below): when
+  a newer generation is ready, the view moves on to it promptly (after a short minimum, about 2 s, so it doesn't
+  flicker) instead of finishing the old replay. Each generation's replay starts later in its episode than the one
+  before, so the cars appear progressively further round the track as training goes on: the start offset grows with
+  the generation's share of the run, capped so there are always a few seconds left to watch.
+- **Fast playback (12×, so a generation takes about 5 s), as much of the course as possible** (superseded in part,
+  see above): the shown cars replay their whole 60 s episode at 12×, so you see how
   far they really get, not just the first bend. Then the next generation's five start. If training runs ahead of the
   replay, the view skips to the newest finished generation rather than queueing. The accelerating playback (v2 plan, section 10) is dropped: "didn't really look how I
   wanted".
@@ -74,3 +80,9 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   Multiplayer keep a fixed, equal budget, so races stay fair.
 - My reading: "unlimited budget" is the training budget, not the brain's energy limit (designs still can't pass
   100% flat out). To confirm.
+
+## 7. The finish line (2026-11-04)
+"make the finish line have a nice checker pattern on the ground, and give the flag a checker pattern too with a black
+stem. put the flag on either side of the finish line." A chequered band across the road at the finish, one chequered
+flag on a black pole at each side of the road, in the 3-D scene (training, drive, races) and drawn as a chequered
+line on the maps.

@@ -230,3 +230,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   have a lag spike when we try to load them. Try to let them complete as much of the course as possible in the training
   session, but at a way faster speed than real racing."
 - "make sure to stop racing sound effects when leaving the racing part of the site."
+- "I've changed my mind on how we show the cars, we should try to show newer generations sooner, but start them from
+  progressively further along the track." · "also, make the finish line have a nice checker pattern on the ground, and
+  give the flag a checker pattern too with a black stem. put the flag on either side of the finish line."
