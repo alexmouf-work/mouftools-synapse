@@ -72,6 +72,7 @@ html, body { overflow: hidden; }
 .acts { display: grid; gap: 4px; }
 .acts .btn { box-shadow: none; text-align: left; white-space: normal; padding: 5px 9px; line-height: 1.25; font-size: 11.5px; }
 .acts .danger { color: var(--minus); }
+#graph { display: block; width: 100%; aspect-ratio: 1; margin: 2px 0 6px; }
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 10px; z-index: 9; max-width: calc(100% - 32px); }
 #rotate { display: none; }
 @media (orientation: portrait) and (max-width: 700px) {
@@ -284,19 +285,97 @@ function inspect() {
   }
   if (id.startsWith('i:')) {
     const [, sid, ks] = id.split(':'), s = SENSES.find((q) => q.id === sid), k = +ks, n = S.count[sid];
-    box2.innerHTML = `<h2>${s.name}</h2><dl class="kv">${s.tag(k, n) ? `<dt>Tuning</dt><dd>${s.tag(k, n)}</dd>` : ''}<dt>Energy</dt><dd>${s.cost}%</dd></dl><div class="acts" style="margin-top:8px"><button class="btn danger" id="rm" type="button">Remove</button></div>`;
+    box2.innerHTML = `<h2>${s.name}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><dl class="kv"><dt>Energy</dt><dd>${s.cost}%</dd></dl><div class="acts" style="margin-top:8px"><button class="btn danger" id="rm" type="button">Remove</button></div>`;
+    graphSense(sid, k, n);
     $('rm').onclick = () => { S.count[sid]--; S.sel = null; render(); };
     return;
   }
   if (id.startsWith('h')) {
     const L = depth(id) - 1, prev = allLayers()[L];
-    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><div class="acts"><button class="btn" id="wireAll" type="button">Wire all inputs</button><button class="btn" id="unwireAll" type="button">Unwire all inputs</button>${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove</button>' : ''}</div>`;
+    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><div class="acts"><button class="btn" id="wireAll" type="button">Wire all inputs</button><button class="btn" id="unwireAll" type="button">Unwire all inputs</button>${S.layers[L].n > 1 ? '<button class="btn danger" id="rmN" type="button">Remove</button>' : ''}</div>`;
+    graphCurve(S.layers[L].fn, 'input');
     $('wireAll').onclick = () => { const keys = prev.map((a) => a + '|' + id).filter((k) => S.off.has(k)); tryChange(() => keys.forEach((k) => S.off.delete(k)), () => keys.forEach((k) => S.off.add(k)), 'Those wires'); render(); };
     $('unwireAll').onclick = () => { prev.forEach((a) => S.off.add(a + '|' + id)); render(); };
     if ($('rmN')) $('rmN').onclick = () => { S.layers[L].n--; S.sel = null; render(); };
     return;
   }
-  box2.innerHTML = `<h2>${WHEELS.find((q) => q.id === id).label} wheel</h2><dl class="kv"><dt>Function</dt><dd>tanh (fixed)</dd></dl>`;
+  box2.innerHTML = `<h2>${WHEELS.find((q) => q.id === id).label} wheel</h2><canvas id="graph" aria-label="Activation pattern"></canvas>`;
+  graphCurve('tanh', 'input', 'wheel speed');
+}
+
+// ---- activation-pattern graphs (right panel) ----
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function gctx() {
+  const c = $('graph'), w = c.clientWidth, dpr = Math.min(devicePixelRatio, 2) * SCALE;
+  c.width = Math.round(w * dpr); c.height = Math.round(w * dpr);
+  const g = c.getContext('2d'); g.scale(dpr, dpr); return { g, w };
+}
+const heat = (a) => `rgba(255,194,26,${clamp(a, 0, 1).toFixed(3)})`;
+// circular map around the car: activation for a target at (distance, bearing); car at the centre, front up
+function polar(fieldDeg, range, width, ringStep, unit = 'm') {
+  const { g, w } = gctx(), c = w / 2, R = w / 2 - 12;
+  g.fillStyle = css('--canvas'); g.beginPath(); g.arc(c, c, R, 0, 7); g.fill();
+  for (let y = -R; y <= R; y += 2) for (let x = -R; x <= R; x += 2) {
+    const r = Math.hypot(x, y); if (r > R) continue;
+    const d = r / R * range, th = Math.atan2(x, -y) * 180 / Math.PI;
+    let dth = Math.abs(th - fieldDeg); dth = Math.min(dth, 360 - dth);
+    const a = Math.exp(-((dth / width) ** 2)) * Math.max(0, 1 - d / range);
+    if (a > 0.02) { g.fillStyle = heat(a * 0.95); g.fillRect(c + x - 1, c + y - 1, 2, 2); }
+  }
+  g.strokeStyle = css('--muted'); g.globalAlpha = 0.5; g.lineWidth = 0.75; g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
+  for (let d = ringStep; d <= range + 0.01; d += ringStep) { const rr = d / range * R; g.beginPath(); g.arc(c, c, rr, 0, 7); g.stroke(); g.globalAlpha = 1; g.fillText(`${d} ${unit}`, c + 2, c - rr - 2); g.globalAlpha = 0.5; }
+  g.globalAlpha = 1;
+  g.fillStyle = css('--text'); g.beginPath(); g.moveTo(c, c - 7); g.lineTo(c + 4.5, c + 5); g.lineTo(c - 4.5, c + 5); g.closePath(); g.fill();
+}
+// a wave: angle on x (degrees), activation on y
+function wave(prefDeg) {
+  const { g, w } = gctx(), l = 22, r = w - 14, t = 8, b = w - 22;
+  g.strokeStyle = css('--line'); g.lineWidth = 1; g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted'); g.textAlign = 'center';
+  for (const deg of [0, 90, 180, 270, 360]) { const x = l + (r - l) * deg / 360; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(`${deg}°`, x, b + 12); }
+  g.textAlign = 'start';
+  for (const v of [-1, 0, 1]) { const y = b - (b - t) * (v + 1) / 2; g.beginPath(); g.moveTo(l, y); g.lineTo(r, y); g.stroke(); g.fillText(String(v), 4, y + 3); }
+  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath();
+  for (let i = 0; i <= 180; i++) { const deg = i * 2, y = b - (b - t) * (Math.cos((deg - prefDeg) * Math.PI / 180) + 1) / 2, x = l + (r - l) * deg / 360; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke();
+}
+// a track map with the grid cell's firing over it; the track drawn on top so it stays visible
+function gridMap(k) {
+  const { g, w } = gctx(), sc = (k % 2 ? 26 : 11), ph = Math.floor(k / 2) * 2.1, metres = 220, m2p = w / metres;
+  g.fillStyle = css('--canvas'); g.fillRect(0, 0, w, w);
+  for (let y = 0; y < w; y += 2) for (let x = 0; x < w; x += 2) {
+    const X = x / m2p, Y = y / m2p; let v = 0;
+    for (let a = 0; a < 3; a++) { const th = a * Math.PI / 3; v += Math.cos((X * Math.cos(th) + Y * Math.sin(th)) / sc * 2 * Math.PI + ph); }
+    const act = clamp((v - 0.6) / 2.4, 0, 1); if (act > 0.02) { g.fillStyle = heat(act * 0.85); g.fillRect(x, y, 2, 2); }
+  }
+  const pts = []; for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2, rr = 0.36 + 0.07 * Math.sin(a * 3) + 0.04 * Math.cos(a * 2); pts.push([w / 2 + Math.cos(a) * rr * w, w / 2 + Math.sin(a) * rr * w * 0.82]); }
+  const road = (col, width, alpha) => { g.globalAlpha = alpha; g.strokeStyle = col; g.lineWidth = width; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke(); g.globalAlpha = 1; };
+  road(css('--car'), 14 * w / 160, 0.35); road(css('--text'), 1, 0.55);
+  g.fillStyle = css('--muted'); g.font = `9px ${css('--mono')}`; const bar = 50 * m2p; g.fillRect(6, w - 8, bar, 2); g.fillText('50 m', 8 + bar, w - 4);
+}
+// x/y curve: transfer functions and speed
+function graphCurve(fn, xl, yl) {
+  const { g, w } = gctx(), l = 22, r = w - 6, t = 8, b = w - 22, f = FX[fn];
+  const ymin = fn === 'tanh' ? -1 : 0, ymax = fn === 'relu' ? 4 : 1;
+  g.strokeStyle = css('--line'); g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
+  for (const xv of [-4, 0, 4]) { const x = l + (r - l) * (xv + 4) / 8; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(String(xv), x - 4, b + 12); }
+  for (const yv of [ymin, ymax]) { const y = b - (b - t) * (yv - ymin) / (ymax - ymin); g.fillText(String(yv), 4, y + 3); }
+  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath();
+  for (let i = 0; i <= 160; i++) { const xv = -4 + 8 * i / 160, y = b - (b - t) * (clamp(f.f(xv), ymin, ymax) - ymin) / (ymax - ymin), x = l + (r - l) * i / 160; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke();
+}
+function speedLine() {
+  const { g, w } = gctx(), l = 22, r = w - 6, t = 8, b = w - 22;
+  g.strokeStyle = css('--line'); g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
+  for (const v of [0, 30, 60]) { const x = l + (r - l) * v / 60; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(`${v}`, x - 5, b + 12); }
+  g.fillText('m/s', r - 18, b - 4); g.fillText('1', 6, t + 3); g.fillText('0', 6, b + 3);
+  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath(); g.moveTo(l, b); g.lineTo(r, t); g.stroke();
+}
+function graphSense(sid, k, n) {
+  if (sid === 'boundary') polar(spread(k, n), 20, n > 1 ? 150 / n : 60, 5);
+  else if (sid === 'object') polar(spread(k, n), 40, n > 1 ? 150 / n : 70, 10);
+  else if (sid === 'hd') wave(360 * k / n * (n === 2 ? 0.5 : 1));
+  else if (sid === 'grid') gridMap(k);
+  else speedLine();
 }
 
 // ---- tray ----

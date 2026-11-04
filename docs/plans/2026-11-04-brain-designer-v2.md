@@ -77,6 +77,14 @@ place cells are anchored to the world, so they pay off when it stays the same: s
 While you build, nothing fires: no flashes, no wheel arrows. Cells and neurons fire only inside an active brain, while
 training or driving. The sense symbols keep a gentle idle motion.
 
+## 6b. Each cell's activation pattern (2026-11-04)
+Tapping a cell shows a graph of what makes it fire, in the right-hand panel (no "tuning" text):
+- Boundary and object-vector cells: a circular map around the car, distance rings labelled in metres (boundary 20 m,
+  object-vector 40 m; an object-vector cell fires when its landmark is within range).
+- Head direction: a wave, heading in degrees on x, activation on y.
+- Grid cells: a heatmap over a map of the track, track drawn on top, a 50 m scale bar.
+- Speed: activation against m/s. Neurons and wheels: their layer's transfer curve.
+
 ## 7. Look
 The symbols are low-poly 3-D models in the workbench's plain style (soft, matte, flat colours on the light/dark
 board), not the race's glossy stadium look. One shared 3-D layer sits under the diagram; the wires and cells stay crisp.

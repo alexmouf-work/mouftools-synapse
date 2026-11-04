@@ -120,3 +120,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "don't show the neurons firing until they're inside the active brain. if the brain is in build mode, don't activate
   any of them" → supersedes the always-running workbench brain: build mode is still; firing shows only while training
   or driving.
+- "when clicking on a given cell, show a graph of its activation pattern … please put that into the box on the right
+  hand side. remove the \"tuning\" bit. the graph will be enough." · "the finish line place cell is a cell which
+  activates when the specific landmark is within range. show distances on the graphs, and use circular maps to show
+  distance around the car on graphs."
