@@ -24,3 +24,4 @@ Notes
   principal runs it in the Supabase dashboard (the service role key stays in Vercel). Its checks run against a local
   stand-in; the real service is first tried on the preview.
 - The match-data deletion promised in the privacy policy (30 days) is part of B8.
+- Order revised 2026-11-04 ("show me the training panel thing please"): B2c → B6 → B2d → B2e, then B4, B5, B7, B8.

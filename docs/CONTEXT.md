@@ -244,3 +244,4 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "we should never see the same generation twice. show the generation with a big white number in the top middle of the screen."
 - "don't stick to just showing round number generations, show whatever we've got."
 - "have one toggle for engine sounds and another for music."
+- "show me the training panel thing please." → B6 moved up, straight after B2c.
