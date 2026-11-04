@@ -60,30 +60,29 @@
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>
   <div id="trainOverlay" hidden>
-  <section class="tv-panel tv-status" aria-live="polite">
-    <h1 class="tv-title"><span id="tvState">Training</span><span class="tv-name" id="tvName"></span></h1>
-    <dl class="kv">
-      <dt>Seed</dt><dd id="tvSeed"></dd>
-      <dt>Run</dt><dd id="tvRun"></dd>
-      <dt>Generation</dt><dd id="tvGen"></dd>
-      <dt>Watching</dt><dd id="tvShown"></dd>
-      <dt>Experience</dt><dd id="tvTicks"></dd>
-    </dl>
-    <div class="tv-progress" role="progressbar" aria-label="Experience used" aria-valuemin="0" aria-valuemax="100"><i id="tvFill"></i></div>
-    <p class="note" id="tvNote">Each glowing car is one brain of the generation on screen; the solid car is its best. Flashing red: touching a wall. Fading red: stopped.</p>
-    <div class="tv-actions">
-      <button class="btn" id="tvStop" type="button">Stop</button>
-      <button class="btn primary" id="tvBack" type="button" hidden>Back to workbench</button>
-      <button class="btn" id="tvAgain" type="button" hidden>Train again</button>
-      <button class="btn" id="tvDrive" type="button" hidden>Drive</button>
-      <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
-    </div>
-  </section>
-  <section class="tv-panel tv-graph" aria-label="Fitness per generation">
-    <h2>Fitness per generation</h2>
-    <canvas id="tvGraph"></canvas>
-    <p class="note tv-legend"><span class="sw best"></span>best <span class="sw mean"></span>mean · metres per 60 s episode, wall touches cost 0.5 each</p>
-  </section>
+  <aside class="tv-info" aria-label="Training">
+    <section class="tv-half" aria-label="Fitness per generation">
+      <div class="tv-hd"><h2>Fitness</h2><span class="tv-gen" id="tvGen" aria-live="polite"></span></div>
+      <div class="tv-actions">
+        <button class="btn" id="tvStop" type="button">Stop</button>
+        <button class="btn primary" id="tvDrive" type="button" hidden>Drive</button>
+        <button class="btn" id="tvAgain" type="button" hidden>Keep training</button>
+        <button class="btn" id="tvBack" type="button" hidden>Back</button>
+        <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
+      </div>
+      <canvas id="tvGraph" aria-label="Best and mean fitness per generation"></canvas>
+      <div class="tv-key"><span><i class="best"></i>best</span><span><i class="mean"></i>mean</span><span>m per 60 s</span></div>
+      <p class="tv-note" id="tvNote" aria-live="polite"></p>
+    </section>
+    <section class="tv-half" aria-label="The highlighted car's brain">
+      <div class="tv-hd"><h2>Brain</h2><span class="tv-gen" id="tvBrainOf"></span></div>
+      <canvas id="tvBrain" aria-label="The highlighted car's brain, firing"></canvas>
+    </section>
+  </aside>
+  <div class="tv-cam">
+    <div class="tv-big" id="tvBig" aria-live="polite"></div>
+    <div class="tv-mini"><div class="tv-hd"><h2>Map</h2><span class="tv-gen" id="tvCars"></span></div><canvas id="tvMap" aria-label="Map of the track with every shown car"></canvas></div>
+  </div>
   </div>
   <div id="driveOverlay" hidden>
     <div class="dv-count" id="dvCount" aria-live="assertive"></div>

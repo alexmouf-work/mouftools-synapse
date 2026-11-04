@@ -37,6 +37,7 @@ export function showArena(which: 'train' | 'drive'): void {
   stopRacingSounds();
   document.body.classList.add('training');
   el('arena').hidden = false;
+  el('arena').classList.toggle('train', which === 'train'); // the training view's camera sits right of its panel
   el('trainOverlay').hidden = which !== 'train';
   el('driveOverlay').hidden = which !== 'drive';
   stage?.resize();

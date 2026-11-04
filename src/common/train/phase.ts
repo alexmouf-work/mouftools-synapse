@@ -64,14 +64,35 @@ export interface PhaseOptions {
   beforeStep?: (env: Env) => void;
   /** Every trainer event, as it happens. */
   onEvent?: (e: TrainerEvent, env: Env) => void;
-  /** Checked between steps; true ends the phase early (the result is then partial and marked stopped). */
+  /**
+   * Checked between steps; true ends the phase early, exactly as reaching the generation limit there would (B6,
+   * principal 2026-11-04: "stopping the training should be functionally equivalent to hitting the limit on the number
+   * of generations"): the best agent evaluated so far is the result. An executor that is aborted while stop() is true
+   * (the view's Stop) ends the step in flight: the generation being evaluated is dropped.
+   */
   stop?: () => boolean;
+}
+
+/**
+ * The best agent evaluated so far: the champion of the generation with the best fitness (the earliest on a tie), or
+ * the starting genome if no generation finished. For evolution this is the last generation's champion (elites keep
+ * their score), which is what reaching the generation limit there returns.
+ */
+export function bestSoFar(gens: GenStat[], start: Genome): Genome {
+  if (!gens.length) return { spec: start.spec, w: [...start.w] };
+  let b = 0;
+  for (let i = 1; i < gens.length; i++) if (gens[i].best > gens[b].best) b = i;
+  return { spec: start.spec, w: Array.from(gens[b].champion) };
 }
 
 export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o: PhaseOptions = {}): Promise<PhaseResult> {
   const seeds = phaseSeeds(seed, o.phase ?? 0);
   const setup = { spec, trackSeeds: seeds.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
-  await exec.setup(setup);
+  // the view's Stop aborts the pool; whenever that lands (even while the workers are still setting up), the run
+  // ends as stopped rather than failing
+  const aborted = (e: unknown): boolean => !!o.stop?.() && e instanceof Error && e.name === 'AbortError';
+  let stopped = false;
+  try { await exec.setup(setup); } catch (e) { if (!aborted(e)) throw e; stopped = true; }
   const env = new MeteredEnv(setup, exec, o.T ?? phaseBudget(o.generations));
   const trainer = createTrainer(o.trainer ?? 'evolution', { start: o.start ?? 'fresh', generations: o.generations });
   const genome = o.genome ?? zeroGenome(spec);
@@ -79,17 +100,23 @@ export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o:
   const t0 = now();
   trainer.init(genome, seeds.trainer, env);
   const gens: GenStat[] = [];
-  let stopped = false;
-  while (!trainer.done()) {
+  while (!stopped && !trainer.done()) {
     if (o.stop?.()) { stopped = true; break; }
     o.beforeStep?.(env);
-    for (const e of await trainer.step(o.stepTicks ? o.stepTicks(env) : Infinity)) {
+    let events: TrainerEvent[];
+    try {
+      events = await trainer.step(o.stepTicks ? o.stepTicks(env) : Infinity);
+    } catch (e) {
+      if (aborted(e)) { stopped = true; break; }
+      throw e;
+    }
+    for (const e of events) {
       if (e.type === 'generation') gens.push({ gen: e.gen, best: e.best, mean: e.mean, ticksUsed: e.ticksUsed, champion: e.championW });
       o.onEvent?.(e, env);
     }
   }
   const trainMs = now() - t0;
-  const final = trainer.weights();
+  const final = stopped ? bestSoFar(gens, genome) : trainer.weights();
   const h = new Hasher().u32(seed).u32(env.used);
   for (const g of gens) h.u32(g.gen).f64(g.best).f64(g.mean).u32(g.ticksUsed).f64s(g.champion);
   h.str(genomeHash(final));

@@ -1,10 +1,10 @@
 // Browser worker: runs episode batches with the same EpisodeCore as the Node worker and the inline executor.
-// On request it also returns the display-only track-0 paths of its slice.
+// On request it also returns the display-only track-0 paths (and weights) of the picked policies in its slice.
 import { EpisodeCore, type EpisodeSetup } from '../../common/train/episodes';
 import type { RolloutJob } from '../../common/train/rollout';
 
 type Msg =
-  | { type: 'setup'; setup: EpisodeSetup } | { type: 'run'; id: number; w: Float64Array; count: number; record: boolean }
+  | { type: 'setup'; setup: EpisodeSetup } | { type: 'run'; id: number; w: Float64Array; count: number; pick: number[] | null; base: number }
   | { type: 'rollout'; id: number; job: RolloutJob };
 
 let core: EpisodeCore | null = null;
@@ -19,9 +19,9 @@ self.onmessage = (e: MessageEvent<Msg>) => {
       post({ type: 'lanes', id: m.id, lanes }, lanes.flatMap((l) => [l.grad.buffer as ArrayBuffer, l.stats.buffer as ArrayBuffer]));
       return;
     }
-    const { out, paths } = core.run(m.w, m.count, m.record);
+    const { out, paths } = core.run(m.w, m.count, m.pick, m.base);
     const t: Transferable[] = [out.buffer as ArrayBuffer];
-    if (paths) t.push(paths.data.buffer as ArrayBuffer, paths.ticks.buffer as ArrayBuffer);
+    if (paths) t.push(paths.data.buffer as ArrayBuffer, paths.ticks.buffer as ArrayBuffer, paths.ids.buffer as ArrayBuffer, paths.w.buffer as ArrayBuffer, paths.act.buffer as ArrayBuffer);
     post({ type: 'result', id: m.id, out, paths }, t);
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.stack ?? err.message : String(err) });

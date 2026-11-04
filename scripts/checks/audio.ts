@@ -14,8 +14,9 @@
 //   npx tsx scripts/checks/audio.ts
 import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
+import { CONFIG } from '../../src/common/config';
 import { runDrive } from '../../src/common/sim/race';
-import { defaultSpec } from '../../src/common/sim/spec';
+import { defaultSpec, type Genome } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 
@@ -26,14 +27,19 @@ let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 
 async function main() {
-  // every finished training is the brain's next phase: the Node replays follow the same chain (Stop adds none)
-  const nodeHash: string[] = [];
-  let g = (await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS })).final;
-  for (let p = 0; p < 5; p++) {
-    if (p) g = (await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, phase: p, start: 'carry', genome: g })).final;
-    nodeHash.push(runDrive(g, phaseSeeds(SEED, p).unseenTrack).hash);
+  // every training that ends with a brain is its next phase (a Stop after k generations too: the best so far is
+  // saved); the Node replays follow the same chain, one step per run in the page
+  let g: Genome | null = null, phase = 0, lastHash = '';
+  async function nodeNext(stopAfter?: number): Promise<string> {
+    const o = { T, generations: GENS, ...(g ? { phase, start: 'carry' as const, genome: g } : {}) };
+    const stop = stopAfter === undefined ? {} : { stepTicks: (env: { worstCase(n: number): number }) => env.worstCase(CONFIG.train.population), stop: (() => { let n = 0; return () => n++ >= stopAfter; })() };
+    const r = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { ...o, ...stop });
+    if (stopAfter === 0) return lastHash; // nothing evaluated: the brain is as it was
+    g = r.final;
+    lastHash = runDrive(g, phaseSeeds(SEED, phase).unseenTrack).hash;
+    phase++;
+    return lastHash;
   }
-  let run = 0;
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -47,11 +53,12 @@ async function main() {
   const dv = (page: Page) => page.evaluate(() => { const d = window.__drive!; return { tick: d.tick, distance: d.distance, go: d.go, seen: [...d.countdownSeen], music: d.countdownMusic, hash: d.hash, frames: d.frames }; });
 
   /** Train (the popup, GENS generations), Drive from the finished view, follow the countdown; returns what was seen. */
-  async function countdown(page: Page, label: string, music: boolean, run: number) {
+  async function countdown(page: Page, label: string, music: boolean) {
     await page.click('#train');
     await page.click(`#gens [data-g="${GENS}"]`);
     await page.click('#tdGo');
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
+    const want = await nodeNext();
     check((await au(page)).mode === 'race', `${label}: training plays the race music`);
     await page.click('#tvDrive');
     await page.waitForFunction(() => (window.__drive?.frames ?? 0) > 2, null, { timeout: 60_000 });
@@ -79,7 +86,7 @@ async function main() {
     check(JSON.stringify(d.seen) === JSON.stringify(['5', '4', '3', '2', '1', 'Go']), `${label}: countdown shows ${d.seen.join(', ')}`);
     check(held && samples >= 3, `${label}: the car is held on the line until Go (${samples} looks, tick 0, 0 m)`);
     check(Math.abs(d.distance) > 1, `${label}: and moves after Go (${d.distance.toFixed(1)} m within ${waited.toFixed(1)} s; a briefly trained brain may reverse)`);
-    check(d.hash === nodeHash[run], `${label}: drive hash ${d.hash} = Node replay ${nodeHash[run]}`);
+    check(d.hash === want, `${label}: drive hash ${d.hash} = Node replay ${want}`);
     return { atGo, after: await au(page), musicMax, sfxMax };
   }
 
@@ -124,7 +131,7 @@ async function main() {
     await page.waitForFunction(() => window.__audio?.ready === true, null, { timeout: 60_000 });
 
     // 3. Train → race, Drive, the countdown on the music, Go on the drop
-    const r = await countdown(page, 'sound on', true, run++);
+    const r = await countdown(page, 'sound on', true);
     check(r.after.phrase === 'drive-a', `Go lands on the drop: the racing sections start there (now playing ${r.after.phrase})`);
 
     // 4. back → the lounge, quickly
@@ -159,13 +166,14 @@ async function main() {
     const busy = await fx();
     await page.click('#tvStop');
     await page.waitForFunction(() => window.__training?.state !== 'running', null, { timeout: 120_000 });
+    await nodeNext(await page.evaluate(() => (window.__training!.savedOnStop ? window.__training!.gen : 0)));
     await page.click('#tvBack');
     await page.waitForTimeout(300);
     a = await au(page);
     check(busy > 0 && (await fx()) === 0 && a.playing, `leaving training: the engine was sounding (${busy}), 0.3 s later nothing is; the music plays on (${a.phrase})`);
     await page.click('#train'); await page.click(`#gens [data-g="${GENS}"]`); await page.click('#tdGo');
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
-    run++;
+    await nodeNext();
     await page.click('#tvDrive');
     await page.waitForFunction(() => window.__drive?.countdownSeen.includes('5') && !window.__drive.go, null, { timeout: 30_000 });
     const pending = await fx();
@@ -177,7 +185,7 @@ async function main() {
     check(pending > 0 && after === 0 && (await fx()) === 0 && a.playing, `leaving mid-countdown: ${pending} effects pending, 0.3 s later ${after}, and no blip later on; the music plays on`);
     await page.click('#train'); await page.click(`#gens [data-g="${GENS}"]`); await page.click('#tdGo');
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
-    run++;
+    await nodeNext();
     await page.click('#tvDrive');
     await page.waitForFunction(() => window.__drive?.go === true, null, { timeout: 30_000 });
     await page.waitForTimeout(800);
@@ -216,7 +224,7 @@ async function main() {
     a = await au(page);
     check(a.state === 'running' && a.musicGain === 0 && a.sfxGain > 0.85, `unlocked with music off: the music runs silent (music bus ${a.musicGain})`);
     await page.click('#toSandbox');
-    let c = await countdown(page, 'music off', true, run++);
+    let c = await countdown(page, 'music off', true);
     check(c.musicMax < 1e-4 && c.sfxMax > 1e-3, `music off: the countdown and engine still sound (effects peak ${c.sfxMax.toFixed(4)}), the music does not (peak ${c.musicMax.toExponential(1)})`);
     await page.click('#dvBack');
 
@@ -228,7 +236,7 @@ async function main() {
     check(a.music && !a.sfx && a.sfxGain < 0.01 && a.musicGain > 0.65 && a.master === 1 && await pressed() === 'true,false',
       `Sound effects off: effects bus ${a.sfxGain.toFixed(3)}, music bus ${a.musicGain.toFixed(2)}; every Sound effects toggle shows off`);
     check(await stored() === '{"music":true,"sfx":false}', `remembered (synapse.sound = ${await stored()})`);
-    c = await countdown(page, 'effects off', true, run++);
+    c = await countdown(page, 'effects off', true);
     check(c.sfxMax < 1e-4 && c.musicMax > 1e-3, `effects off: no blip or engine heard (effects peak ${c.sfxMax.toExponential(1)}), the music plays (peak ${c.musicMax.toFixed(4)})`);
     await page.reload();
     await page.waitForTimeout(500);
@@ -239,8 +247,8 @@ async function main() {
     await page.waitForFunction(() => window.__drive?.countdownSeen.includes('Go'), null, { timeout: 60_000 });
     await page.waitForTimeout(300);
     const ld = await page.evaluate(() => ({ music: window.__drive!.countdownMusic, seen: [...window.__drive!.countdownSeen], hash: window.__drive!.hash }));
-    check((await au(page)).state === 'locked' && !ld.music && ld.seen.join(',') === '5,4,3,2,1,Go' && ld.hash === nodeHash[run - 1],
-      `locked: the countdown runs on the plain timer (${ld.seen.join(', ')}), drive hash ${ld.hash} = Node replay ${nodeHash[run - 1]}`);
+    check((await au(page)).state === 'locked' && !ld.music && ld.seen.join(',') === '5,4,3,2,1,Go' && ld.hash === lastHash,
+      `locked: the countdown runs on the plain timer (${ld.seen.join(', ')}), drive hash ${ld.hash} = Node replay ${lastHash}`);
 
     // the old single setting reads as both
     for (const [old, want] of [['off', 'false,false'], ['on', 'true,true']] as const) {

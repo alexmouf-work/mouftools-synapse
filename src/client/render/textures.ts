@@ -31,7 +31,7 @@ export function makeTextures(aniso: number): Textures {
   }, aniso, true);
   const checker = canvasTex(512, 64, (g, w, h) => {
     const s = 32; for (let y = 0; y < h / s; y++) for (let x = 0; x < w / s; x++) { g.fillStyle = (x + y) % 2 ? '#0d1020' : '#f6f8ff'; g.fillRect(x * s, y * s, s, s); }
-  }, aniso);
+  }, aniso, true);
   const boost = canvasTex(256, 256, (g, w, h) => {
     g.fillStyle = '#1b0d02'; g.fillRect(0, 0, w, h);
     const grad = g.createLinearGradient(0, h, 0, 0); grad.addColorStop(0, '#ff6a1a'); grad.addColorStop(1, '#ffd21a');

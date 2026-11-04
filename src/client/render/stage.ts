@@ -12,6 +12,7 @@ import { makeCar, type CarModel } from './car';
 import { DriveRig, type DrivePose } from './drive';
 import { buildStadium, type Stadium } from './stadium';
 import { Swarm } from './ghosts';
+import { buildFinish, type Finish } from './finish';
 import { fadeNear } from './glow';
 import { assertFiniteArray } from './guard';
 import { buildScenery, type Scenery } from './scenery';
@@ -57,6 +58,9 @@ export class Stage {
   private readonly mats: Record<PartKey, THREE.Material>;
   private readonly world = new THREE.Group();
   private scenery: Scenery | null = null;
+  private finish: Finish | null = null;
+  /** Chequered flags at the finish line of the track on show (for the checks). */
+  get finishFlags(): number { return this.finish?.flags ?? 0; }
   private stadium: Stadium | null = null;
   private stadTex: StadiumTextures | null = null;
   /** train: the swarm and the pack camera · drive: the yellow car, rays, stadium and the drive cameras. */
@@ -168,6 +172,8 @@ export class Stage {
       keep = this.stadium.keepClear;
       this.drive.setTrack(t, this.stadium.tvSpots);
     }
+    this.finish = buildFinish(t, this.tex.checker);
+    this.world.add(this.finish.group);
     this.scenery = buildScenery(t, t.seed, keep);
     this.world.add(this.scenery.group);
     this.scaleLight(this.world);
@@ -203,6 +209,8 @@ export class Stage {
     }
     this.scenery?.dispose();
     this.scenery = null;
+    this.finish?.dispose();
+    this.finish = null;
     this.stadium?.dispose();
     this.stadium = null;
   }
@@ -230,13 +238,15 @@ export class Stage {
       return;
     }
     this.swarm.update(dt, time);
-    // chase the pack from behind and a little to the side, low enough that a car reads as a car
+    if (this.swarm.jumped) { this.snap = true; this.swarm.jumped = false; } // another generation: cut, don't fly
+    // chase the highlighted car from behind and a little to the side, low enough that a car reads as a car; at 12×
+    // it covers the camera's offset in a fraction of a second, so the camera keeps up closely
     const t = this.track;
     if (t) {
       const i = this.swarm.focusIdx, back = Math.round(CAM_BACK / t.ds), ahead = Math.round(CAM_AHEAD / t.ds);
       const want = at(t, i - back, CAM_SIDE, CAM_UP, this.tmp);
       const look = at(t, i + ahead, 0, 0, this.tmp2);
-      const k = this.snap ? 1 : 1 - Math.exp(-dt * (this.reduceMotion ? 1.2 : 2.5));
+      const k = this.snap ? 1 : 1 - Math.exp(-dt * (this.reduceMotion ? 3 : 12));
       this.camera.position.lerp(want, k);
       this.look.lerp(look, k);
       this.snap = false;
@@ -255,10 +265,14 @@ export class Stage {
    */
   auditTrainAt(t: number): { over: number; max: number; mask?: string } {
     if (this.mode !== 'train') throw new Error('stage: auditTrainAt outside the training view');
+    const was = this.swarm.at;
     this.swarm.seek(t);
     this.snap = true;
     this.frame(0, 0);
-    return this.bloomAudit();
+    const a = this.bloomAudit();
+    this.swarm.seek(was); // the playback carries on where it was
+    this.snap = true;
+    return a;
   }
 
   /**

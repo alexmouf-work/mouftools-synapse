@@ -1,5 +1,6 @@
 // Browser worker pool executor. Same split as the Node pool (splitEven); results reassembled in policy order, so the
-// worker count can never change a result.
+// worker count can never change a result. abort() (the training view's Stop) ends every request in flight at once:
+// the generation being evaluated is dropped, and the pool is done.
 import {
   joinPaths, pathSamples, RESULT_STRIDE, splitEven, splitJob, type EpisodeSetup, type Executor, type Paths,
 } from '../../common/train/episodes';
@@ -16,9 +17,11 @@ export class BrowserPool implements Executor {
   private nT = 0;
   private seq = 0;
   private samples = 0;
-  /** Set before a run to get that run's track-0 paths in lastPaths (display only; results are unaffected). */
-  record = false;
+  /** Set before a run to get the picked policies' track-0 paths in lastPaths (display only; results are unaffected). */
+  record: ((count: number) => readonly number[]) | null = null;
   lastPaths: Paths | null = null;
+  private readonly pending = new Set<(e: Error) => void>();
+  private aborted = false;
   constructor(readonly workers: number) {
     if (!(workers >= 1)) throw new Error(`pool: ${workers} workers`);
     for (let k = 0; k < workers; k++) {
@@ -26,10 +29,13 @@ export class BrowserPool implements Executor {
     }
   }
   private ask(w: Worker, msg: unknown, transfer: Transferable[] = []): Promise<Reply> {
+    if (this.aborted) return Promise.reject(abortError());
     return new Promise((resolve, reject) => {
-      const off = () => { w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); };
+      const off = () => { w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); this.pending.delete(fail); };
+      const fail = (e: Error) => { off(); reject(e); };
       const onMsg = (e: MessageEvent<Reply>) => { off(); e.data.type === 'error' ? reject(new Error(e.data.message)) : resolve(e.data); };
       const onErr = (e: ErrorEvent) => { off(); reject(new Error(e.message)); };
+      this.pending.add(fail);
       w.addEventListener('message', onMsg); w.addEventListener('error', onErr);
       w.postMessage(msg, transfer);
     });
@@ -40,12 +46,13 @@ export class BrowserPool implements Executor {
   }
   async run(w: Float64Array, count: number): Promise<Float64Array> {
     const parts = splitEven(count, this.ws.length);
+    const pick = this.record ? [...this.record(count)] : null;
+    this.record = null;
     const replies = await Promise.all(parts.map(([a, b], k) => {
       const chunk = w.slice(a * this.nW, b * this.nW);
-      return this.ask(this.ws[k], { type: 'run', id: this.seq++, w: chunk, count: b - a, record: this.record }, [chunk.buffer]);
+      return this.ask(this.ws[k], { type: 'run', id: this.seq++, w: chunk, count: b - a, pick, base: a }, [chunk.buffer]);
     }));
-    const record = this.record;
-    this.record = false;
+    const record = pick !== null;
     const out = new Float64Array(count * this.nT * RESULT_STRIDE);
     replies.forEach((r, k) => {
       if (r.type !== 'result') throw new Error('pool: unexpected reply');
@@ -54,7 +61,7 @@ export class BrowserPool implements Executor {
     if (record) {
       const ps = replies.map((r) => (r.type === 'result' ? r.paths : null));
       if (ps.some((p) => !p)) throw new Error('pool: a worker returned no paths');
-      this.lastPaths = joinPaths(ps as Paths[], this.samples);
+      this.lastPaths = joinPaths(ps as Paths[], this.samples, this.nW);
     }
     return out;
   }
@@ -66,5 +73,14 @@ export class BrowserPool implements Executor {
       return r.lanes;
     });
   }
+  /** End every request in flight (they reject with an AbortError) and stop the workers. */
+  abort(): void {
+    this.aborted = true;
+    for (const f of [...this.pending]) f(abortError());
+    for (const w of this.ws) w.terminate();
+    this.ws = [];
+  }
   async close(): Promise<void> { for (const w of this.ws) w.terminate(); this.ws = []; }
 }
+
+function abortError(): Error { const e = new Error('pool: aborted'); e.name = 'AbortError'; return e; }

@@ -1,4 +1,4 @@
-# Tracks, the training view and match size (plan; nothing built)
+# Tracks, the training view and match size (plan; §3 built in B6)
 
 Status: drafted 2026-11-04 from the principal's requests (verbatim in `docs/CONTEXT.md`). Mock-ups:
 `reference/training-view-mockup.html`, `reference/track-shapes-mockup.html`. To be built after the trainer work lands,
@@ -72,6 +72,28 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
   on the right".
 - Replaces today's status panel and graph panel. Still to settle: where the highlighted car's brain goes, if anywhere
   (my default: nowhere during training; it's in the drive view).
+
+Built (B6, 2026-11-04): the panel, the map, the big number and the playback as above, with these specifics:
+- Ghosts per generation: 20 on a desktop GPU, 12 on a phone or tablet, 5 on a software renderer. The handful is
+  picked with a seeded draw per generation (display only) and recorded by the workers as part of that generation's
+  evaluation: their track-0 paths and weights, and the firing of the one furthest along, which is the highlighted
+  car (yellow among the cyan ghosts; ringed on the map; its brain in the panel). The main thread only compiles one
+  net per generation, so a new generation causes no frame spike.
+- Playback at 12× (60 s episodes, 5 s a generation). A newer finished generation takes over after 2 s. The start
+  offset is (g − 1)/(N − 1) of the latest start that leaves 2.5 s to watch (30 s into the episode), never
+  shrinking. With nothing newer the frame holds (ended cars stay faintly where they stopped). At the end the
+  champion's lap loops as the solid car.
+- Stop aborts the pool (the generation being evaluated is dropped) and saves the best agent evaluated so far, as
+  the generation limit there would (a unit test pins it against a run asked for that many generations). For
+  evolution that is the last generation's champion (elites keep their score, so best fitness never falls; checked
+  on seeds 1 and 7). For backprop it is the best-scoring check, which can differ from a finished run's final
+  weights; this matters only once backprop is used with Stop.
+- The finish line: a chequered band of four rows of 1 m squares on the road, and a chequered flag on a black pole
+  each side in the run-off (render/finish.ts); both in the 3-D view and the map, inside the bloom audit.
+- "Only the first bend" (2026-11-04) was the display, not the training: the old story showed each generation for
+  2.6 s at 3×, which is the first 7.8 s of its 60 s episode, 140–290 m on seed 7's track 0, whose first bend is at
+  146 m. The same run's champions cover 825 m (gen 10), 2.15 km (gen 25) and 3.1 km (gen 100) in the full minute, on
+  a 1.3 km lap.
 
 ## 4. Matches ("Multiplayer"), and VS Computer
 - **vs CPU**: you against nine computer brains, 10 cars on one track, offline. The computer brains come from

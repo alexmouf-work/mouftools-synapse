@@ -4,7 +4,7 @@ What exists, updated in the same commit as the code. The intended full layout is
 `docs/plans/2026-10-30-solo-loop.md`; milestone steps are in `docs/plans/2026-10-30-sandbox-loop.md`.
 
 Milestone 1 is built: **S1** (headless sim, evolution benchmark), **S2** (the workbench), **S3** (the training view:
-Train → the swarm learns on a 3-D track → the champion is saved; Train again continues), **S4** (the drive view: the
+Train → the swarm learns on a 3-D track → the champion is saved; Keep training continues), **S4** (the drive view: the
 trained car drives 60 s on an unseen track in the stadium) and **S5** (production build and Vercel config; the
 principal connects the project and the domain).
 
@@ -176,30 +176,41 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `ui/training/` — the training view. Train hands the saved brain over; the seed is the brain's own (picked on its
   first Train), the phase is its count of finished runs, so every run is reproducible and a retrain sees new tracks.
   All-zero weights train from scratch (fresh), anything else continues from them (carry: slot 0 is the saved genome
-  exactly). `runPhase` steps one generation at a time on a `BrowserPool`; before a step the view may ask the pool to
-  record track-0 paths, which never changes a result. Display is decoupled from compute: the view records a story
-  chosen by generation count (gen 1, ~10%, 25%, 50% of the estimated run, and every generation that could be the
-  last), and the swarm plays them in order, each for 2.6 s at 3×, starting with gen 1 at once; if compute is behind,
-  the newest recorded generation loops. When the story reaches the final generation, the finale loops the
-  champion's 30 s lap (replayed on the main thread for display, not charged to T) as the solid car, with its
-  generation faint behind it. Overlay (plain, workbench tokens): seed, run, generation, generation
-  on screen ("gen 21 of ~172"), ticks used / T, a fitness graph (best and mean per generation against ticks used), Stop / Back to
-  workbench / Train again / Drive (disabled until S4). Done → the champion's genome and `{seed, phases + 1}` are
-  saved; Stop keeps the brain as it was. While training, drawing is paced so it cannot starve the pool: a frame
-  costing > 8 ms is kept to a fifth of the main thread, and a software rasteriser (which renders on the workers'
-  CPU cores) draws 4 frames a second.
+  exactly). `runPhase` steps one generation at a time on a `BrowserPool`. Layout (B6, `reference/training-view-mockup.html`):
+  a panel of its own on the left, min(20vw, 280px) wide and full height (fitness per generation on top: best and
+  mean against generations, the x-axis spanning every generation asked for, axes through 0, "gen n of N", Stop, then
+  Drive / Keep training / Back and the sound toggles; below it the highlighted car's brain, live, with the drive
+  view's `BrainPanel`); the camera fills the rest, with the generation on screen as a big white number at the top
+  (clamp(40px, 9vh, 88px)) and a map in its bottom-right corner (`map.ts`: min(28%, 300px), 4:3, 10 px margins; the
+  track, the chequered finish, every shown car as a dot, the highlighted one ringed; "5 of 64"). Every generation
+  records a seeded handful of its agents (`showPick`: 20 on a desktop GPU, 12 on a phone or tablet, 5 on a software
+  renderer): the pool asks its workers for those agents' track-0 paths and weights, plus the firing of the one
+  furthest along (the highlighted car), so the main thread only compiles one net per generation. Recording never
+  changes a result. The view plays the newest finished generation (render/ghosts.ts). Stop = the generation limit
+  reached there (principal 2026-11-04): the pool is aborted, the generation being evaluated is dropped, and
+  `runPhase` returns the best agent evaluated so far (`bestSoFar`; for evolution the last generation's champion,
+  since elites keep their score), which is saved like a finished run (`{seed, phases + 1}`), with Drive and Keep
+  training; a Stop before any generation finished keeps the brain as it was. While training, drawing is paced so it
+  cannot starve the pool: a frame costing > 8 ms is kept to a fifth of the main thread, and a software rasteriser
+  (which renders on the workers' CPU cores) draws 4 frames a second.
 - `render/` — the 3-D port of `reference/look-mockup.html`'s core: `stage.ts` (renderer, ACES, bloom, sky dome, fog,
-  sun and shadows, the training camera: a chase angle ~44 m up, following the pack's median progress along the
-  track, or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `drive.ts`
+  sun and shadows, the training camera: a chase angle ~44 m up, following the highlighted car closely (it moves
+  at 12×; a new generation cuts instead of flying across), or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `drive.ts`
   (the drive rig: the yellow car with each wheel spinning at 18 rad/s × its output, so it reverses visibly; one ray
   per boundary vector cell along its field's centre via `sensors.bearingDir`, up to 20 m, brighter as a wall nears;
   chase, broadcast and showroom cameras), `stadium.ts` (grandstand with crowd and SYNAPSE
   banner, start and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards on tight corners, broadcast
   camera spots; trees keep clear of them), `trackMesh.ts` (road, kerbs red/white in corners,
-  run-off, walls with light strip, boost pads, start line, from the sim Track; flat for now), `scenery.ts` (terrain,
-  tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the swarm: one InstancedMesh holding a
-  population, see-through cyan ghosts with the generation's best as the solid car; wall contact flashing red, an
-  episode that ended early stays put and fades out flashing red, a full episode fades out in its own colour), `guard.ts`
+  run-off, walls with light strip, boost pads, the start/finish line as a chequered band of four rows of 1 m squares,
+  from the sim Track; flat for now), `finish.ts` (a chequered flag on a black pole each side of the finish line, in
+  the run-off, the cloth reaching away from the road), `scenery.ts` (terrain,
+  tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the training playback, B6: one InstancedMesh of 20,
+  made once; the newest finished generation replays at 12× as see-through cyan ghosts, the highlighted car warm
+  yellow; a newer generation takes over after a 2 s minimum; each one is shown at most once, in order, and starts
+  further into its episode than the one before (offset = (g − 1)/(N − 1) of the latest start that leaves 2.5 s to
+  watch, never shrinking); with nothing newer the last frame holds (ended cars stay faintly where they stopped); when
+  training ends the champion's lap loops as the solid car, never generation 1 again. Wall contact flashes red; an
+  episode that ended early stays put, flashing red as it fades), `guard.ts`
   (finite-geometry and finite-matrix asserts, instance capacity asserts — all throw). Quality: `low` (pixel ratio 1,
   no shadows, no MSAA; bloom kept) is picked for software rasterisers (SwiftShader, llvmpipe), `high` otherwise.
   Bloom: threshold 1.3; all scene light is scaled by 0.6 and the exposure by 1/0.6, so lit scenery (max ≈ 1.17) stays
@@ -247,7 +258,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   are off), else (locked) a plain timer with the same two-beat spacing. `racing.ts`: THE teardown for racing sounds (engines fade, every scheduled countdown blip is
   cancelled), called by the arena whenever its view changes or it is hidden, which every exit goes through. The
   drive view holds the car on the line until Go and then plays the recorded run from tick
-  0 (hashes unchanged); the training view's solid car has a quieter engine.
+  0 (hashes unchanged); in the training view the highlighted car (then the champion) has a quieter engine.
 
 ## scripts
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
@@ -260,10 +271,13 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   8 × 8 with every sense full, light and dark, 1440×900 and 844×390; portrait card; screenshots to `out/s2/`.
 - `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the designer (the
   generations popup),
-  phase hash = Node's, genome saved and changed, Train again = Node's carry run, the same saved brain on 1 and 4
-  workers → the same hash, Stop keeps the brain, ghost capacity, render smoke (mean luminance and spread of a real
-  frame), the story (gen 1 first, in order, ending on the final generation, then the finale), bloom audit = 0,
-  844×390 layout, console clean; screenshots to `out/s3/`.
+  phase hash = Node's, genome saved and changed, training again = Node's carry run, the same saved brain on 1 and 4
+  workers → the same hash, Stop saves the best agent so far (= Node stopped there = Node asked for that many
+  generations) and offers Drive / Keep training / Back, render smoke (mean luminance and spread of a real frame),
+  the layout at 1440×900 and 844×390 in light and dark, mid-training and at the end (panel width, camera, map
+  corner and size, the big white number), 5–20 ghosts, every generation offered and shown in order, never twice,
+  each after the minimum and starting further along, then the champion's lap, no main-thread spike, two finish
+  flags, bloom audits at the start line, mid-run and in the finale, console clean; screenshots to `out/s3/`.
 - `scripts/checks/drive.ts` — train a tiny T, Drive: distance increases, drive hash = Node `runDrive` replay (also
   after New track), render smoke, bloom audit = 0, the energy line = the recorded load and its speed share, one beam
   per boundary cell along the sim's direction, every cell's spikes at 14 Hz × its rate, cameras, an untrained brain

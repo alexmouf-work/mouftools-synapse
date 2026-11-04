@@ -61,7 +61,8 @@ export function trackParts(t: Track): Part[] {
   for (const pad of t.pads) {
     parts.push({ key: 'pad', geometry: strip(t, pad.i0, pad.n, P(-4.2, 0.05), P(4.2, 0.05), null, (_i, side, k) => [side, k / 4], 'pad') });
   }
-  parts.push({ key: 'start', geometry: strip(t, t.startIdx, 1, P(-ROAD, 0.04), P(ROAD, 0.04), null, (_i, side, k) => [side, k], 'start') });
+  // the start/finish line: a chequered band two samples long (about 4 m: four rows of 1 m squares)
+  parts.push({ key: 'start', geometry: strip(t, t.startIdx, 2, P(-ROAD, 0.04), P(ROAD, 0.04), null, (_i, side, k) => [side, k * (t.ds / 2)], 'start') });
   return parts;
 }
 
