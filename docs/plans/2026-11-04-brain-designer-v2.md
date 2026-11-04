@@ -78,6 +78,8 @@ While you build, nothing fires: no flashes, no wheel arrows. Cells and neurons f
 training or driving. The sense symbols keep a gentle idle motion.
 
 ## 6b. Each cell's activation pattern (2026-11-04)
+Functions offered (2026-11-04): Linear, ReLU, Sigmoid, Tanh (no step). Heatmaps run cold to hot: blue, green,
+yellow, red.
 Tapping a cell shows a graph of what makes it fire, in the right-hand panel (no "tuning" text):
 - Boundary and object-vector cells: a circular map around the car, distance rings labelled in metres (boundary 20 m,
   object-vector 40 m; an object-vector cell fires when its landmark is within range).

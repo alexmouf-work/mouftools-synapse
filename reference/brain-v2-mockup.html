@@ -124,7 +124,7 @@ const MAX_HZ = 14;
 
 // one function per hidden layer; wheels fixed to tanh
 const FX = {
-  step: { n: 'Step', g: 'M-8 4 H0 V-4 H8', f: (z) => (z > 0 ? 1 : 0), rate: (y) => y, cost: 1.5, d: 'On or off: silent, or firing flat out.' },
+  linear: { n: 'Linear', g: 'M-8 6 L8 -6', f: (z) => z, rate: (y) => clamp((y + 1) / 2, 0, 1), cost: 1.5, d: 'Passes its input straight through.' },
   relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', f: (z) => clamp(z, 0, 4), rate: (y) => clamp(y, 0, 1), cost: 2, d: 'Silent below zero, firing faster as input grows.' },
   sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4', f: (z) => 1 / (1 + Math.exp(-z)), rate: (y) => y, cost: 3, d: 'Smooth from silent to flat out; idles at half rate.' },
   tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', f: (z) => Math.tanh(z), rate: (y) => (y + 1) / 2, cost: 3, d: 'Idles at half rate; excitation speeds it up, inhibition slows it down.' },
@@ -310,22 +310,24 @@ function gctx() {
   c.width = Math.round(w * dpr); c.height = Math.round(w * dpr);
   const g = c.getContext('2d'); g.scale(dpr, dpr); return { g, w };
 }
-const heat = (a) => `rgba(255,194,26,${clamp(a, 0, 1).toFixed(3)})`;
+// cold to hot: blue → green → yellow → red
+const STOPS = [[0, [44, 107, 217]], [1 / 3, [63, 179, 90]], [2 / 3, [255, 210, 26]], [1, [232, 68, 58]]];
+const heat = (a, alpha = 0.9) => { a = clamp(a, 0, 1); let i = 0; while (i < STOPS.length - 2 && a > STOPS[i + 1][0]) i++; const [a0, c0] = STOPS[i], [a1, c1] = STOPS[i + 1], t = (a - a0) / (a1 - a0); return `rgba(${c0.map((v, k) => Math.round(v + (c1[k] - v) * t)).join(',')},${alpha})`; };
 // circular map around the car: activation for a target at (distance, bearing); car at the centre, front up
 function polar(fieldDeg, range, width, ringStep, unit = 'm') {
   const { g, w } = gctx(), c = w / 2, R = w / 2 - 12;
   g.fillStyle = css('--canvas'); g.beginPath(); g.arc(c, c, R, 0, 7); g.fill();
-  for (let y = -R; y <= R; y += 2) for (let x = -R; x <= R; x += 2) {
+  for (let y = -R; y <= R; y += 1) for (let x = -R; x <= R; x += 1) {
     const r = Math.hypot(x, y); if (r > R) continue;
     const d = r / R * range, th = Math.atan2(x, -y) * 180 / Math.PI;
     let dth = Math.abs(th - fieldDeg); dth = Math.min(dth, 360 - dth);
     const a = Math.exp(-((dth / width) ** 2)) * Math.max(0, 1 - d / range);
-    if (a > 0.02) { g.fillStyle = heat(a * 0.95); g.fillRect(c + x - 1, c + y - 1, 2, 2); }
+    g.fillStyle = heat(a, 0.9); g.fillRect(c + x - 0.5, c + y - 0.5, 1.2, 1.2);
   }
   g.strokeStyle = css('--muted'); g.globalAlpha = 0.5; g.lineWidth = 0.75; g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
-  for (let d = ringStep; d <= range + 0.01; d += ringStep) { const rr = d / range * R; g.beginPath(); g.arc(c, c, rr, 0, 7); g.stroke(); g.globalAlpha = 1; g.fillText(`${d} ${unit}`, c + 2, c - rr - 2); g.globalAlpha = 0.5; }
+  g.strokeStyle = '#ffffff'; g.fillStyle = '#ffffff'; for (let d = ringStep; d <= range + 0.01; d += ringStep) { const rr = d / range * R; g.beginPath(); g.arc(c, c, rr, 0, 7); g.stroke(); g.globalAlpha = 1; g.fillText(`${d} ${unit}`, c + 3, c - rr + 10); g.globalAlpha = 0.5; }
   g.globalAlpha = 1;
-  g.fillStyle = css('--text'); g.beginPath(); g.moveTo(c, c - 7); g.lineTo(c + 4.5, c + 5); g.lineTo(c - 4.5, c + 5); g.closePath(); g.fill();
+  g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(c, c - 7); g.lineTo(c + 4.5, c + 5); g.lineTo(c - 4.5, c + 5); g.closePath(); g.fill();
 }
 // a wave: angle on x (degrees), activation on y
 function wave(prefDeg) {
@@ -342,20 +344,20 @@ function wave(prefDeg) {
 function gridMap(k) {
   const { g, w } = gctx(), sc = (k % 2 ? 26 : 11), ph = Math.floor(k / 2) * 2.1, metres = 220, m2p = w / metres;
   g.fillStyle = css('--canvas'); g.fillRect(0, 0, w, w);
-  for (let y = 0; y < w; y += 2) for (let x = 0; x < w; x += 2) {
+  for (let y = 0; y < w; y += 1) for (let x = 0; x < w; x += 1) {
     const X = x / m2p, Y = y / m2p; let v = 0;
     for (let a = 0; a < 3; a++) { const th = a * Math.PI / 3; v += Math.cos((X * Math.cos(th) + Y * Math.sin(th)) / sc * 2 * Math.PI + ph); }
-    const act = clamp((v - 0.6) / 2.4, 0, 1); if (act > 0.02) { g.fillStyle = heat(act * 0.85); g.fillRect(x, y, 2, 2); }
+    const act = clamp((v - 0.6) / 2.4, 0, 1); g.fillStyle = heat(act, 0.75); g.fillRect(x, y, 1.2, 1.2);
   }
   const pts = []; for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2, rr = 0.36 + 0.07 * Math.sin(a * 3) + 0.04 * Math.cos(a * 2); pts.push([w / 2 + Math.cos(a) * rr * w, w / 2 + Math.sin(a) * rr * w * 0.82]); }
   const road = (col, width, alpha) => { g.globalAlpha = alpha; g.strokeStyle = col; g.lineWidth = width; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke(); g.globalAlpha = 1; };
-  road(css('--car'), 14 * w / 160, 0.35); road(css('--text'), 1, 0.55);
-  g.fillStyle = css('--muted'); g.font = `9px ${css('--mono')}`; const bar = 50 * m2p; g.fillRect(6, w - 8, bar, 2); g.fillText('50 m', 8 + bar, w - 4);
+  road('#f4f6fa', 14 * w / 160, 0.55); road('#1d2330', 1.2, 0.8);
+  g.fillStyle = '#ffffff'; g.font = `bold 9px ${css('--mono')}`; const bar = 50 * m2p; g.fillRect(6, w - 8, bar, 2); g.fillText('50 m', 8 + bar, w - 4);
 }
 // x/y curve: transfer functions and speed
 function graphCurve(fn, xl, yl) {
   const { g, w } = gctx(), l = 22, r = w - 6, t = 8, b = w - 22, f = FX[fn];
-  const ymin = fn === 'tanh' ? -1 : 0, ymax = fn === 'relu' ? 4 : 1;
+  const ymin = fn === 'tanh' ? -1 : fn === 'linear' ? -4 : 0, ymax = fn === 'relu' || fn === 'linear' ? 4 : 1;
   g.strokeStyle = css('--line'); g.font = `9px ${css('--mono')}`; g.fillStyle = css('--muted');
   for (const xv of [-4, 0, 4]) { const x = l + (r - l) * (xv + 4) / 8; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(String(xv), x - 4, b + 12); }
   for (const yv of [ymin, ymax]) { const y = b - (b - t) * (yv - ymin) / (ymax - ymin); g.fillText(String(yv), 4, y + 3); }
@@ -427,9 +429,9 @@ const TRAINERS = {
   ac: { n: 'Actor-critic', eq: 'Δw = α·δ·∂log π/∂w' },
   arp: { n: 'A<sub>RP</sub>', eq: 'Δw = ρ·(±y − p)·x' },
 };
-const dF = (fn, y) => fn === 'tanh' ? 1 - y * y : fn === 'sigmoid' ? y * (1 - y) : fn === 'relu' ? (y > 0 ? 1 : 0) : 0;
+const dF = (fn, y) => fn === 'tanh' ? 1 - y * y : fn === 'sigmoid' ? y * (1 - y) : fn === 'relu' ? (y > 0 ? 1 : 0) : 1;
 const label = (id) => id.startsWith('i:') ? (() => { const [, sid, k] = id.split(':'), s = SENSES.find((q) => q.id === sid); const tg = s.tag(+k, S.count[sid]); return `${s.name.replace(/ cells$/, '')}${tg ? ` (${tg})` : ''}`; })() : id.startsWith('o:') ? WHEELS.find((w) => w.id === id).label + ' wheel' : `layer ${depth(id)} neuron ${+id.split(':')[1] + 1}`;
-function buildTrainers() { $('trainers').innerHTML = Object.entries(TRAINERS).map(([k, v]) => `<button type="button" data-tr="${k}" aria-pressed="${S.trainer === k}">${v.n}</button>`).join(''); $('trainers').querySelectorAll('[data-tr]').forEach((b) => b.onclick = () => { if (b.dataset.tr !== 'evolution' && S.layers.some((l) => l.fn === 'step')) return toast(`${TRAINERS[b.dataset.tr].n.replace(/<[^>]+>/g, '')} needs a slope to follow; a step layer has none. Change it first.`); S.trainer = b.dataset.tr; buildTrainers(); }); $('eq').innerHTML = `Learning Rule : <span>${TRAINERS[S.trainer].eq}</span>`; }
+function buildTrainers() { $('trainers').innerHTML = Object.entries(TRAINERS).map(([k, v]) => `<button type="button" data-tr="${k}" aria-pressed="${S.trainer === k}">${v.n}</button>`).join(''); $('trainers').querySelectorAll('[data-tr]').forEach((b) => b.onclick = () => { S.trainer = b.dataset.tr; buildTrainers(); }); $('eq').innerHTML = `Learning Rule : <span>${TRAINERS[S.trainer].eq}</span>`; }
 let ruleT = 0;
 function showRule(act, t) {
   ruleT += 1; if (ruleT % 12) return;

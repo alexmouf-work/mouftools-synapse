@@ -124,3 +124,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   hand side. remove the \"tuning\" bit. the graph will be enough." · "the finish line place cell is a cell which
   activates when the specific landmark is within range. show distances on the graphs, and use circular maps to show
   distance around the car on graphs."
+- "don't offer step as a function. offer linear as well as ReLU." · "make the heatmap blue to green to yellow to red,
+  cold to hot."
