@@ -8,7 +8,7 @@
 // evaluated so far is saved (the generation being evaluated is dropped), and Drive and Keep training appear.
 // Results never depend on speed: rendering, the worker count and the recording only change how it looks.
 import { CONFIG } from '../../../common/config';
-import { compile, genomeHash, nodeRate, type Net } from '../../../common/sim/brain';
+import { compile, genomeHash, nodeRate, weightCount, type Net } from '../../../common/sim/brain';
 import { newRecording, Runner } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { generateTrack, type Track } from '../../../common/sim/track';
@@ -133,7 +133,8 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   const phase = saved.train.phases;
   const temp = saved.trainer === 'backprop' ? 0 : temperature;
   const genome = saved.genome;
-  const start: 'fresh' | 'carry' = genome.w.every((w) => w === 0) ? 'fresh' : 'carry';
+  // weights and biases all 0 (untrained, or edited since): from scratch; the cells' learned fields are kept either way
+  const start: 'fresh' | 'carry' = genome.w.slice(0, weightCount(genome.spec)).every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
   const T = p.T ?? phaseBudget(generations);
   const seeds = phaseSeeds(seed, phase);

@@ -18,6 +18,8 @@ export interface DrivePose {
   wheels: ArrayLike<number>;
   /** Field centre of each boundary vector cell (degrees clockwise from the nose). */
   beams: ArrayLike<number>;
+  /** Each beam's range (m): the cell's learned field (B2e). */
+  ranges?: ArrayLike<number>;
   stuck: boolean;
 }
 
@@ -102,14 +104,15 @@ export class DriveRig {
       if (!on) continue;
       // the field's direction, from the sim's rule (sensors.bearingDir), sim (x, y) → world (x, −y)
       const dir = bearingDir(p.hdg, p.beams[e]);
-      const d = castRay(t.grid, p.x, p.y, dir.dx, dir.dy, RANGE);
+      const R = p.ranges?.[e] ?? RANGE;
+      const d = castRay(t.grid, p.x, p.y, dir.dx, dir.dy, R);
       this.rayDist[e] = d;
       const dx = dir.dx, dz = -dir.dy;
       b.beam.position.set(car.position.x, oy, car.position.z);
       this.v.set(car.position.x + dx * d, oy, car.position.z + dz * d);
       b.beam.lookAt(this.v); b.beam.scale.set(1, 1, Math.max(d, 0.01));
-      b.hit.position.copy(this.v); b.hit.rotation.y = time * 3; b.hit.visible = d < RANGE - 0.5;
-      b.mat.opacity = 0.3 + (1 - d / RANGE) * 0.7;
+      b.hit.position.copy(this.v); b.hit.rotation.y = time * 3; b.hit.visible = d < R - 0.5;
+      b.mat.opacity = 0.3 + (1 - d / R) * 0.7;
     }
     this.camera.near = 0.3;
     this.updateCamera(p, dt, reduceMotion);

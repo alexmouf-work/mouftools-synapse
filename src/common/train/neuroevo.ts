@@ -4,7 +4,7 @@
 // Common random numbers: every policy sees the same tracks and noise. Ties break by index. Runs whole generations
 // while the next one's worst case fits the budget; the generation count is a result, not a setting.
 import { CONFIG } from '../config';
-import { genomeHash, specHash } from '../sim/brain';
+import { genomeHash, specHash, weightCount } from '../sim/brain';
 import { paramCount, type Genome } from '../sim/spec';
 import { derive, Rng, TAG } from '../rng';
 import { meanFitness, type Env } from './env';
@@ -38,9 +38,12 @@ export class Neuroevo implements Trainer {
     const nW = paramCount(genome.spec);
     this.pop = [];
     if (this.opts.start === 'fresh') {
+      // weights and biases drawn; the cells' fields start as given (their even spread, or what they learned before)
+      const nWB = weightCount(genome.spec);
       for (let p = 0; p < P.population; p++) {
         const w = new Float64Array(nW);
-        for (let i = 0; i < nW; i++) w[i] = clampW(this.rng.normal() * P.initSd);
+        for (let i = 0; i < nWB; i++) w[i] = clampW(this.rng.normal() * P.initSd);
+        for (let i = nWB; i < nW; i++) w[i] = clampW(genome.w[i]);
         this.pop.push(w);
       }
     } else {

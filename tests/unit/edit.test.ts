@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import {
-  addSense, defaultGenome, genomeHash, insertLayer, removeLayer, removeSense, setLayerFn, setLayerSize, type EditResult,
+  addSense, compile, defaultGenome, genomeHash, insertLayer, removeLayer, removeSense, setLayerFn, setLayerSize, weightCount, type EditResult,
 } from '../../src/common/sim/brain';
 import { maxLoad } from '../../src/common/sim/energy';
-import { paramCount, type Genome } from '../../src/common/sim/spec';
+import { defaultSpec, fieldIndex, paramCount, type Genome } from '../../src/common/sim/spec';
 
 const ok = (r: EditResult): Genome => { if (!r.ok) throw new Error(`refused: ${r.reason}`); return r.genome; };
 
@@ -40,12 +40,29 @@ describe('edit ops (brain v2: senses, layers, functions; wiring is fixed)', () =
     expect(setLayerSize(g, 0, 9).ok).toBe(false);
     expect(setLayerSize(g, 0, 0).ok).toBe(false);
   });
-  it('any edit leaves an untrained brain: every wire, old or new, at weight 0', () => {
+  it('any edit leaves an untrained brain: every wire and bias, old or new, at 0 (the learned fields stay)', () => {
     const trained: Genome = { ...defaultGenome(), w: defaultGenome().w.map((_, k) => (k % 3) - 1) };
     for (const g of [ok(addSense(trained, 'grid')), ok(setLayerFn(trained, 0, 'linear')), ok(setLayerSize(trained, 0, 5)), ok(insertLayer(trained, 1))]) {
       expect(g.w.length).toBe(paramCount(g.spec));
-      expect(g.w.every((x) => x === 0)).toBe(true);
+      expect(g.w.slice(0, weightCount(g.spec)).every((x) => x === 0)).toBe(true);
+      expect(compile(g).tune.slice(0, 8)).toEqual(compile(trained).tune.slice(0, 8)); // the same fields, cell for cell
     }
+  });
+  it('B2e: a new cell keeps the others\' learned fields and goes in the widest gap; an untrained sense re-spreads', () => {
+    const spec = { ...defaultSpec(), senses: { ...defaultSpec().senses, boundary: 2 } }, base = { spec, w: new Array(paramCount(spec)).fill(0) };
+    // untrained: the even spread for the new count (−90, 0, 90)
+    const even = compile(ok(addSense(base, 'boundary')));
+    expect([0, 1, 2].map((i) => even.tune[4 * i])).toEqual([-90, 0, 90]);
+    // learned: cell 0 turned to −30°, cell 1 (default +90°) narrowed; the third goes in the widest gap between −30 and 90
+    const w = [...base.w], a0 = fieldIndex(spec, 'i:boundary:0'), a1 = fieldIndex(spec, 'i:boundary:1');
+    w[a0] = 60 / 45; w[a1 + 1] = -1; w[a1 + 2] = -1;
+    const before = compile({ spec, w }), after = compile(ok(addSense({ spec, w }, 'boundary')));
+    expect(before.tune[0]).toBeCloseTo(-30, 12);
+    for (const i of [0, 1]) for (let j = 0; j < 3; j++) expect(after.tune[4 * i + j]).toBeCloseTo(before.tune[4 * i + j], 9);
+    expect(after.tune[8]).toBeCloseTo(-150, 9); // the gap from 90 round to −30 (240°) is the widest: its middle
+    // removing a cell leaves the rest where they are
+    const fewer = compile(ok(removeSense(ok(addSense({ spec, w }, 'boundary')), 'boundary')));
+    for (const i of [0, 1]) for (let j = 0; j < 3; j++) expect(fewer.tune[4 * i + j]).toBeCloseTo(before.tune[4 * i + j], 9);
   });
   it('vs CPU and Multiplayer refuse an edit past 100% flat out; the sandbox allows it', () => {
     // grow a brain one neuron at a time until the next neuron would pass 100% with everything flat out

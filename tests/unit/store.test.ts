@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
 import { parse, serialize, startSaved } from '../../src/client/ui/designer/store';
-import { biasCount, wireCount } from '../../src/common/sim/spec';
+import { biasCount, fieldCount, wireCount } from '../../src/common/sim/spec';
 
 describe('designer save', () => {
   it('round-trips name, trainer, training history and the genome exactly', () => {
@@ -31,7 +31,7 @@ describe('designer save', () => {
     const r = parse(old);
     expect(r.status).toBe('ok');
     expect(r.saved.genome.w.slice(0, wires)).toEqual(weights);
-    expect(r.saved.genome.w.slice(wires)).toEqual(new Array(biasCount(g.spec)).fill(0));
+    expect(r.saved.genome.w.slice(wires)).toEqual(new Array(biasCount(g.spec) + fieldCount(g.spec)).fill(0));
     expect(r.saved.train).toEqual({ seed: 3, phases: 1, temps: [0] }); // before the temperature slider: ×1
   });
   it('missing → the starting brain, quietly', () => {

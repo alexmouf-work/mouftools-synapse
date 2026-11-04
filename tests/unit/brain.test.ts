@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACTS, CONFIG, type Act } from '../../src/common/config';
 import { ACT_CODE, compile, evalNet, nodeRate, rateOf, restRate, transfer } from '../../src/common/sim/brain';
-import { biasCount, biasIndex, columns, defaultSpec, inputIds, paramCount, validateSpec, wireCount, wireList, type BrainSpec } from '../../src/common/sim/spec';
+import { biasCount, biasIndex, columns, defaultSpec, inputIds, paramCount, validateSpec, wireCount, wireList, type BrainSpec, fieldCount, fieldIndex } from '../../src/common/sim/spec';
 
 const sig = (x: number) => 1 / (1 + Math.exp(-x));
 const F: Record<Act, (x: number) => number> = {
@@ -15,7 +15,7 @@ const E = CONFIG.energy;
 
 /**
  * One speed cell → one neuron (fn) → the four wheels (tanh). Parameters: wires speed→h, then h→FL, FR, RL, RR; then
- * the biases of h, FL, FR, RL, RR (z = b + Σ w·x).
+ * the biases of h, FL, FR, RL, RR (z = b + Σ w·x); then the speed cell's field (its gain; 0 = ×1).
  */
 const oneNeuron = (fn: Act): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
 
@@ -24,7 +24,7 @@ describe('brain v2: outputs, rates and the energy load, hand-computed for every 
     it(fn, () => {
       for (const [w0, w1, w2, w3, w4, spd, bh, bo] of [[0.7, 0.5, -1, 2, 0, 0.4, 0, 0], [-3, 2, 1, -0.5, 4, 0.9, 0.3, -0.2], [4, -4, 0.2, 0.3, -0.1, 1, -1.5, 0.6]]) {
         const bw = [bo, -bo, 2 * bo, 0];
-        const net = compile({ spec: oneNeuron(fn), w: [w0, w1, w2, w3, w4, bh, ...bw] });
+        const net = compile({ spec: oneNeuron(fn), w: [w0, w1, w2, w3, w4, bh, ...bw, 0] });
         const vals = new Float64Array(net.nNodes);
         const load = evalNet(net, [spd], vals);
         const h = F[fn](bh + w0 * spd);
@@ -50,7 +50,7 @@ describe('brain v2: outputs, rates and the energy load, hand-computed for every 
     expect(transfer(ACT_CODE.linear, -7)).toBe(-1);
   });
   it('head-direction cells fire at (cos + 1) / 2', () => {
-    const net = compile({ spec: { v: 2, senses: { boundary: 0, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }, w: new Array(10).fill(0) });
+    const net = compile({ spec: { v: 2, senses: { boundary: 0, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }, w: new Array(11).fill(0) });
     expect(nodeRate(net, 0, -1)).toBe(0); expect(nodeRate(net, 0, 1)).toBe(1);
   });
 });
@@ -63,11 +63,13 @@ describe('brain v2: shape', () => {
     expect(columns(s).map((c) => c.length)).toEqual([2, 3, 4]);
     expect(wireCount(s)).toBe(2 * 3 + 3 * 4);
     expect(biasCount(s)).toBe(3 + 4);
-    expect(paramCount(s)).toBe(18 + 7);
+    expect(fieldCount(s)).toBe(3 + 1); // boundary: direction, width, range; head direction: its angle
+    expect(paramCount(s)).toBe(18 + 7 + 4);
+    expect(fieldIndex(s, 'i:boundary:0')).toBe(25); expect(fieldIndex(s, 'i:hd:0')).toBe(28);
     expect(biasIndex(s, 'h0:0')).toBe(18); expect(biasIndex(s, 'o:fl')).toBe(21); expect(biasIndex(s, 'o:rr')).toBe(24);
     expect(() => biasIndex(s, 'i:hd:0')).toThrow();
     expect(wireList(s).slice(0, 4)).toEqual([['i:boundary:0', 'h0:0'], ['i:boundary:0', 'h0:1'], ['i:boundary:0', 'h0:2'], ['i:hd:0', 'h0:0']]);
-    expect(compile({ spec: s, w: new Array(25).fill(0) }).ids).toEqual(['i:boundary:0', 'i:hd:0', 'h0:0', 'h0:1', 'h0:2', 'o:fl', 'o:fr', 'o:rl', 'o:rr']);
+    expect(compile({ spec: s, w: new Array(29).fill(0) }).ids).toEqual(['i:boundary:0', 'i:hd:0', 'h0:0', 'h0:1', 'h0:2', 'o:fl', 'o:fr', 'o:rl', 'o:rr']);
   });
   const bad: [string, (s: BrainSpec) => void][] = [
     ['another version', (s) => { (s as { v: number }).v = 1; }],

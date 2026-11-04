@@ -57,7 +57,7 @@ export abstract class GradTrainer implements Trainer {
     this.seed = derive(seed, TAG.trainer);
     this.rng = new Rng(this.seed);
     const nW = paramCount(genome.spec);
-    this.w = this.opts.start === 'fresh' ? freshWeights(genome.spec, this.rng) : Float64Array.from(genome.w);
+    this.w = this.opts.start === 'fresh' ? freshWeights(genome, this.rng) : Float64Array.from(genome.w);
     this.lastDw = new Float64Array(nW);
     this.lanes = fresh(G.lanes);
     this.rounds = 0;
@@ -162,8 +162,8 @@ const clampW = (x: number): number => (x > CAP ? CAP : x < -CAP ? -CAP : x);
  * every input has slope 0 everywhere, so gradient descent can never wake it (a dead unit; measured in T1: half the
  * seeds lost the old Starter's cruise neuron that way); positive weights from mostly positive rates start it firing.
  */
-function freshWeights(spec: BrainSpec, rng: Rng): Float64Array {
-  const C = columns(spec), out = new Float64Array(paramCount(spec));
+function freshWeights(genome: Genome, rng: Rng): Float64Array {
+  const spec = genome.spec, C = columns(spec), out = new Float64Array(paramCount(spec));
   let k = 0;
   for (let i = 0; i + 1 < C.length; i++) {
     const relu = i < spec.layers.length && spec.layers[i].fn === 'relu';
@@ -177,5 +177,7 @@ function freshWeights(spec: BrainSpec, rng: Rng): Float64Array {
     const relu = i <= spec.layers.length && spec.layers[i - 1].fn === 'relu';
     for (let b = 0; b < C[i].length; b++) { const x = rng.normal() * G.initSd; out[k++] = clampW(relu && x < 0 ? -x : x); }
   }
+  // the cells' fields start as given (their even spread, or what they learned before)
+  for (; k < out.length; k++) out[k] = clampW(genome.w[k]);
   return out;
 }

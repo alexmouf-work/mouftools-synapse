@@ -10,7 +10,6 @@ import { CONFIG } from '../../../common/config';
 import { nodeRate } from '../../../common/sim/brain';
 import { speedCap } from '../../../common/sim/energy';
 import { runDrive } from '../../../common/sim/race';
-import { spreadDeg } from '../../../common/sim/senses';
 import { bearingDir } from '../../../common/sim/sensors';
 import { locate } from '../../../common/sim/track';
 import { phaseSeeds } from '../../../common/train/phase';
@@ -92,7 +91,8 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     if (maxProg[k] - maxProg[k - S] < CONFIG.train.stallMetres) stuckSince[k] = stuckSince[k - 1] >= 0 ? stuckSince[k - 1] : k - S;
   }
   // one beam per boundary vector cell, along its field's centre
-  const nB = saved.genome.spec.senses.boundary, beams = Array.from({ length: nB }, (_, k) => spreadDeg(k, nB));
+  // one beam per boundary vector cell along its learned field's centre, to its learned range (they are the first inputs)
+  const nB = saved.genome.spec.senses.boundary, beams = Array.from({ length: nB }, (_, k) => net.tune[4 * k]), ranges = Array.from({ length: nB }, (_, k) => net.tune[4 * k + 2]);
   const rates = new Float64Array(nN);
 
   const stage: Stage | null = await getStage();
@@ -158,7 +158,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   $('dvNew').onclick = () => { leave(); void openDrive(saved, hooks, newSeed()); };
 
   const wheels = new Float64Array(4);
-  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, wheels, beams, stuck: false };
+  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, wheels, beams, ranges, stuck: false };
   let last = performance.now();
   const t0 = last;
   /** Fill `pose` for playback time pt; returns the tick and whether the run has ended. */

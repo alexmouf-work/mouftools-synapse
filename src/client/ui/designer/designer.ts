@@ -6,12 +6,12 @@
 // common/sim/brain.ts and is saved; energy figures come from common/sim/energy.ts.
 import { ACTS, CONFIG, type Act } from '../../../common/config';
 import {
-  addSense, ACT_CODE, defaultGenome, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer,
+  addSense, ACT_CODE, defaultGenome, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer, weightCount,
   type EditResult,
 } from '../../../common/sim/brain';
 import { cellMax, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
-import { fieldAct, fieldWidthDeg, gridAct, gridPhase, gridScale, hdAct, hdPreferred, SENSE_INFO, spreadDeg } from '../../../common/sim/senses';
-import { biasIndex, columns, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
+import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
+import { biasIndex, columns, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
 import { load, NO_TRAINING, save, type Saved, type TrainerId } from './store';
@@ -55,7 +55,7 @@ const loaded = load();
 interface State { saved: Saved; sel: string | null; gens: number; temp: number }
 const W: State = { saved: loaded.saved, sel: null, gens: 100, temp: 0 };
 const spec = (): BrainSpec => W.saved.genome.spec;
-const trained = (): boolean => W.saved.genome.w.some((x) => x !== 0);
+const trained = (): boolean => W.saved.genome.w.slice(0, weightCount(W.saved.genome.spec)).some((x) => x !== 0);
 let onTrain: (s: Saved, generations: number, temperature: number) => void = () => toast('Training isn’t available here.');
 let active = true;
 let saveWarned = false;
@@ -238,6 +238,18 @@ const useLine = (v: number) => `<p class="use">At maximum firing rate, uses <b>$
 /** A neuron's or wheel's built-in bias (shown once the brain is trained; 0 before, so omitted). */
 const biasOf = (id: string): number => (trained() ? W.saved.genome.w[biasIndex(spec(), id)] : 0);
 const biasLine = (b: number) => (trained() ? `<p class="use" data-bias>Bias <b>${b >= 0 ? '+' : '−'}${Math.abs(b).toFixed(2)}</b></p>` : '');
+/** The cell's learned field in words, once training has moved it from the even spread (B2e). */
+function fieldLine(id: SenseId, k: number, n: number): string {
+  const p = fieldParams(id, k);
+  if (p.every((x) => x === 0)) return '';
+  const deg = (d: number) => `${d >= 0 ? '' : '−'}${Math.abs(Math.round(d))}°`;
+  let t: string;
+  if (id === 'boundary' || id === 'landmark') { const f = fieldOf(id, k, n, p[0], p[1], p[2]); t = `${deg(f.dirDeg)} · ${Math.round(f.widthDeg)}° wide · ${f.rangeM.toFixed(1)} m`; }
+  else if (id === 'hd') { let a = (hdOf(k, n, p[0]) * 180) / Math.PI; a -= 360 * Math.floor(a / 360); t = `prefers ${Math.round(a)}°`; }
+  else if (id === 'grid') { const f = gridOf(k, p[0], p[1], p[2], p[3]); t = `${f.scale.toFixed(1)} m · shifted ${Math.hypot(f.ox, f.oy).toFixed(1)} m · turned ${deg((f.rot * 180) / Math.PI)}`; }
+  else t = `gain ×${speedGainOf(p[0]).toFixed(2)}`;
+  return `<p class="use" data-field>Learned field <b>${t}</b></p>`;
+}
 let holdPanel = false; // while the neurons slider is dragged, the board redraws but the panel stays put
 
 function inspect(): void {
@@ -264,7 +276,7 @@ function inspect(): void {
   if (id.startsWith('i:')) {
     const [, sid, ks] = id.split(':'), k = Number(ks), n = s.senses[sid as SenseId];
     if (k >= n) { W.sel = null; inspect(); return; }
-    box2.innerHTML = `<h2>${SENSE_INFO[sid as SenseId].name.replace(/s$/, '')}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${SENSE_INFO[sid as SenseId].desc}</p>${useLine(senseMax(s, sid as SenseId))}${binBtn('rm', 'Remove this cell')}`;
+    box2.innerHTML = `<h2>${SENSE_INFO[sid as SenseId].name.replace(/s$/, '')}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${SENSE_INFO[sid as SenseId].desc}</p>${fieldLine(sid as SenseId, k, n)}${useLine(senseMax(s, sid as SenseId))}${binBtn('rm', 'Remove this cell')}`;
     graphSense(sid as SenseId, k, n);
     $('rm').onclick = () => { commit(removeSense(W.saved.genome, sid as SenseId)); W.sel = null; buildTray(); render(); };
     return;
@@ -344,6 +356,11 @@ const line = (g: CanvasRenderingContext2D, n: number, xy: (u: number) => [number
   for (let i = 0; i <= n; i++) { const [x, y] = xy(i / n); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
   g.stroke();
 };
+/** Cell k's field parameters in the saved brain (all 0 until training moves them: the even spread). */
+const fieldParams = (id: SenseId, k: number): number[] => {
+  const g = W.saved.genome, a = fieldIndex(g.spec, `i:${id}:${k}`);
+  return g.w.slice(a, a + FIELD_PARAMS[id]);
+};
 function wave(pref: number): void {
   const { g, X, Y } = plot({ x: [0, 360], y: [-1, 1], xt: [0, 90, 180, 270, 360], yt: [-1, 0, 1], xl: 'heading (°)', yl: 'activation' });
   line(g, 180, (u) => [X(u * 360), Y(hdAct((u * 2 * Math.PI), pref))]);
@@ -352,8 +369,8 @@ function wave(pref: number): void {
 function gridMap(k: number): void {
   const { g, w } = gctx(), metres = 220, m2p = w / metres;
   g.fillStyle = css('--canvas'); g.fillRect(0, 0, w, w);
-  const sc = gridScale(k), ph = gridPhase(k);
-  for (let y = 0; y < w; y += 1) for (let x = 0; x < w; x += 1) { g.fillStyle = heat(gridAct(x / m2p, y / m2p, sc, ph), 0.75); g.fillRect(x, y, 1.2, 1.2); }
+  const p = fieldParams('grid', k), f = gridOf(k, p[0], p[1], p[2], p[3]);
+  for (let y = 0; y < w; y += 1) for (let x = 0; x < w; x += 1) { g.fillStyle = heat(gridAct(x / m2p, y / m2p, f.scale, f.phase, f.ox, f.oy, f.rot), 0.75); g.fillRect(x, y, 1.2, 1.2); }
   const pts: [number, number][] = [];
   for (let i = 0; i < 64; i++) { const a = (i / 64) * Math.PI * 2, rr = 0.36 + 0.07 * Math.sin(a * 3) + 0.04 * Math.cos(a * 2); pts.push([w / 2 + Math.cos(a) * rr * w, w / 2 + Math.sin(a) * rr * w * 0.82]); }
   const road = (col: string, width: number, alpha: number) => { g.globalAlpha = alpha; g.strokeStyle = col; g.lineWidth = width; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.stroke(); g.globalAlpha = 1; };
@@ -367,18 +384,20 @@ function graphCurve(fn: Act, xl: string, yl = 'output', b = 0): void {
   const { g, X, Y } = plot({ x: [-4, 4], y: [ymin, ymax], xt: [-4, 0, 4], yt: [...new Set([ymin, 0, ymax])], xl, yl });
   line(g, 160, (u) => { const xv = -4 + 8 * u; return [X(xv), Y(clamp(transfer(code, xv + b), ymin, ymax))]; });
 }
-function speedLine(): void {
+function speedLine(gain: number): void {
   const top = CONFIG.car.wheelSpeed;
   const { g, X, Y } = plot({ x: [0, top], y: [0, 1], xt: [0, top / 2, top], yt: [0, 1], xl: 'speed (m/s)', yl: 'activation' });
-  line(g, 1, (u) => [X(u * top), Y(u)]);
+  line(g, 60, (u) => [X(u * top), Y(Math.min(1, u * gain))]);
 }
+/** The cell's graph from its learned field (B2e): the inspector shows how training moved it. */
 function graphSense(id: SenseId, k: number, n: number): void {
-  const S = CONFIG.senses;
-  if (id === 'boundary') polar(spreadDeg(k, n), S.boundary.rangeM, fieldWidthDeg('boundary', n), 5);
-  else if (id === 'landmark') polar(spreadDeg(k, n), S.landmark.rangeM, fieldWidthDeg('landmark', n), 10);
-  else if (id === 'hd') wave(hdPreferred(k, n));
+  const p = fieldParams(id, k);
+  if (id === 'boundary' || id === 'landmark') {
+    const f = fieldOf(id, k, n, p[0], p[1], p[2]);
+    polar(f.dirDeg, f.rangeM, f.widthDeg, id === 'boundary' ? 5 : 10);
+  } else if (id === 'hd') wave(hdOf(k, n, p[0]));
   else if (id === 'grid') gridMap(k);
-  else speedLine();
+  else speedLine(speedGainOf(p[0]));
 }
 
 // ---- tray of senses ----

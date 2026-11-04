@@ -59,7 +59,7 @@ describe('boundary vector cells: one rule for the sensors and the beams', () => 
         expect(dx).toBeCloseTo(cos(a), 12); expect(dy).toBeCloseTo(sin(a), 12);
         let best = 0;
         for (const off of [-w / 2, 0, w / 2]) { const d = bearingDir(hdg, deg + off); best = Math.max(best, fieldAct(off, castRay(tr.grid, c.x, c.y, d.dx, d.dy, R), R, w)); }
-        expect(boundaryValue(c, tr, k, n)).toBeCloseTo(best, 12);
+        expect(boundaryValue(c, tr, deg, w, R)).toBeCloseTo(best, 12);
       }
     }
     // three cells spread left, ahead, right: the left one looks counter-clockwise of the heading

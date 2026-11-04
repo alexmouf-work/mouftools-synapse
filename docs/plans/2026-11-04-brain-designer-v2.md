@@ -72,6 +72,46 @@ cell's tuning becomes part of what training learns, within bounds:
 - The inspector graphs (polar maps, the HD wave, the grid heatmap, the speed line) draw the learned field, so you can
   watch a cell's field change from one training run to the next.
 
+Built (B2e, 2026-11-04):
+- Each input cell's field parameters follow the biases in the genome (boundary and landmark 3: direction, width,
+  range; head direction 1; grid 4: scale, offset x, offset y, orientation; speed 1: gain), each a number within the
+  weight cap like a weight, 0 = the even spread. Mappings (senses.ts): direction = default + 45°·p; width =
+  default·2^(p/2) in 20–180°; range = default·2^(p/2) in 5–20 m (boundary) or 10–40 m (landmark); head direction
+  + 45°·p; grid scale = default·2^(p/2) in 10–60 m, offset 15 m·p, orientation 15°·p; speed gain 2^(p/4), 0.5–2×.
+  With every field at 0 the sim is bit-for-bit what it was (the race goldens recomputed with zero fields equal the
+  B2d ones); the goldens change only because genomes are longer (random test weights and evolution's mutation draws).
+- Evolution mutates every field parameter like a weight (σ times the temperature; fresh starts keep the given fields
+  rather than drawing them). Backprop learns, through the error at each sense cell: head direction (angle), grid
+  (scale, offset, orientation), speed (gain), landmark (direction, width, range) and boundary (range only). A
+  boundary cell's direction and width have no gradient: its three rays decide which wall they hit, not how strongly
+  it fires, so those stay where they are under backprop. Finite differences confirm every gradient (unit test).
+- Edits keep the learned fields; a new cell of a sense that has learned goes in the widest gap between the others;
+  a sense that never learned keeps the even spread. A save from before (weights, or weights and biases) loads with
+  every field at its default. The inspector draws the cell's learned field and, once trained, a "Learned field …"
+  line (e.g. "18° · 60° wide · 20.0 m"); the drive view's beams follow each boundary cell's learned direction and
+  range.
+
+S1 on the default brain (seeds 1–20, T 6M, 60 s episodes, Node 4 workers, build container):
+
+| | evolution, B2b | evolution, B2e | backprop, B2b | backprop, B2e |
+|---|---|---|---|---|
+| final training fitness, median | 3065 (20/20 ≥ 500) | 3106 (20/20 ≥ 500) | 120 (0/20 ≥ 500) | 121 (0/20 ≥ 500) |
+| gate: end ≥ 1.5× start | 20/20 | 20/20 | 19/20 | 19/20 |
+| (a) median 30 s on the unseen track | 1446 m (×15.6) | 1403 m (gen 1: 93 m, ×15.1) | 162 m | 182 m |
+| (b) ≥ 80% of a lap in 30 s | 15/20 | 15/20 | 0/20 | 0/20 |
+| (c) end ≥ 2× gen 1 | 19/20 | 19/20 | 19/20 | 19/20 |
+| (d) Minimal (1 boundary, 1 linear) ≥ 50% of a lap | 17/20 | 18/20 | 0/20 | 0/20 |
+| 60 s: ≥ 1.6 laps / Minimal ≥ 1 lap | 13/20 / 15/20 | 12/20 / 14/20 | 0/20 / 0/20 | 0/20 / 0/20 |
+| (f) same seed → same hash; 1 vs 4 workers | pass | pass | pass | pass |
+| phase time, median (max) | 3.88 s (4.56) | 3.86 s (6.00) | 6.31 s (11.0) | 7.16 s (8.19) |
+
+Evolution is level with B2b (within seed-to-seed noise: the runs differ from the first mutation, since genomes are
+longer). What it does with the fields, seeds 1–5: it turns the boundary cell 7–35° to the right of the nose and
+narrows it (60° → 34–60°), keeps its 20 m range, and moves the head-direction cell 10–22° either way. Backprop
+moves only the head-direction angle (±3°) and leaves the boundary range at 20 m; it still copies the teacher from
+inputs that cannot see the road, so it still creeps (as B2b). Backprop's phase is about 1 s slower (the field terms
+every tick); the machine was also slower than for B2b.
+
 ## 3ac. Temperature: how boldly training explores (2026-11-04)
 "let's add a temperature slider as well somewhere." → "Training exploration", "In the Train popup". Under the
 generations choice: Temperature, a log-scale multiplier ×0.25 to ×4 (default ×1, the tuned value), on the chosen

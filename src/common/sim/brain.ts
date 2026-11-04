@@ -3,10 +3,11 @@
 // sums its bias and its incoming wires in canonical wire order: z = b + Σ w·x (built-in biases, 2026-11-04). Every node has a firing rate 0..1 (rateOf), which the energy rule
 // charges and the views flash.
 import { CONFIG, type Act } from '../config';
-import { sigmoid, tanh } from '../fmath';
+import { log, PI, sigmoid, tanh, wrapAngle } from '../fmath';
 import { Hasher } from '../hash';
 import { energyRefusal, nodeCoefs, type Mode } from './energy';
-import { columns, inputIds, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
+import { columns, FIELD_PARAMS, fieldCount, fieldIndex, inputIds, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
+import { FIELD_DIR_DEG, FIELD_LOG2, fieldOf, fieldWidthDeg, gridOf, GRID_ROT, GRID_SHIFT_M, gridScale, HD_STEP, hdOf, hdPreferred, SPEED_LOG2, speedGainOf, spreadDeg } from './senses';
 
 export const ACT_CODE: Record<Act, number> = { relu: 1, sigmoid: 2, tanh: 3, linear: 5 };
 const TANH = ACT_CODE.tanh;
@@ -35,6 +36,19 @@ export interface Net {
   bias: Float64Array;
   /** Number of wires (the parameter vector's biases start here). */
   wires: number;
+  /** Number of field parameters (they follow the biases); per input cell, where its own start. */
+  fields: number;
+  fieldAt: Int32Array;
+  /**
+   * Per input cell, its learned tuning (4 slots; senses.ts): boundary and landmark [direction °, width °, range m],
+   * head direction [preferred angle], grid [scale m, offset x m, offset y m, orientation], speed [gain]; tuneD holds
+   * d(tuning)/d(parameter) for each slot (0 where a bound clamps it), for backprop; gridPhase the grid cell's phase.
+   */
+  tune: Float64Array;
+  tuneD: Float64Array;
+  gridPhase: Float64Array;
+  /** Scratch: per input, the last reading's strongest boundary ray (distance, angular weight); sensors writes it. */
+  ray: Float64Array;
   /** Per node: energy (% of the supply) per unit of firing rate, its own cost plus the wires it drives. */
   coef: Float64Array;
   /** Node ids, in node order. */
@@ -60,17 +74,49 @@ export function compile(g: Genome): Net {
   for (let n = 0; n < nNodes; n++) inStart[n + 1] += inStart[n];
   const bias = new Float64Array(nNodes);
   for (let d = nIn; d < nNodes; d++) bias[d] = g.w[m + d - nIn];
-  return {
+  const fieldAt = Int32Array.from(inputIds(s), (id) => fieldIndex(s, id));
+  const net: Net = {
     spec: s, nIn, nHidden: outStart - nIn, nNodes, outStart, act, sense, cellK, cellN, inStart, from, w, specIdx, bias, wires: m,
+    fields: fieldCount(s), fieldAt, tune: new Float64Array(4 * nIn), tuneD: new Float64Array(4 * nIn), gridPhase: new Float64Array(nIn), ray: new Float64Array(2 * nIn),
     coef: Float64Array.from(nodeCoefs(s)), ids,
   };
+  retune(net, g.w);
+  return net;
 }
 
-/** Replace the parameters of a compiled net in place (same spec): wire weights, then biases. */
+const SENSE_OF = SENSE_IDS; // SENSE_CODE order
+/** Decode every input cell's tuning from its field parameters (senses.ts is the one definition). */
+function retune(net: Net, params: ArrayLike<number>): void {
+  const { tune, tuneD } = net;
+  for (let i = 0; i < net.nIn; i++) {
+    const id = SENSE_OF[net.sense[i]], k = net.cellK[i], n = net.cellN[i], a = net.fieldAt[i], q = 4 * i;
+    if (id === 'boundary' || id === 'landmark') {
+      const f = fieldOf(id, k, n, params[a], params[a + 1], params[a + 2]);
+      tune[q] = f.dirDeg; tune[q + 1] = f.widthDeg; tune[q + 2] = f.rangeM;
+      tuneD[q] = FIELD_DIR_DEG; tuneD[q + 1] = f.dWidth; tuneD[q + 2] = f.dRange;
+    } else if (id === 'hd') {
+      tune[q] = hdOf(k, n, params[a]); tuneD[q] = HD_STEP;
+    } else if (id === 'grid') {
+      const gr = gridOf(k, params[a], params[a + 1], params[a + 2], params[a + 3]);
+      tune[q] = gr.scale; tune[q + 1] = gr.ox; tune[q + 2] = gr.oy; tune[q + 3] = gr.rot; net.gridPhase[i] = gr.phase;
+      tuneD[q] = gr.dScale; tuneD[q + 1] = GRID_SHIFT_M; tuneD[q + 2] = GRID_SHIFT_M; tuneD[q + 3] = GRID_ROT;
+    } else {
+      const gain = speedGainOf(params[a]);
+      tune[q] = gain; tuneD[q] = gain * LN2 * SPEED_LOG2;
+    }
+  }
+}
+const LN2 = 0.6931471805599453;
+
+/** Replace the parameters of a compiled net in place (same spec): wire weights, biases, then the fields. */
 export function setWeights(net: Net, params: ArrayLike<number>): void {
   for (let c = 0; c < net.w.length; c++) net.w[c] = params[net.specIdx[c]];
   for (let d = net.nIn; d < net.nNodes; d++) net.bias[d] = params[net.wires + d - net.nIn];
+  retune(net, params);
 }
+
+/** Wires and biases: the parameters every edit resets (the fields after them are kept, see carryFields). */
+export const weightCount = (s: BrainSpec): number => paramCount(s) - fieldCount(s);
 
 export function transfer(code: number, x: number): number {
   switch (code) {
@@ -128,7 +174,7 @@ export const nodeRate = (net: Net, d: number, v: number): number =>
   d < net.nIn ? (net.sense[d] === SENSE_CODE.hd ? (v + 1) / 2 : v) : rateOf(net.act[d], v);
 
 /** The `signal` probe channel, per parameter: each wire's sender output × weight, then each bias (its constant push). */
-export function signalOf(net: Net, vals: ArrayLike<number>, out = new Float64Array(net.wires + net.nNodes - net.nIn)): Float64Array {
+export function signalOf(net: Net, vals: ArrayLike<number>, out = new Float64Array(net.wires + net.nNodes - net.nIn + net.fields)): Float64Array {
   for (let k = 0; k < net.w.length; k++) out[net.specIdx[k]] = vals[net.from[k]] * net.w[k];
   for (let d = net.nIn; d < net.nNodes; d++) out[net.wires + d - net.nIn] = net.bias[d];
   return out;
@@ -138,48 +184,112 @@ export const zeroGenome = (spec: BrainSpec): Genome => ({ spec, w: new Array(par
 export const defaultGenome = (): Genome => zeroGenome(defaultSpec());
 
 // ---- edit ops (pure; the designer calls nothing else to change a brain). Any edit leaves an untrained brain: its
-// weights go back to 0 (ruling 2026-11-04: wires are grey until trained, and any edit returns them to grey). ----
+// weights go back to 0 (ruling 2026-11-04: wires are grey until trained, and any edit returns them to grey). The input
+// cells' learned fields stay (plan §3ad): each keeps its field where it is; a new cell of a sense that has learned
+// fields goes in the widest gap between them; a sense that never learned keeps the even spread. ----
 
 export type EditRefusal = 'full' | 'empty' | 'last-layer' | 'energy';
 export type EditResult = { ok: true; genome: Genome } | { ok: false; reason: EditRefusal; why?: string };
 
 const clone = (s: BrainSpec): BrainSpec => ({ v: 2, senses: { ...s.senses }, layers: s.layers.map((l) => ({ ...l })) });
-function done(s: BrainSpec, mode: Mode): EditResult {
+function done(s: BrainSpec, mode: Mode, from?: Genome): EditResult {
   validateSpec(s);
   const why = energyRefusal(s, mode);
-  return why ? { ok: false, reason: 'energy', why } : { ok: true, genome: zeroGenome(s) };
+  if (why) return { ok: false, reason: 'energy', why };
+  const g = zeroGenome(s);
+  if (from) carryFields(from, g);
+  return { ok: true, genome: g };
+}
+
+const CAP = (): number => CONFIG.brain.weightCap;
+const clampP = (p: number): number => Math.max(-CAP(), Math.min(CAP(), p));
+const log2 = (x: number): number => log(x) / LN2;
+const wrapDeg = (d: number): number => d - 360 * Math.round(d / 360);
+
+/** Absolute tunings of one sense's cells in `g` (direction °, width °, range m for fields; angle for hd; …). */
+function absFields(g: Genome, id: SenseId): number[][] {
+  const n = g.spec.senses[id], out: number[][] = [];
+  for (let k = 0; k < n; k++) {
+    const a = fieldIndex(g.spec, `i:${id}:${k}`), p = g.w.slice(a, a + FIELD_PARAMS[id]);
+    if (id === 'boundary' || id === 'landmark') { const f = fieldOf(id, k, n, p[0], p[1], p[2]); out.push([f.dirDeg, f.widthDeg, f.rangeM]); }
+    else if (id === 'hd') out.push([hdOf(k, n, p[0])]);
+    else if (id === 'grid') { const gr = gridOf(k, p[0], p[1], p[2], p[3]); out.push([gr.scale, p[1], p[2], p[3]]); }
+    else out.push([p[0]]);
+  }
+  return out;
+}
+
+/** The middle of the widest gap between angles (degrees, on the circle). */
+function widestGap(angles: number[]): number {
+  if (!angles.length) return 0;
+  const a = angles.map(wrapDeg).sort((x, y) => x - y);
+  let best = -1, at = 0;
+  for (let i = 0; i < a.length; i++) {
+    const lo = a[i], hi = i + 1 < a.length ? a[i + 1] : a[0] + 360;
+    if (hi - lo > best) { best = hi - lo; at = lo + (hi - lo) / 2; }
+  }
+  return wrapDeg(at);
+}
+
+/** Put old's learned fields into g (a fresh genome of the new spec), re-expressed against the new spec's defaults. */
+export function carryFields(old: Genome, g: Genome): void {
+  const s = g.spec;
+  for (const id of SENSE_IDS) {
+    const n = s.senses[id];
+    if (!n || !old.spec.senses[id]) continue;
+    const o0 = fieldIndex(old.spec, `i:${id}:0`), np = FIELD_PARAMS[id];
+    const learned = old.w.slice(o0, o0 + old.spec.senses[id] * np).some((x) => x !== 0);
+    if (!learned) continue; // never learned: the even spread, re-tuned for the new count
+    const abs = absFields(old, id);
+    for (let k = 0; k < n; k++) {
+      const a = fieldIndex(s, `i:${id}:${k}`), f = k < abs.length ? abs[k] : null;
+      if (id === 'boundary' || id === 'landmark') {
+        const dir = f ? f[0] : widestGap(abs.map((x) => x[0]));
+        g.w[a] = clampP(wrapDeg(dir - spreadDeg(k, n)) / FIELD_DIR_DEG);
+        if (f) {
+          g.w[a + 1] = clampP(log2(f[1] / fieldWidthDeg(id, n)) / FIELD_LOG2);
+          g.w[a + 2] = clampP(log2(f[2] / (id === 'boundary' ? CONFIG.senses.boundary.rangeM : CONFIG.senses.landmark.rangeM)) / FIELD_LOG2);
+        }
+      } else if (id === 'hd') {
+        const ang = f ? f[0] : (widestGap(abs.map((x) => (x[0] * 180) / PI)) * PI) / 180;
+        g.w[a] = clampP(wrapAngle(ang - hdPreferred(k, n)) / HD_STEP);
+      } else if (id === 'grid') {
+        if (f) { g.w[a] = clampP(log2(f[0] / gridScale(k)) / FIELD_LOG2); g.w[a + 1] = f[1]; g.w[a + 2] = f[2]; g.w[a + 3] = f[3]; }
+      } else if (f) g.w[a] = f[0];
+    }
+  }
 }
 
 export function addSense(g: Genome, id: SenseId, mode: Mode = 'sandbox'): EditResult {
   if (g.spec.senses[id] >= CONFIG.senses[id].max) return { ok: false, reason: 'full' };
   const s = clone(g.spec); s.senses[id]++;
-  return done(s, mode);
+  return done(s, mode, g);
 }
 export function removeSense(g: Genome, id: SenseId): EditResult {
   if (g.spec.senses[id] < 1) return { ok: false, reason: 'empty' };
   const s = clone(g.spec); s.senses[id]--;
-  return done(s, 'sandbox');
+  return done(s, 'sandbox', g);
 }
 /** A new hidden layer at position `at` (0 = right after the senses), with CONFIG.brain.newLayerNeurons tanh neurons. */
 export function insertLayer(g: Genome, at: number, mode: Mode = 'sandbox'): EditResult {
   if (g.spec.layers.length >= CONFIG.brain.maxLayers) return { ok: false, reason: 'full' };
   const s = clone(g.spec); s.layers.splice(Math.max(0, Math.min(at, s.layers.length)), 0, { n: CONFIG.brain.newLayerNeurons, fn: 'tanh' });
-  return done(s, mode);
+  return done(s, mode, g);
 }
 export function removeLayer(g: Genome, L: number): EditResult {
   if (g.spec.layers.length <= 1) return { ok: false, reason: 'last-layer' };
   const s = clone(g.spec); s.layers.splice(L, 1);
-  return done(s, 'sandbox');
+  return done(s, 'sandbox', g);
 }
 export function setLayerSize(g: Genome, L: number, n: number, mode: Mode = 'sandbox'): EditResult {
   if (n < 1) return { ok: false, reason: 'empty' };
   if (n > CONFIG.brain.maxPerLayer) return { ok: false, reason: 'full' };
   const s = clone(g.spec); s.layers[L].n = n;
-  return done(s, mode);
+  return done(s, mode, g);
 }
 export function setLayerFn(g: Genome, L: number, fn: Act, mode: Mode = 'sandbox'): EditResult {
   const s = clone(g.spec); s.layers[L].fn = fn;
-  return done(s, mode);
+  return done(s, mode, g);
 }
 
 // ---- canonical JSON + hash ----

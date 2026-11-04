@@ -23,13 +23,14 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `fmath.ts` | sin, cos, atan, atan2, exp, tanh, sigmoid, log from + − × ÷, sqrt, floor, round only. |
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
-| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the default brain, column ids, the canonical wire order (`wireList`), the parameter layout (weights then biases: `paramCount`, `biasIndex`), `Genome`, validation. |
-| `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs. |
+| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the default brain, column ids, the canonical wire order (`wireList`), the parameter layout (weights, biases, then each input cell's field: `paramCount`, `biasIndex`, `FIELD_PARAMS`, `fieldIndex`), `Genome`, validation. |
+| `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs; each cell's default tuning and its learned field (`fieldOf`, `hdOf`, `gridOf`, `speedGainOf`). |
 | `sim/energy.ts` | THE energy rule: per-node coefficients, the flat-out and resting loads, the speed cap (floor 10%), the match refusal, the designer's "at maximum firing rate" figures. |
 | `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
-| `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts); `bearingDir`, the one field-direction rule the drive view's beams also use. |
+| `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule the drive view's beams also use. |
+| `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for backprop (B2e): head direction, grid, speed, landmark, boundary range. |
 | `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
 | `sim/teacher.ts` | The scripted pure-pursuit teacher backprop copies (`teacherWheels`), and `driveTeacher` (the teacher alone, a reference for tests and the bench). |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry with each trainer's label and refusal (`trainerRefusal`). |
@@ -56,7 +57,16 @@ a cell re-tunes the set (cells are numbered by count). Hidden layers: 1–8, eac
 tanh. Every hidden neuron and every wheel has a built-in bias (2026-11-04, §3ab): z = b + Σ w·x; it is not a cell
 and costs nothing itself. Node order: sense cells (by sense, then cell), hidden layer by layer, wheels. A genome's
 parameters are the weights in `wireList` order (column by column, source by source, then target), then the biases
-in node order (`paramCount`, `biasIndex`); evolution mutates biases like weights, backprop learns Δb = η·δ. The default brain: one boundary vector cell, one
+in node order (`paramCount`, `biasIndex`), then each input cell's field parameters in input order (B2e, §3ad:
+boundary and landmark direction, width, range; head direction its angle; grid scale, offset x/y, orientation; speed
+its gain; `fieldIndex`). Every parameter is a number within the weight cap; a field parameter of 0 is the even
+spread, so an untrained cell reads exactly as before (the race goldens with fields at 0 reproduce the B2d hashes).
+They map to bounded tunings (direction default + 45°·p, any; width default·2^(p/2) in 20–180°; range default·2^(p/2)
+in 5–20 m or 10–40 m; head direction + 45°·p; grid scale default·2^(p/2) in 10–60 m, offset 15 m·p, orientation
+15°·p; speed gain 2^(p/4), 0.5–2×), decoded into `net.tune` by `compile` and `setWeights`. Evolution mutates biases
+and fields like weights (scaled by the temperature); backprop learns Δb = η·δ and the fields that have a gradient
+(`fieldgrad.ts`: the error at each sense cell, Σ w·δ, times ∂reading/∂p). A fresh start draws weights and biases
+and keeps the fields it is given. The default brain: one boundary vector cell, one
 head-direction cell, three tanh neurons. Every node has a firing rate 0..1 (`rateOf`: tanh and linear (y + 1)/2,
 ReLU min(y, 1), sigmoid y; head direction (cos + 1)/2; the other senses their value).
 
@@ -71,8 +81,11 @@ Retired: the per-minute pool, the over-budget noise, the energy-left input, the 
 ### Edit ops
 Every change the designer makes is a pure function in `brain.ts` on a `Genome`: `addSense`, `removeSense`,
 `insertLayer`, `removeLayer`, `setLayerSize`, `setLayerFn`, each refusing at a cap (`full`, `empty`, `last-layer`) or,
-in match mode, on energy. Any edit leaves an untrained brain: every weight goes back to 0 (ruling 2026-11-04: wires
-are grey until trained, and any edit returns them to grey).
+in match mode, on energy. Any edit leaves an untrained brain: every weight and bias goes back to 0 (ruling
+2026-11-04: wires are grey until trained, and any edit returns them to grey). The learned fields stay (§3ad,
+`carryFields`): each cell keeps its field, re-expressed against the new count's defaults; a new cell of a sense that
+has learned goes in the widest gap between the others (direction, or head-direction angle); a sense that never
+learned keeps the even spread.
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws
@@ -131,7 +144,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - **Backprop** (`backprop.ts`, kernel `imitate.ts`): copy the teacher, DAgger-style. The brain drives (an episode is
   teacher-driven with probability β, 0.5 falling to 0 by 25% of T: classic DAgger mixing), the teacher labels every
   state the brain saw, and each tick adds the generalised delta rule's terms (`grad.ts`): output δ = (t − y)·f′(z),
-  hidden δ = f′(z)·Σ w·δ, term δ·x; the round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant).
+  hidden δ = f′(z)·Σ w·δ, term δ·x, and for each sense cell's field δ_input·∂reading/∂p (`fieldgrad.ts`); the
+  round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant).
   The wheels are tanh like any neuron. The teacher's targets account for the tick's speed cap. On the default v2
   brain it does not learn (no bias input, see the trainers plan); it does on brains with a steady input.
 - **The teacher** (`sim/teacher.ts`): pure pursuit on the centreline (privileged: the brain never sees the centreline).
@@ -161,7 +175,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   are motor neurons, wires grey until trained then in their weight colours; tap to inspect; "+"/"−" for neurons and
   layers that vanish at a limit; the panel: the activation graph from the engine's own rules (polar fields with
   distance rings, the head-direction wave, the grid heatmap with a 50 m bar, transfer and speed curves, axis titles,
-  axes through 0), the one-line description, "At maximum firing rate, uses x% energy" from energy.ts, the Neurons
+  axes through 0; a sense cell's graph is drawn from its learned field, with a "Learned field …" line once training
+  has moved it), the one-line description, "At maximum firing rate, uses x% energy" from energy.ts, the Neurons
   slider, the bin; a trained neuron's or wheel's bias, its transfer curve plotted against Σ w·x so the bias shifts it;
   the energy split resting–flat out; Reset with a confirmation; the trainer picker and the centred
   "Learning Rule : …" strip; Train asks how many generations and, under it, the Temperature (B2d, mock-up v26: a
@@ -172,7 +187,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   "turn sideways" card. Additions to the mock-up: the Music and Sound effects toggles in the top bar; the
   wordmark is the way back to the title. No Drive button: the drive view is reached after training.
 - Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
-  {seed, phases, temps}, genome}` (canonical genome JSON; `temps` holds each phase's temperature, log2 of the
+  {seed, phases, temps}, genome}` (canonical genome JSON; a save from before the biases or the fields gets them at 0; `temps` holds each phase's temperature, log2 of the
   multiplier, so seed, phase and temperature reproduce every run; a save from before B2d has none: all ×1). Reads and writes are in try/catch: a missing save starts from the
   starting brain; an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
   the starting brain with a one-time note; a v2 save from before the biases loads with every bias 0; a browser that
@@ -180,7 +195,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   tab closes. Any edit, and Reset, clear the training history (new seed, trains from scratch).
 - `ui/training/` — the training view. Train hands the saved brain over; the seed is the brain's own (picked on its
   first Train), the phase is its count of finished runs, so every run is reproducible and a retrain sees new tracks.
-  All-zero weights train from scratch (fresh), anything else continues from them (carry: slot 0 is the saved genome
+  All-zero weights and biases train from scratch (fresh; the cells' learned fields are kept), anything else continues from them (carry: slot 0 is the saved genome
   exactly). `runPhase` steps one generation at a time on a `BrowserPool`. Layout (B6, `reference/training-view-mockup.html`):
   a panel of its own on the left, min(20vw, 280px) wide and full height (fitness per generation on top: best and
   mean against generations, the x-axis spanning every generation asked for, axes through 0, "gen n of N", Stop, then
@@ -240,7 +255,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   the chase camera swings slowly round the car, whose wheels keep turning at their outputs. `brainPanel.ts` draws
   the brain's columns small on a canvas: wires in their weight colours (`weights.ts`), every cell flashing at
   14 Hz × its firing rate from the recording (`spikes.ts`; a short yellow flash; steady glow under reduced motion),
-  wheels with their speed. The beams take their directions from `sensors.bearingDir` (checked against the sim at
+  wheels with their speed. The beams follow each boundary cell's learned field (direction and range); their directions come from `sensors.bearingDir` (checked against the sim at
   several poses). Drive is offered by the finished training view.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
@@ -273,7 +288,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `scripts/checks/workbench.ts` — the designer in headless Chromium: the starting brain, the energy split = energy.ts,
   the rule strip and trainer picker, tray → cell selected with graph, description and energy line, bin, full sense,
   layer panel (function, live slider, energy), "+"/"−" and their limits, every edit untrained, Reset and Train
-  dialogs, reload, corrupt and pre-v2 saves, and an overlap audit of cells, buttons and headers for brains up to
+  dialogs, reload, corrupt and pre-v2 saves, a learned field drawn by the inspector and a save from before the fields
+  loading quietly, and an overlap audit of cells, buttons and headers for brains up to
   8 × 8 with every sense full, light and dark, 1440×900 and 844×390; portrait card; screenshots to `out/s2/`.
 - `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the designer (the
   generations popup),

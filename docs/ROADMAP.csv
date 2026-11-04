@@ -14,6 +14,7 @@ B3,Brain v2 designer (port of reference/brain-v2-mockup.html),review,lands with 
 B2c,Title screen first; music from the title on (0.6 s cross-fades; keeps playing unfocused); rail with links and credits; racing effects stop on leaving; Music and Sound effects toggles,review,docs/plans/2026-11-04-sound.md (Title onwards)
 B6,Training view: left panel (fitness; live brain) and corner map; seeded ghosts every generation at 12x; newest first; Stop = best so far; finish flags,review,docs/plans/2026-11-04-tracks-training-matches.md §3 (Built)
 B2d,Larger input cells (R 16; symbol 1.7R); Temperature slider in the Train popup (x0.25-x4; a run input; golden at x2); training view shows all 64 ghosts,review,docs/plans/2026-11-04-brain-designer-v2.md §3ac (Built); tracks plan §3
+B2e,Learnable receptive fields (evolution moves all; backprop those with a gradient); inspector draws the learned field; S1 re-run,review,docs/plans/2026-11-04-brain-designer-v2.md §3ad (Built)
 B2b,Built-in biases for every neuron and wheel; S1 re-run (evolution and backprop),review,docs/plans/2026-11-04-brain-designer-v2.md (B2b)
 SND,Sound: music (lounge / race / winner) + countdown + engine + mute,review,principal: "please implement it all"; docs/plans/2026-11-04-sound.md
 T2,Actor-critic trainer,next,critic owned by the trainer; TD error; same T

@@ -3,9 +3,10 @@
 // default brain quietly; a broken one starts from it and says so; a save from before brain v2 (versions 1 and 2) is
 // reset to the default brain with a one-time note (Synapse changed how brains work). A brain v2 save from before the
 // built-in biases (a weight per wire only) loads with every bias at 0. A save from before the temperature slider (B2d)
-// has no `temps`: its phases ran at 0 (×1).
+// has no `temps`: its phases ran at 0 (×1). A save from before the learned fields (B2e) gets every field at its
+// default (0).
 import { defaultGenome, genomeToJSON } from '../../../common/sim/brain';
-import { biasCount, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
+import { biasCount, fieldCount, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
 import { validTemperature } from '../../../common/train/trainer';
 
 export const SAVE_KEY = 'synapse.brain';
@@ -49,7 +50,13 @@ export function parse(text: string | null): { status: 'ok' | 'missing' | 'corrup
     if (!TRAINERS.includes(o.trainer as TrainerId)) throw new Error('save trainer');
     if (!o.genome) throw new Error('save genome');
     validateSpec(o.genome.spec);
-    if (Array.isArray(o.genome.w) && o.genome.w.length === wireCount(o.genome.spec)) o.genome = { ...o.genome, w: [...o.genome.w, ...new Array(biasCount(o.genome.spec)).fill(0)] };
+    // older brain v2 saves: weights only (before B2b) or weights and biases (before B2e); the rest start at 0 (no bias,
+    // the even spread of fields), so they drive exactly as they did
+    if (Array.isArray(o.genome.w)) {
+      const sp = o.genome.spec, nw = wireCount(sp), nb = biasCount(sp), nf = fieldCount(sp);
+      if (o.genome.w.length === nw) o.genome = { ...o.genome, w: [...o.genome.w, ...new Array(nb + nf).fill(0)] };
+      else if (o.genome.w.length === nw + nb) o.genome = { ...o.genome, w: [...o.genome.w, ...new Array(nf).fill(0)] };
+    }
     validateGenome(o.genome);
     return { status: 'ok', saved: { name: o.name, genome: o.genome, train: { seed: train.seed, phases: train.phases, temps: [...temps] }, trainer: o.trainer as TrainerId } };
   } catch (e) {

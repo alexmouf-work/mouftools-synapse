@@ -13,11 +13,12 @@ import { phaseSeeds } from '../../src/common/train/phase';
 import { fresh } from '../../src/common/train/rollout';
 import { hashU } from '../../src/common/rng';
 import { readSensors } from '../../src/common/sim/sensors';
+import { fieldGrads } from '../../src/common/sim/fieldgrad';
 import { trainerRefusal } from '../../src/common/train/trainer';
 
 /** One speed cell → one neuron (fn) → the four wheels (tanh). Parameters: speed→h, h→FL, FR, RL, RR; biases h, FL, FR, RL, RR. */
 const tiny = (fn: 'tanh' | 'sigmoid' | 'relu' | 'linear'): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
-const W = [0.6, 0.8, -0.3, 0.5, 0.2, 0.1, -0.2, 0.05, 0, 0.3];
+const W = [0.6, 0.8, -0.3, 0.5, 0.2, 0.1, -0.2, 0.05, 0, 0.3, 0]; // …then the speed cell's field (gain ×1)
 const SPD = 0.5, TARGET = 0.9;
 const F: Record<string, [(z: number) => number, (z: number) => number]> = {
   tanh: [Math.tanh, (z) => 1 - Math.tanh(z) ** 2],
@@ -33,7 +34,7 @@ function engineGrad(fn: 'tanh' | 'sigmoid' | 'relu' | 'linear') {
   evalNet(net, [SPD], vals);
   preActivations(net, vals, z);
   const err = [TARGET - vals[net.outStart], 0, 0, 0];
-  const grad = new Float64Array(10);
+  const grad = new Float64Array(11);
   backward(net, vals, z, err, delta, grad);
   return { grad, y: vals[net.outStart] };
 }
@@ -84,6 +85,7 @@ describe('copying the teacher (imitate kernel)', () => {
     preActivations(net, vals, z);
     const grad = new Float64Array(paramCount(spec));
     backward(net, vals, z, [0, 1, 2, 3].map((k) => target[k] - vals[net.outStart + k]), delta, grad);
+    fieldGrads(net, c, t, delta, grad); // and the cells' fields, from the error at each cell
     expect(Array.from(out.grad)).toEqual(Array.from(grad));
     expect(grad.some((g) => g !== 0)).toBe(true);
     expect(out.stats[1]).toBe(1);

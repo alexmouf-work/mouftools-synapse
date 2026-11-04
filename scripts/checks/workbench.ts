@@ -17,10 +17,10 @@ import { mkdirSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
 import { CONFIG } from '../../src/common/config';
-import { defaultGenome, genomeHash, restRate, zeroGenome } from '../../src/common/sim/brain';
+import { defaultGenome, genomeHash, restRate, weightCount, zeroGenome } from '../../src/common/sim/brain';
 import { layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
-import { biasIndex, type BrainSpec, type Genome } from '../../src/common/sim/spec';
-import { parse, SAVE_KEY } from '../../src/client/ui/designer/store';
+import { biasIndex, defaultSpec, fieldIndex, paramCount, type BrainSpec, type Genome } from '../../src/common/sim/spec';
+import { parse, SAVE_KEY, serialize, startSaved } from '../../src/client/ui/designer/store';
 
 const OUT = 'out/s2';
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -195,6 +195,30 @@ async function main() {
     await page.waitForSelector('#net g.cell');
     check((await page.locator('#toast').isHidden()), 'the note shows once');
     await page.context().close();
+
+    // 9b. learned fields (B2e): the inspector draws the cell's learned field; a save from before them loads as it was
+    const graphOf = async (fieldDir: number) => {
+      const g = zeroGenome(defaultSpec()); g.w[fieldIndex(g.spec, 'i:boundary:0')] = fieldDir;
+      const pg = await open({ w: 1440, h: 900, save: serialize({ ...startSaved(), genome: g }) });
+      await pg.click('#net g.cell[data-id="i:boundary:0"]');
+      await pg.waitForTimeout(200);
+      const url = await pg.evaluate(() => (document.querySelector('#insp #graph') as HTMLCanvasElement).toDataURL());
+      const line = await pg.locator('#insp [data-field]').count() ? await pg.locator('#insp [data-field]').innerText() : '';
+      await pg.context().close();
+      return { url, line };
+    };
+    const even = await graphOf(0), turned = await graphOf(2);
+    check(even.url !== turned.url && even.line === '' && turned.line.startsWith('Learned field 90°'),
+      `the inspector draws the learned field (a boundary cell turned 90° draws differently; "${turned.line}")`);
+    {
+      const g = defaultGenome(), old = JSON.parse(serialize({ ...startSaved(), genome: g }));
+      old.genome.w = old.genome.w.slice(0, weightCount(g.spec)); // a save from before the fields
+      page = await open({ w: 1440, h: 900, save: JSON.stringify(old) });
+      const sv = await saved(page);
+      check(sv.genome.w.length === paramCount(sv.genome.spec) && sv.genome.w.slice(weightCount(sv.genome.spec)).every((x) => x === 0) && (await page.locator('#toast').isHidden()),
+        'a save from before the learned fields loads quietly, every field at its default');
+      await page.context().close();
+    }
 
     // 10. overlap audit: brain sizes, light and dark, desktop and landscape phone
     for (const [w, hgt, dark, mobile] of [[1440, 900, false, false], [1440, 900, true, false], [844, 390, false, true], [844, 390, true, true]] as const) {

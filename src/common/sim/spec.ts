@@ -12,7 +12,10 @@ export interface LayerSpec { n: number; fn: Act }
 export interface BrainSpec { v: 2; senses: Record<SenseId, number>; layers: LayerSpec[] }
 /**
  * The brain's parameters: one weight per wire in canonical order (wireList), then one bias per hidden neuron and per
- * wheel, in node order (2026-11-04: "the neurons can have a bias internally as well").
+ * wheel, in node order (2026-11-04: "the neurons can have a bias internally as well"), then each input cell's field
+ * parameters in input order (B2e, "allow the input cells to vary their receptive fields … as they learn"; see
+ * FIELD_PARAMS and senses.ts). Every parameter is a number within the weight cap; a field parameter of 0 is the
+ * cell's default tuning.
  */
 export interface Genome { spec: BrainSpec; w: number[] }
 
@@ -50,8 +53,23 @@ export function wireCount(s: BrainSpec): number {
 
 /** Neurons with a bias: every hidden neuron and every wheel. */
 export const biasCount = (s: BrainSpec): number => s.layers.reduce((a, l) => a + l.n, 0) + OUTPUTS.length;
-/** Length of a genome's parameter vector: the wires' weights, then the biases. */
-export const paramCount = (s: BrainSpec): number => wireCount(s) + biasCount(s);
+/**
+ * Learnable field parameters per cell (B2e, plan §3ad): boundary and landmark cells their direction, width and range;
+ * head direction its preferred angle; grid cells their scale, offset (x, y) and orientation; speed its gain.
+ */
+export const FIELD_PARAMS: Record<SenseId, number> = { boundary: 3, landmark: 3, hd: 1, grid: 4, speed: 1 };
+export const fieldCount = (s: BrainSpec): number => SENSE_IDS.reduce((a, id) => a + s.senses[id] * FIELD_PARAMS[id], 0);
+/** Length of a genome's parameter vector: the wires' weights, the biases, then the input cells' fields. */
+export const paramCount = (s: BrainSpec): number => wireCount(s) + biasCount(s) + fieldCount(s);
+/** Where input cell `id`'s (i:sense:k) field parameters start in the parameter vector. */
+export function fieldIndex(s: BrainSpec, id: string): number {
+  let at = wireCount(s) + biasCount(s);
+  for (const x of inputIds(s)) {
+    if (x === id) return at;
+    at += FIELD_PARAMS[x.split(':')[1] as SenseId];
+  }
+  throw new Error(`spec: ${id} is not an input cell`);
+}
 /** Where node `id`'s bias sits in the parameter vector (hidden neurons layer by layer, then the wheels). */
 export function biasIndex(s: BrainSpec, id: string): number {
   const C = columns(s), off = wireCount(s);
@@ -79,7 +97,7 @@ export function validateSpec(s: BrainSpec): void {
 export function validateGenome(g: Genome): void {
   validateSpec(g.spec);
   const n = paramCount(g.spec);
-  if (g.w.length !== n) throw new Error(`genome: ${g.w.length} parameters for ${wireCount(g.spec)} wires and ${biasCount(g.spec)} biases`);
+  if (g.w.length !== n) throw new Error(`genome: ${g.w.length} parameters for ${wireCount(g.spec)} wires, ${biasCount(g.spec)} biases and ${fieldCount(g.spec)} field parameters`);
   for (const w of g.w) {
     if (!Number.isFinite(w) || Math.abs(w) > CONFIG.brain.weightCap) throw new Error(`genome: weight ${w}`);
   }

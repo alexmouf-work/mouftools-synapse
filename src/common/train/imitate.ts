@@ -4,6 +4,7 @@
 // four wheels (train/grad.ts). Because the brain mostly drives, it is labelled on its own mistakes and learns to
 // recover from them. The teacher reads the same car the brain does; every tick it drives is metered like any car.
 //   params: [β]   stats: [Σ e² over the four wheels, samples, ticks the teacher drove]
+import { fieldGrads } from '../sim/fieldgrad';
 import { teacherWheels } from '../sim/teacher';
 import { backward, preActivations } from './grad';
 import { episodeDraw, type Kernel, type KernelCtx, type Lane } from './rollout';
@@ -21,12 +22,13 @@ function act(vals: Float64Array, o: number): void {
   for (let k = 0; k < 4; k++) { err[k] = target[k] - vals[o + k]; sse += err[k] * err[k]; }
   preActivations(ctx.net, vals, z);
   backward(ctx.net, vals, z, err, delta, grad);
+  fieldGrads(ctx.net, c, t, delta, grad); // the cells' learned fields, from the error at each cell (B2e)
   stats[0] += sse; stats[1] += 1;
   if (lane.mode === 1) { for (let k = 0; k < 4; k++) vals[o + k] = target[k]; stats[2] += 1; }
 }
 
 export const imitate: Kernel = {
-  gradSize: (net) => net.wires + net.nNodes - net.nIn,
+  gradSize: (net) => net.wires + net.nNodes - net.nIn + net.fields,
   statSize: 3,
   episodeStart(_ctx, job, lane) {
     lane.mode = episodeDraw(job.seed, lane) < job.params[0] ? 1 : 0;

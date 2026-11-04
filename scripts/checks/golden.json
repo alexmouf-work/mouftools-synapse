@@ -1,26 +1,26 @@
 {
   "1": {
     "track": "26122bcf",
-    "race": "fbaa9311",
-    "raceHeavy": "013e07f0",
-    "phase": "59588e27",
-    "phaseBackprop": "90b43baf",
-    "phaseTemp2": "5e097786"
+    "race": "b55c5ec9",
+    "raceHeavy": "9833b3b5",
+    "phase": "dab8d72e",
+    "phaseBackprop": "6f4b5c6d",
+    "phaseTemp2": "551babcf"
   },
   "2": {
     "track": "6e300cb8",
-    "race": "562c3e66",
-    "raceHeavy": "e68889be",
-    "phase": "3e56da7a",
-    "phaseBackprop": "75bc561d",
-    "phaseTemp2": "983c67e3"
+    "race": "193921cb",
+    "raceHeavy": "2a122d7d",
+    "phase": "9c774b36",
+    "phaseBackprop": "0d17233c",
+    "phaseTemp2": "c395d62b"
   },
   "3": {
     "track": "aedd9a83",
-    "race": "d3f29515",
-    "raceHeavy": "d4c6caa4",
-    "phase": "93b97516",
-    "phaseBackprop": "816d9cdc",
-    "phaseTemp2": "3b60a30a"
+    "race": "61e84c32",
+    "raceHeavy": "0d6cae41",
+    "phase": "031dc2f0",
+    "phaseBackprop": "143fff5c",
+    "phaseTemp2": "7d5a83e8"
   }
 }
