@@ -125,7 +125,8 @@ Rulings from the principal, verbatim where quoted. Newest last.
   activates when the specific landmark is within range. show distances on the graphs, and use circular maps to show
   distance around the car on graphs."
 - "don't offer step as a function. offer linear as well as ReLU." · "make the heatmap blue to green to yellow to red,
-  cold to hot."
+  cold to hot." → built in the current workbench: Linear (z kept to −1..1, step's old cost) / ReLU / Sigmoid / Tanh;
+  an old save's step neurons load as Linear with a one-time note.
 - "don't allow removal of connections. only allow inspection of cells, adding ore removing of cells, and change of layer
   processing type." → wiring is fixed: every layer fully connected to the next; taps only inspect.
 - "when there are multiple layers, fit them more nicely so that the space is always used evenly." → inputs, each hidden
@@ -133,3 +134,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "the default brain should start with just a single head direction cell and a single boundary vector cell. it should
   have one hidden layer with three neurons, and that's it."
 - "the grid cell model should be flat against the screen, not angled."
+- "each neuron should always sit in the middle of its region horizontally. currently the inputs justify to the left edge
+  for some reason." · "add a + button on the boundary between layers so that it is clearer that layers can be added. do
+  it at the mid-bottom on the edges between layers." → equal regions per column, everything centred; a "+" at the foot
+  of each boundary inserts a hidden layer there (replaces the separate "+ Layer" button; up to 3).
