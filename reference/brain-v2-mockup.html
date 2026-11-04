@@ -108,7 +108,6 @@ dialog#confirm p { margin: 0 0 12px; }
       <span>Speed <b id="aSpeed"></b></span>
     </div>
     <button class="btn" type="button" id="reset">Reset</button>
-    <button class="btn" type="button" id="drive" aria-pressed="false">Drive</button>
     <button class="btn primary" type="button" id="train">Train</button>
   </header>
   <div class="rulebar" aria-label="Learning rule"><div class="eq" id="eq"></div></div>
@@ -142,23 +141,26 @@ const MAX_HZ = 14;
 
 // one function per hidden layer; wheels fixed to tanh
 const FX = {
-  linear: { n: 'Linear', g: 'M-8 6 L8 -6', f: (z) => z, rate: (y) => clamp((y + 1) / 2, 0, 1), cost: 1.5, d: 'Passes its input straight through.' },
-  relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', f: (z) => clamp(z, 0, 4), rate: (y) => clamp(y, 0, 1), cost: 2, d: 'Silent below zero, firing faster as input grows.' },
-  sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4', f: (z) => 1 / (1 + Math.exp(-z)), rate: (y) => y, cost: 3, d: 'Smooth from silent to flat out; idles at half rate.' },
-  tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', f: (z) => Math.tanh(z), rate: (y) => (y + 1) / 2, cost: 3, d: 'Idles at half rate; excitation speeds it up, inhibition slows it down.' },
+  linear: { n: 'Linear', g: 'M-8 6 L8 -6', f: (z) => z, rate: (y) => clamp((y + 1) / 2, 0, 1), cost: 0.75, d: 'Passes its input straight through.' },
+  relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5', f: (z) => clamp(z, 0, 4), rate: (y) => clamp(y, 0, 1), cost: 1, d: 'Silent below zero, firing faster as input grows.' },
+  sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4', f: (z) => 1 / (1 + Math.exp(-z)), rate: (y) => y, cost: 1.5, d: 'Smooth from silent to flat out; idles at half rate.' },
+  tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5', f: (z) => Math.tanh(z), rate: (y) => (y + 1) / 2, cost: 1.5, d: 'Idles at half rate; excitation speeds it up, inhibition slows it down.' },
 };
 const spread = (k, n) => (n === 1 ? 0 : -90 + 180 * k / (n - 1));
 const dirTag = (d) => (Math.abs(d) < 1 ? 'ahead' : `${d < 0 ? 'left' : 'right'} ${Math.abs(Math.round(d))}°`);
 const SENSES = [
-  { id: 'boundary', name: 'Boundary vector cells', sym: 'wall', cost: 3, max: 7, about: 'Fire the nearer a wall is inside their field, which faces one way from the car. Like the border and boundary-vector cells of a rat. More cells spread their fields across the front.', tag: (k, n) => dirTag(spread(k, n)) },
-  { id: 'object', name: 'Landmark cells', sym: 'flag', cost: 3, max: 5, about: 'Fire the nearer the finish line is inside their field, like the object-vector cells of the entorhinal cortex.', tag: (k, n) => dirTag(spread(k, n)) },
-  { id: 'hd', name: 'Head direction cells', sym: 'arrow', cost: 2, max: 8, about: 'Fires as a cosine of the car’s compass heading. One cell can’t tell left from right; two (cosine and sine) pin the heading down.', tag: (k, n) => `prefers ${Math.round(360 * k / n * (n === 2 ? 0.5 : 1))}°` },
-  { id: 'grid', name: 'Grid cells', sym: 'hex', cost: 2, max: 6, about: 'Fire at the corners of a hexagonal grid laid over the ground. The first two take two scales; more take spread phases.', tag: (k) => `${k % 2 ? 'large' : 'small'} scale, phase ${Math.floor(k / 2) + 1}` },
-  { id: 'speed', name: 'Speed cells', sym: 'gauge', cost: 2, max: 1, about: 'Fire faster the faster the car goes.', tag: () => '' },
+  { id: 'boundary', name: 'Boundary vector cells', sym: 'wall', cost: 1.5, max: 7, about: 'Fire the nearer a wall is inside their field, which faces one way from the car. Like the border and boundary-vector cells of a rat. More cells spread their fields across the front.', tag: (k, n) => dirTag(spread(k, n)) },
+  { id: 'object', name: 'Landmark cells', sym: 'flag', cost: 1.5, max: 5, about: 'Fire the nearer the finish line is inside their field, like the object-vector cells of the entorhinal cortex.', tag: (k, n) => dirTag(spread(k, n)) },
+  { id: 'hd', name: 'Head direction cells', sym: 'arrow', cost: 1, max: 8, about: 'Fires as a cosine of the car’s compass heading. One cell can’t tell left from right; two (cosine and sine) pin the heading down.', tag: (k, n) => `prefers ${Math.round(360 * k / n * (n === 2 ? 0.5 : 1))}°` },
+  { id: 'grid', name: 'Grid cells', sym: 'hex', cost: 1, max: 6, about: 'Fire at the corners of a hexagonal grid laid over the ground. The first two take two scales; more take spread phases.', tag: (k) => `${k % 2 ? 'large' : 'small'} scale, phase ${Math.floor(k / 2) + 1}` },
+  { id: 'speed', name: 'Speed cells', sym: 'gauge', cost: 1, max: 1, about: 'Fire faster the faster the car goes.', tag: () => '' },
 ];
 const WHEELS = [['fl', 'Front-left'], ['fr', 'Front-right'], ['rl', 'Rear-left'], ['rr', 'Rear-right']].map(([id, label]) => ({ id: 'o:' + id, label }));
 const S = { count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, trainer: 'backprop', trainedAs: null, layers: [{ n: 3, fn: 'tanh' }], off: new Set(), sel: null };
-const WIRE_COST = 0.15, WHEEL_COST = 1.5;
+const WIRE_COST = 0.075, WHEEL_COST = 0.75; // all costs halved 2026-11-04: twice the energy allowed
+// Sandbox has no energy limit: any brain is allowed, and a brain that fires hard just leaves less for speed (never
+// below SPEED_FLOOR, so every car can still move). vs CPU and Multiplayer keep the 100% limit.
+const MODE = 'sandbox', SPEED_FLOOR = 10;
 
 // ---- ids, wires (default: every layer fully connected to the previous) ----
 const inputIds = () => SENSES.flatMap((s) => Array.from({ length: S.count[s.id] }, (_, k) => `i:${s.id}:${k}`));
@@ -174,7 +176,7 @@ function brainShare() {
   const neur = S.layers.reduce((a, l) => a + l.n * FX[l.fn].cost, 0) + 4 * WHEEL_COST;
   return sens + neur + wires().length * WIRE_COST;
 }
-function tryChange(apply, undo, what) { apply(); const b = brainShare(); if (b > 100) { undo(); toast('Over 100%.'); return false; } return true; }
+function tryChange(apply, undo, what) { apply(); const b = brainShare(); if (MODE !== 'sandbox' && b > 100) { undo(); toast('Over 100%.'); return false; } return true; }
 // Each tick, every cell spends its cost × its firing rate (and each wire its cost × its source's rate); what is left
 // of the supply goes to speed. brainShare() is the flat-out case: a design may not pass 100% even then.
 function loadOf(rate) {
@@ -185,10 +187,11 @@ function loadOf(rate) {
 }
 const restRate = (id) => id.startsWith('i:') ? 0 : id.startsWith('o:') ? 0.5 : FX[S.layers[depth(id) - 1].fn].rate(FX[S.layers[depth(id) - 1].fn].f(0));
 function showAlloc(live) {
-  const top = brainShare(), lo = live ?? loadOf(restRate), f = (v) => Math.round(clamp(v, 0, 100));
-  $('aFill').style.width = `${f(lo)}%`; $('aRange').style.width = live == null ? `${f(top)}%` : '0%';
-  $('aBrain').textContent = live == null ? `${f(lo)}–${f(top)}%` : `${f(lo)}%`;
-  $('aSpeed').textContent = live == null ? `${100 - f(top)}–${100 - f(lo)}%` : `${100 - f(lo)}%`;
+  const top = brainShare(), lo = live ?? loadOf(restRate), f = (v) => Math.round(Math.max(0, v)), bar = (v) => clamp(v, 0, 100);
+  const sp = (load) => Math.round(Math.max(SPEED_FLOOR, 100 - load));
+  $('aFill').style.width = `${bar(lo)}%`; $('aRange').style.width = live == null ? `${bar(top)}%` : '0%';
+  $('aBrain').textContent = live == null ? (f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`) : `${f(lo)}%`;
+  $('aSpeed').textContent = live == null ? (sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%`) : `${sp(lo)}%`;
 }
 
 // ---- the replay the brain runs on ----
@@ -247,7 +250,7 @@ function layout() {
 const wireColour = (w) => { const m = Math.min(1, Math.abs(w)); return w >= 0 ? `rgb(${Math.round(17 + m * 30)},${Math.round(17 + m * 151)},${Math.round(17 + m * 62)})` : `rgb(${Math.round(17 + m * 200)},${Math.round(17 + m * 53)},${Math.round(17 + m * 74)})`; };
 
 const brainSig = () => JSON.stringify([S.count, S.layers]);
-const MAX_LAYERS = 10, MAX_NEURONS = 8;
+const MAX_LAYERS = 8, MAX_NEURONS = 8; // up to 64 hidden neurons
 window.__mock = { get S() { return S; }, render: () => render(), tray: () => buildTray() }; // for the layout checks
 // bottom-row buttons shrink so a "+" on a boundary and the "−" mid-column never touch
 const rowR = () => { const hw = Math.min(...regions.slice(1, -1).map((r) => r.x1 - r.x0), 999); return Math.max(9.5, Math.min(11, hw / 4 - 1)); };
@@ -327,7 +330,7 @@ function render() {
     const r = rowR(), a = r * 0.45;
     el('circle', { cx: x, cy: y, r, style: 'fill:var(--panel);stroke:var(--accent)', 'stroke-width': 1.4 }, add);
     el('path', { d: `M ${x - a} ${y} H ${x + a} M ${x} ${y - a} V ${y + a}`, style: 'stroke:var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round' }, add);
-    add.addEventListener('click', (ev) => { ev.stopPropagation(); tryChange(() => S.layers.splice(i, 0, { n: 3, fn: 'tanh' }), () => S.layers.splice(i, 1), 'A new layer'); S.sel = null; render(); });
+    add.addEventListener('click', (ev) => { ev.stopPropagation(); tryChange(() => S.layers.splice(i, 0, { n: 2, fn: 'tanh' }), () => S.layers.splice(i, 1), 'A new layer'); S.sel = null; render(); });
   }
   showAlloc(); inspect();
 }
@@ -557,12 +560,15 @@ let gens = 100;
 function buildGens() { $('gens').innerHTML = GENS.map((g) => `<button type="button" data-g="${g}" aria-pressed="${g === gens}">${g}</button>`).join(''); $('gens').querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { gens = +b.dataset.g; buildGens(); })); }
 $('train').onclick = () => { buildGens(); $('trainDlg').showModal(); };
 $('tdNo').onclick = () => $('trainDlg').close();
-$('tdGo').onclick = () => { $('trainDlg').close(); S.trainedAs = brainSig(); render(); toast(`Training for ${gens} generations.`); };
+$('tdGo').onclick = () => {
+  $('trainDlg').close(); active = true; $('train').disabled = true; $('train').textContent = 'Training…';
+  setTimeout(() => { active = false; S.trainedAs = brainSig(); $('train').disabled = false; $('train').textContent = 'Train'; showAlloc(); render(); }, 6000);
+};
 // reset goes back to the starting brain, only after a confirmation
 const START = () => ({ count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] });
 $('reset').onclick = () => $('confirm').showModal();
 $('cfNo').onclick = () => $('confirm').close();
 $('cfYes').onclick = () => { Object.assign(S, START(), { trainedAs: null, sel: null }); $('confirm').close(); buildTray(); render(); };
-$('drive').onclick = () => { active = !active; if (!active) setTimeout(() => showAlloc(), 0); $('drive').setAttribute('aria-pressed', String(active)); $('drive').textContent = active ? 'Stop' : 'Drive'; };
+// (no Drive button: 2026-11-04)
 buildTray(); buildTrainers(); render(); requestAnimationFrame(frame);
 </script>

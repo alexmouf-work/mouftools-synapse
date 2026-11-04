@@ -206,3 +206,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "create a favicon and app icon using the grid cell icon. make sure it's compatible with being turned into a web app.
   it should be called \"Synapse\"" → `docs/plans/2026-11-04-icons.md`.
 - "is the builder opus 5.5? it should be." → checked: every builder response served by that model.
+- "increase the max energy allowed for a brain by 2x, and remove the max energy allowed in sandbox mode. default to
+  each new layer having two neurons instead of three. max 8 neurons and max 8 layers, for a total 64 neurons in the
+  hidden layers. remove the drive button."

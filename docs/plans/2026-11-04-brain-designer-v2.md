@@ -53,6 +53,13 @@ Boundary, whisker and object-vector cells read the surroundings, so they work on
 place cells are anchored to the world, so they pay off when it stays the same: sandbox keeps your track until
 "New track"; a match keeps one track for all rounds.
 
+## 3aa. Twice the energy; no limit in the sandbox (2026-11-04)
+- "increase the max energy allowed for a brain by 2x": every cost is halved (senses 1–1.5%, neurons 0.75–1.5%, wires
+  0.075%, wheels 0.75%), so the same brain uses half the supply. Default brain: 4–11%, speed 89–96%.
+- "remove the max energy allowed in sandbox mode": the sandbox refuses nothing. A brain past 100% just leaves less for
+  speed, which never drops below 10% so every car can still move (my default). vs CPU and Multiplayer keep the 100%
+  limit at the new costs.
+
 ## 3a. Speed follows firing (2026-11-04, replaces the fixed split below)
 "the speed is higher when less neurons fire per tick." Each tick, every cell spends its cost × its firing rate (a wire,
 its cost × its source's rate); what is left of the supply is that tick's top speed. A design is still refused if it
@@ -80,10 +87,12 @@ The player can only inspect cells, add or remove cells (and layers of cells), an
 forgiving tap-to-wire idea from round 2 is dropped.
 
 - Lines of identical neurons, as today. Default: each layer fully connected to the one before (ruling 2026-11-04).
-- Limits (2026-11-04): up to 10 hidden layers, 8 neurons a layer, each sense its own maximum. At a limit the "+" goes
+- Limits (2026-11-04, revised): up to **8 hidden layers × 8 neurons** (64 hidden neurons); a new layer starts with
+  **two** neurons (the default brain keeps its three); 8 neurons a layer, each sense its own maximum. At a limit the "+" goes
   away (a full sense's tile loses its "+" and dims); no warnings. Columns share the width evenly unless the inputs or
   the car need more; with many layers the function chip shows its curve only and the bottom-row buttons shrink to fit.
-  Under the 100% energy rule, about 8 layers of 3 tanh neurons is the practical most.
+  (Superseded: "up to 10 layers" became 8.)
+- No Drive button in the designer: the brain fires while it trains and is still otherwise.
 - The layer panel: the four functions, then space, then energy per neuron (no description line).
 - Layers: a "−" at the foot of each hidden column (in the row of the boundary "+"s) removes it; "−", neurons and
   "+" share one even spacing; minus and plus are drawn alike. Reset (top bar) returns to the starting brain after a
