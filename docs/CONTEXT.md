@@ -245,3 +245,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "don't stick to just showing round number generations, show whatever we've got."
 - "have one toggle for engine sounds and another for music."
 - "show me the training panel thing please." → B6 moved up, straight after B2c.
+- "please push to main when ready." → main fast-forwarded to development at 4857e43 (B2e, full check green), so
+  synapse.mouftools.com serves the title screen, training view, temperature and learned fields; vs CPU and Multiplayer
+  still show "soon". Work carries on on development.
