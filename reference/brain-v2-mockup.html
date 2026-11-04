@@ -68,6 +68,14 @@ html, body { overflow: hidden; }
 .fx { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .fx button { min-height: 40px; min-width: 0; border: 1px solid var(--line); background: transparent; border-radius: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 2px; font-size: 11px; }
 .fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.count { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; margin-top: 12px; font-size: 11.5px; color: var(--muted); }
+.count b { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; }
+.count input { grid-column: 1 / -1; width: 100%; height: 28px; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+.count input::-webkit-slider-runnable-track { height: 4px; background: var(--line); }
+.count input::-moz-range-track { height: 4px; background: var(--line); }
+.count input::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; background: var(--accent); border: 0; border-radius: 0; }
+.count input::-moz-range-thumb { width: 18px; height: 18px; background: var(--accent); border: 0; border-radius: 0; }
+.count input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fx svg { width: 20px; height: 13px; flex: none; }
 .acts { display: grid; gap: 4px; }
 .acts .btn { box-shadow: none; text-align: left; white-space: normal; padding: 5px 9px; line-height: 1.25; font-size: 11.5px; }
@@ -332,7 +340,7 @@ function render() {
     el('path', { d: `M ${x - a} ${y} H ${x + a} M ${x} ${y - a} V ${y + a}`, style: 'stroke:var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round' }, add);
     add.addEventListener('click', (ev) => { ev.stopPropagation(); tryChange(() => S.layers.splice(i, 0, { n: 2, fn: 'tanh' }), () => S.layers.splice(i, 1), 'A new layer'); S.sel = null; render(); });
   }
-  showAlloc(); inspect();
+  showAlloc(); if (!holdPanel) inspect();
 }
 // tapping only inspects; connections are fixed: every layer is fully wired to the next
 function tap(id) { S.sel = S.sel === id ? null : id; render(); }
@@ -346,13 +354,20 @@ const DESC = {
 };
 const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const binBtn = (id, label) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
+let holdPanel = false; // while a panel control is being dragged, the board redraws but the panel stays put
 function inspect() {
   const box2 = $('insp'), id = S.sel;
   if (!id) { box2.innerHTML = '<p class="empty">Tap a neuron<br>to inspect it</p>'; return; }
   if (id.startsWith('layer:')) {
     const L = +id.slice(6), l = S.layers[L];
-    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><dl class="kv" style="margin-top:14px"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl>${S.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
+    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><label class="count"><span>Neurons</span><b id="nVal">${l.n}</b><input id="nSlide" type="range" min="1" max="${MAX_NEURONS}" step="1" value="${l.n}" aria-label="Neurons in layer ${L + 1}"></label><dl class="kv" style="margin-top:14px"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl>${S.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
     box2.querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => { const old = l.fn; tryChange(() => (l.fn = b.dataset.fx), () => (l.fn = old), 'That function'); render(); }));
+    // the slider sets the layer's size live; a size the energy rule refuses (vs CPU, Multiplayer) snaps back
+    $('nSlide').addEventListener('input', (e) => {
+      const want = +e.target.value, old = l.n;
+      if (want !== old && !tryChange(() => (l.n = want), () => (l.n = old), 'That many neurons')) e.target.value = String(old);
+      $('nVal').textContent = String(l.n); holdPanel = true; render(); holdPanel = false;
+    });
     if ($('rmL')) $('rmL').onclick = () => { S.layers.splice(L, 1); S.sel = null; render(); };
     return;
   }

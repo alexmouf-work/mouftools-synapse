@@ -209,3 +209,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "increase the max energy allowed for a brain by 2x, and remove the max energy allowed in sandbox mode. default to
   each new layer having two neurons instead of three. max 8 neurons and max 8 layers, for a total 64 neurons in the
   hidden layers. remove the drive button."
+- "when clicking on the processing function button (tanh / ReLU, etc) we should show the number of neurons in that layer
+  on a slider, so that it can be easily changed."

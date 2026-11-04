@@ -93,7 +93,8 @@ forgiving tap-to-wire idea from round 2 is dropped.
   the car need more; with many layers the function chip shows its curve only and the bottom-row buttons shrink to fit.
   (Superseded: "up to 10 layers" became 8.)
 - No Drive button in the designer: the brain fires while it trains and is still otherwise.
-- The layer panel: the four functions, then space, then energy per neuron (no description line).
+- The layer panel: the four functions, then a **Neurons slider** (1–8, the layer resizes live as you drag; where the
+  energy rule applies, a refused size snaps back), then energy per neuron (no description line).
 - Layers: a "−" at the foot of each hidden column (in the row of the boundary "+"s) removes it; "−", neurons and
   "+" share one even spacing; minus and plus are drawn alike. Reset (top bar) returns to the starting brain after a
   confirmation. Square corners everywhere; circles stay circles (2026-11-04).
