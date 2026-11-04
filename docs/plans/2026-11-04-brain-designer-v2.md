@@ -54,6 +54,13 @@ Boundary, whisker and object-vector cells read the surroundings, so they work on
 place cells are anchored to the world, so they pay off when it stays the same: sandbox keeps your track until
 "New track"; a match keeps one track for all rounds.
 
+## 3ac. Temperature: how boldly training explores (2026-11-04)
+"let's add a temperature slider as well somewhere." → "Training exploration", "In the Train popup". Under the
+generations choice: Temperature, a log-scale multiplier ×0.25 to ×4 (default ×1, the tuned value), on the chosen
+trainer's own exploration: evolution's σ (mutation size), actor-critic's exploration, A_RP's firing randomness. It's
+disabled for backprop, which copies a teacher and has nothing to explore; one line under the slider says what it does.
+The run records the temperature with the brain's training history.
+
 ## 3ab. Every neuron has a built-in bias (2026-11-04)
 Without the bias cell, a quiet brain outputs zero and can't hold "drive forward": backprop failed to learn and the
 default brain drove a median 7 m on a new track. Principal: "the neurons can have a bias internally as well, that's
@@ -199,3 +206,33 @@ Backprop on the default brain does not learn (training fitness ≈ 0 on seeds 1�
 produce the constant "forward" the teacher asks for from a boundary reading that is mostly 0 and a cosine that
 changes sign with the heading; the loss stays at ≈ 0.94 per wheel. It is reported, not fixed: that is B4's concern
 (trainers), and the obvious remedy (a steady input) is a design question for the principal.
+
+### B2b: built-in biases (2026-11-04, §3ab) and the S1 re-run
+Every hidden neuron and wheel computes z = b + Σ w·x. The biases sit after the weights in the genome; evolution
+mutates them like weights, backprop learns Δb = η·δ under the same clamp; fresh starts draw them like weights (ReLU
+layers positive). A brain v2 save from before loads with every bias 0. The designer shows a trained neuron's or
+wheel's bias and plots its curve against Σ w·x, so the bias shifts it.
+
+S1 on the default brain (seeds 1–20, T 6M, 60 s episodes, Node 4 workers, build container):
+
+| | evolution, B2 (no bias) | evolution, B2b | backprop, B2 | backprop, B2b |
+|---|---|---|---|---|
+| final training fitness, median | 2505 (17/20 ≥ 500) | **3065 (20/20 ≥ 500)** | ≈ 0 | 120 (0/20 ≥ 500) |
+| gate: end ≥ 1.5× start | 18/20 | 20/20 | – | 19/20 |
+| (a) median 30 s on the unseen track | 7 m | **1446 m** (gen 1: 93 m, ×15.6) | ≈ 0 | 162 m |
+| (b) ≥ 80% of a lap in 30 s | 3/20 | **15/20** | 0/20 | 0/20 |
+| (c) end ≥ 2× gen 1 | 18/20 | 19/20 | – | 19/20 |
+| (d) Minimal (1 boundary, 1 linear) ≥ 50% of a lap | 0/20 | **17/20** | – | 0/20 |
+| 60 s: ≥ 1.6 laps / Minimal ≥ 1 lap | – | 13/20 / 15/20 | – | 0/20 / 0/20 |
+| (f) same seed → same hash; 1 vs 4 workers | pass | pass | – | pass |
+| phase time, median (max) | ≈ 3.6 s | 3.88 s (4.56) | 4.7 s | 6.31 s (11.0) |
+
+With a bias the default brain drives new tracks: the old Starter's level (1467 m, 18/20) almost exactly, and Minimal
+laps again. No design change is needed for evolution.
+
+Backprop still does not drive. The teacher steers by the centreline, which this brain cannot see: one boundary cell
+looks 20 m straight ahead (mostly reading 0 on a straight), and the head-direction cell knows the compass heading,
+not the road. Copying the teacher from those two inputs leaves the regression averaging (training fitness ≈ 120 m, the
+car creeps); it can learn "forward" now, not "where the road goes". Evolution has no such problem because it is
+scored on progress, not on matching a driver it can't see. A brain with a few boundary cells across the front gives
+backprop something to copy from; whether the default should change is the principal's call (not changed here).

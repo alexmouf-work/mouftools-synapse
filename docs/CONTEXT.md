@@ -233,3 +233,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "I've changed my mind on how we show the cars, we should try to show newer generations sooner, but start them from
   progressively further along the track." · "also, make the finish line have a nice checker pattern on the ground, and
   give the flag a checker pattern too with a black stem. put the flag on either side of the finish line."
+- "let's add a temperature slider as well somewhere." → asked what it controls: "Training exploration (Recommended)";
+  where: "In the Train popup (Recommended)".

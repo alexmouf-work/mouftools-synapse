@@ -70,6 +70,9 @@ html, body { overflow: hidden; }
 .fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .use { margin: 0; font-size: 11px; line-height: 1.35; color: var(--muted); }
 .use b { color: var(--text); font-variant-numeric: tabular-nums; }
+.temp { margin: 0 0 12px; }
+.temp small { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
+.temp.off { opacity: .6; }
 .count { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; margin-top: 12px; font-size: 11.5px; color: var(--muted); }
 .count b { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; }
 .count input { grid-column: 1 / -1; width: 100%; height: 28px; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
@@ -134,7 +137,7 @@ dialog#confirm p { margin: 0 0 12px; }
 </div>
 <div id="rotate"><div><h1 style="margin:0 0 8px;font-size:20px">Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button" style="margin-top:12px">Continue in portrait</button></div></div>
 <div id="toast" hidden></div>
-<dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
+<dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><label class="count temp" id="tempRow"><span>Temperature</span><b id="tVal"></b><input id="tSlide" type="range" min="-2" max="2" step="0.25" value="0" aria-label="Temperature"><small id="tHint"></small></label><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 
 <script type="importmap">
@@ -580,7 +583,17 @@ addEventListener('resize', () => { fit(); render(); }); fit();
 const GENS = [10, 25, 50, 100, 250, 500, 1000];
 let gens = 100;
 function buildGens() { $('gens').innerHTML = GENS.map((g) => `<button type="button" data-g="${g}" aria-pressed="${g === gens}">${g}</button>`).join(''); $('gens').querySelectorAll('[data-g]').forEach((b) => (b.onclick = () => { gens = +b.dataset.g; buildGens(); })); }
-$('train').onclick = () => { buildGens(); $('trainDlg').showModal(); };
+// temperature: how boldly training explores, as a multiplier on the trainer's own exploration (log scale, ×0.25–×4)
+let temp = 0;
+const TEMP_HINT = { evolution: 'Scales σ, the size of each mutation.', ac: 'Scales how much the actor explores.', arp: 'Scales how randomly the units fire while learning.', backprop: 'Backprop copies a teacher, so it has nothing to explore.' };
+function showTemp() {
+  const off = S.trainer === 'backprop', v = 2 ** temp;
+  $('tSlide').value = String(temp); $('tSlide').disabled = off;
+  $('tVal').textContent = off ? '—' : `×${v < 1 ? v.toFixed(2).replace(/0$/, '') : v.toFixed(1)}`;
+  $('tHint').textContent = TEMP_HINT[S.trainer]; $('tempRow').classList.toggle('off', off);
+}
+$('tSlide').addEventListener('input', (e) => { temp = +e.target.value; showTemp(); });
+$('train').onclick = () => { buildGens(); showTemp(); $('trainDlg').showModal(); };
 $('tdNo').onclick = () => $('trainDlg').close();
 $('tdGo').onclick = () => {
   $('trainDlg').close(); active = true; $('train').disabled = true; $('train').textContent = 'Training…';
