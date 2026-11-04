@@ -112,3 +112,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "give each layer a slightly differently coloured background, alternating." · "remove the excess copy on the page, so
   that it's way more simple. only have text that's absolutely necessary. that means remove things like \"the car . the
   wheels are neurons\""
+- "move delta rule to the top across the top, make the neurons smaller per unit space on the screen, make the laptop
+  version look like the phone app just scaled up." → one phone-landscape layout (860 × 400) scaled to fit every screen.
