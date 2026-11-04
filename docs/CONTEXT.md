@@ -128,3 +128,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   cold to hot."
 - "don't allow removal of connections. only allow inspection of cells, adding ore removing of cells, and change of layer
   processing type." → wiring is fixed: every layer fully connected to the next; taps only inspect.
+- "when there are multiple layers, fit them more nicely so that the space is always used evenly." → inputs, each hidden
+  layer and the wheels sit in evenly spaced columns.

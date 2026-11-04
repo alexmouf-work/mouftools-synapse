@@ -195,9 +195,10 @@ function layout() {
   ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: trayW + 20 + col * 30, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' }); });
   const carW = Math.min(box.w * 0.22, 150), carH = carW * 0.52;
   car = { cx: box.w - carW / 2 - 24, cy: box.h / 2 + 8, W: carW, H: carH };
-  const x0 = trayW + 20 + cols * 30 + 50, x1 = car.cx - carW / 2 - 60;
+  // columns evenly spaced: inputs, each hidden layer, then the wheels
+  const xIn = trayW + 20 + (cols - 1) * 15, xOut = car.cx - 0.27 * carW, gapX = (xOut - xIn) / (S.layers.length + 1);
   S.layers.forEach((l, L) => {
-    const x = S.layers.length === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * L / (S.layers.length - 1);
+    const x = xIn + gapX * (L + 1);
     const step = Math.max(27, Math.min(34, (box.h - 110) / Math.max(l.n - 1, 1)));
     layerIds(L).forEach((id, k) => P.set(id, { x, y: box.h / 2 + 8 + (k - (l.n - 1) / 2) * step, kind: 'mid', L }));
   });
