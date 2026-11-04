@@ -50,6 +50,7 @@ async function main() {
     check(st.hash === node.hash, `phase hash ${st.hash} = Node ${node.hash} (${((st.ms ?? 0) / 1000).toFixed(1)} s with the view open)`);
     await page.click('#tvDrive');
     await page.waitForFunction(() => (window.__drive?.frames ?? 0) > 3, null, { timeout: 120_000 });
+    await page.waitForFunction(() => window.__drive?.go === true, null, { timeout: 30_000 }); // the countdown holds the car until Go
     const d0 = await page.evaluate(() => window.__drive!.distance);
     await page.waitForTimeout(3000);
     const d = await page.evaluate(() => ({ hash: window.__drive!.hash, distance: window.__drive!.distance }));

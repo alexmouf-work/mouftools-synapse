@@ -11,6 +11,7 @@ import { generateTrack, type Track } from '../../../common/sim/track';
 import { defaultWorkers } from '../../../common/train/episodes';
 import { phaseSeeds, runPhase, type GenStat, type PhaseResult } from '../../../common/train/phase';
 import type { Stage } from '../../render/stage';
+import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import { BrowserPool } from '../../workers/pool';
 import type { Saved } from '../workbench/store';
@@ -69,6 +70,8 @@ let track0: Track | null = null;
 let stopAsked = false;
 let raf = 0;
 let running = false;
+/** The solid best car's motors, quieter than your own car in the drive view. */
+const engine = new Engine(0.35);
 let estGens = 0; // estimated generations in this run (exact once done)
 let doneGens = 0;
 
@@ -177,7 +180,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     $('tvNote').textContent = `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain of the last generation is saved; Train again continues from it on new tracks.`;
     setButtons('done');
     $('tvAgain').onclick = () => { void openTraining(next, hooks); };
-    $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; hooks.drive(next); };
+    $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); hooks.drive(next); };
   }
   $('tvBack').onclick = () => close(hooks);
 }
@@ -194,6 +197,7 @@ function close(hooks: TrainingHooks) {
   if (running) return;
   cancelAnimationFrame(raf);
   raf = 0;
+  engine.stop();
   hideArena();
   hooks.back();
 }
@@ -211,6 +215,7 @@ function loop() {
     if (stage) {
       const c0 = performance.now();
       stage.frame(dt, (now - t0) / 1000);
+      engine.set(stage.swarm.carV / CONFIG.car.wheelSpeed, stage.swarm.carTurn);
       const cost = performance.now() - c0;
       if (window.__training) { window.__training.frames++; window.__training.frameMs = cost; }
       // While training, drawing must not starve the worker pool. An expensive frame (a weak GPU) is kept to about a

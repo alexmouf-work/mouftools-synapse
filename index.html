@@ -22,6 +22,7 @@
     </select>
     <button class="btn" id="drive" type="button" hidden>Drive</button>
     <button class="btn primary" id="train" type="button">Train</button>
+    <button class="btn sound" id="soundWb" type="button" aria-label="Sound" aria-pressed="true"></button>
   </header>
 
   <main class="work">
@@ -49,7 +50,7 @@
         </div>
       </section>
       <p class="note help">Drag from a sensor or a neuron's dot to wire it. Click a wire to cut it. Signals run left to right: car, hidden layers, wheels.</p>
-      <p class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a></p>
+      <p class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a> · Music: DM DOKURO, Kevin MacLeod</p>
     </aside>
   </main>
 </div>
@@ -78,6 +79,7 @@
       <button class="btn primary" id="tvBack" type="button" hidden>Back to workbench</button>
       <button class="btn" id="tvAgain" type="button" hidden>Train again</button>
       <button class="btn" id="tvDrive" type="button" hidden>Drive</button>
+      <button class="btn sound" id="soundTv" type="button" aria-label="Sound" aria-pressed="true"></button>
     </div>
   </section>
   <section class="tv-panel tv-graph" aria-label="Fitness per generation">
@@ -87,6 +89,7 @@
   </section>
   </div>
   <div id="driveOverlay" hidden>
+    <div class="dv-count" id="dvCount" aria-live="assertive"></div>
     <section class="tv-panel tv-status dv-status" aria-live="polite">
       <h1 class="tv-title"><span>Drive</span><span class="tv-name" id="dvName"></span></h1>
       <dl class="kv">
@@ -106,6 +109,7 @@
       <div class="tv-actions">
         <button class="btn" id="dvNew" type="button">New track</button>
         <button class="btn primary" id="dvBack" type="button">Back to workbench</button>
+        <button class="btn sound" id="soundDv" type="button" aria-label="Sound" aria-pressed="true"></button>
       </div>
     </section>
     <section class="tv-panel dv-brain" aria-label="Live brain">

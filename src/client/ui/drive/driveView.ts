@@ -3,7 +3,9 @@
 // their outputs, eye rays, the live brain panel (weights as colours, inputs spiking), chase / broadcast / showroom
 // cameras. Distance and best lap in a
 // plain overlay; a stall shows "Stuck against the wall" with the time while the camera stays on the car. New track
-// re-seeds; the run loops after a short pause at the end.
+// re-seeds; the run loops after a short pause at the end. Opening (and New track) counts down "5, 4, 3, 2, 1, Go"
+// over the scene, on the music's beat when sound is on: the car is held on the line until Go, then the recorded run
+// plays from tick 0, so the drive itself (and its hash) is exactly the same. The engine sound follows the car.
 import { CONFIG } from '../../../common/config';
 import { energyLeft, noiseLevel, percentOfBudget, poolFor } from '../../../common/sim/energy';
 import { runDrive } from '../../../common/sim/race';
@@ -13,6 +15,8 @@ import { locate } from '../../../common/sim/track';
 import { phaseSeeds } from '../../../common/train/phase';
 import type { CamMode, DrivePose } from '../../render/drive';
 import type { Stage } from '../../render/stage';
+import { raceCountdown } from '../../audio/countdown';
+import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import type { Saved } from '../workbench/store';
 import { BrainPanel } from './brainPanel';
@@ -45,6 +49,12 @@ export interface DriveStatus {
   /** For the car's current pose: each eye's beam direction as drawn (world x, z) and the sim's eye direction (x, y). */
   beamCheck(): { hdg: number; beams: number[][]; sim: number[][] };
   setCam(m: CamMode): void;
+  /** What the countdown shows now ('', '5' … '1', 'Go'), every label it has shown so far, and whether Go has passed. */
+  countdown: string;
+  countdownSeen: string[];
+  go: boolean;
+  /** True if the countdown follows the music (sound on), false on the plain timer. */
+  countdownMusic: boolean;
 }
 declare global { interface Window { __drive?: DriveStatus } }
 
@@ -90,15 +100,31 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   const panel = new BrainPanel($('dvBrain') as HTMLCanvasElement, net);
   const spikes = new SpikeTrains(net.nIn);
   let playT = 0, frames = 0, cam: CamMode = 'chase', guess = track.startIdx, lastUi = -1;
+  const cd = raceCountdown(), engine = new Engine(1);
+  // the numbers change on their own timers, exactly on time, however slowly frames come
+  let timers: number[] = [];
+  const showCount = (label: string) => {
+    status.countdown = label;
+    if (label) status.countdownSeen.push(label);
+    $('dvCount').textContent = label;
+  };
+  const scheduleCount = () => {
+    timers.forEach(clearTimeout);
+    const now = performance.now();
+    timers = [...cd.at.map((t, i) => [t, String(5 - i)] as const), [cd.go, 'Go'] as const, [cd.go + 800, ''] as const]
+      .filter(([t]) => t >= now - 1).map(([t, l]) => window.setTimeout(() => showCount(l), Math.max(0, t - now)));
+  };
+  const endCount = () => { cd.go = Math.min(cd.go, performance.now()); timers.forEach(clearTimeout); timers = []; showCount(''); };
   const status: DriveStatus = {
     trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, usedPct: 0, laps: 0, bestLap: null, stuck: false, noise: 0, cam, frames: 0,
-    webgl: !!stage, finalProg: run.result.prog,
+    webgl: !!stage, finalProg: run.result.prog, countdown: '', countdownSeen: [], go: false, countdownMusic: cd.music,
     probe: stage ? () => stage.probe() : undefined,
     bloomAudit: stage ? (m?: boolean) => stage.bloomAudit(m) : undefined,
-    seek: (sec) => { playT = Math.max(0, Math.min(sec, ticks / HZ - 0.01)); guess = locate(track, rec.x[Math.floor(playT * HZ)], rec.y[Math.floor(playT * HZ)], track.startIdx, track.n); },
+    seek: (sec) => { endCount(); playT = Math.max(0, Math.min(sec, ticks / HZ - 0.01)); guess = locate(track, rec.x[Math.floor(playT * HZ)], rec.y[Math.floor(playT * HZ)], track.startIdx, track.n); },
     setCam: (m) => setCam(m),
     auditAt: (sec) => {
       if (!stage) return { over: 0, max: 0 };
+      endCount();
       playT = sec; guess = locate(track, rec.x[Math.floor(sec * HZ)], rec.y[Math.floor(sec * HZ)], track.startIdx, track.n >> 1);
       poseAt(playT);
       stage.drive.snapNow();
@@ -115,6 +141,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     }),
   };
   window.__drive = status;
+  scheduleCount();
   $('dvTrack').textContent = String(trackSeed);
 
   const setCam = (m: CamMode) => {
@@ -126,7 +153,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   setCam('chase');
   const onKey = (e: KeyboardEvent) => { const m = ({ '1': 'chase', '2': 'tv', '3': 'orbit' } as const)[e.key as '1']; if (m) setCam(m); };
   window.addEventListener('keydown', onKey);
-  const leave = () => { cancelAnimationFrame(raf); raf = 0; window.removeEventListener('keydown', onKey); };
+  const leave = () => { cancelAnimationFrame(raf); raf = 0; window.removeEventListener('keydown', onKey); engine.stop(); endCount(); };
   $('dvBack').onclick = () => { leave(); hideArena(); hooks.back(); };
   $('dvNew').onclick = () => { leave(); void openDrive(saved, hooks, newSeed()); };
 
@@ -154,13 +181,22 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     raf = requestAnimationFrame(tick);
     // a rAF timestamp can be earlier than the performance.now() taken before it: never step backwards
     const dt = Math.max(0, Math.min((now - last) / 1000, 0.25));
+    // held on the line until Go; the first frame after it plays the time since Go
+    if (now >= cd.go) playT += Math.min(dt, (now - cd.go) / 1000);
     last = now;
-    playT += dt;
+    status.go = now >= cd.go;
     if (playT >= ticks / HZ + END_PAUSE_S) { playT = 0; guess = track.startIdx; } // loop the run
     const { k, ended } = poseAt(playT);
+    if (!status.go) { // on the line, waiting for Go
+      const i = track.startIdx;
+      pose.x = track.px[i]; pose.y = track.py[i]; pose.hdg = track.th[i]; pose.v = 0; pose.idx = i; guess = i;
+      wheels.fill(0);
+    }
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; }
+    // the motors: speed from the sim, squeal from one side's wheels outrunning the other's
+    engine.set(ended ? 0 : pose.v / CONFIG.car.wheelSpeed, Math.abs((wheels[0] + wheels[2]) - (wheels[1] + wheels[3])) / 2);
     status.tick = k; status.frames = frames; status.stuck = pose.stuck; status.noise = pose.noise;
-    status.distance = rec.prog[k];
+    status.distance = status.go ? rec.prog[k] : 0;
     status.usedPct = percentOfBudget(rec.used[k], pool);
     const done = lapAt.filter((t) => t <= k + 1);
     status.laps = done.length;

@@ -54,6 +54,10 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 .btn:hover { border-color: var(--muted); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.btn.sound { border-radius: 0; padding: 0; width: 34px; height: 32px; display: inline-grid; place-items: center; color: var(--text); }
+.btn.sound svg { width: 18px; height: 18px; }
+.btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }
+.btn.sound[aria-pressed="false"] { color: var(--muted); }
 .trainer { border: 1px solid var(--line); background: var(--panel); padding: 7px 10px; border-radius: 9px; }
 
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 10px; min-height: 0; }

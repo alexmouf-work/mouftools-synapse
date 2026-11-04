@@ -8,6 +8,7 @@ M1-6,Principal's changes after playing: beams follow the eyes; spiking inputs; w
 M1-5,Ship to synapse.mouftools.com,review,S5 built: vercel.json + production check; principal connects Vercel + CNAME (README)
 M2,Match mode: 5 rounds vs 4 bots with timers,later,solo-loop plan steps 5-7
 T1,Backprop trainer (copy a teacher; DAgger + generalised delta rule) + linear replaces step,review,plan and bench results: docs/plans/2026-11-04-trainers.md
+SND,Sound: music (lounge / race / winner) + countdown + engine + mute,review,principal: "please implement it all"; docs/plans/2026-11-04-sound.md
 T2,Actor-critic trainer,next,critic owned by the trainer; TD error; same T
 T3,A_RP trainer,later,stochastic units + reward/penalty
 T4,Learning Rule strip on every view + live trainer picker,later,"Learning Rule : [equation]" centred across the top; formula only

@@ -37,6 +37,10 @@ body.training #rotate { display: none !important; }
 
 /* drive overlay */
 .dv-status { width: 270px; }
+.dv-count { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 3;
+  font: 700 clamp(72px, 22vh, 220px)/1 Arial, Helvetica, sans-serif; color: #fff; font-variant-numeric: tabular-nums;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, .55), 0 0 2px rgba(0, 0, 0, .8); }
+.dv-count:empty { display: none; }
 .dv-stuck { margin: 0; padding: 6px 9px; border-left: 3px solid var(--minus); background: color-mix(in srgb, var(--minus) 10%, transparent); color: var(--text); font-size: 13px; border-radius: 4px; }
 .dv-cams { display: flex; gap: 4px; flex-wrap: wrap; }
 .dv-cams button { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 9px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }

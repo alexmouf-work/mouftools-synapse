@@ -83,7 +83,7 @@ async function main() {
     check(await page.locator('#notice').count() === 0, 'OK dismisses the notice');
     await page.goto(`${base}/`); await page.waitForTimeout(800);
     check(await page.locator('#notice').count() === 0, 'dismissed notice stays gone on the next visit');
-    check(await page.evaluate(() => localStorage.getItem('synapse.notice')) === '1', 'dismissal remembered in local storage (synapse.notice)');
+    check(await page.evaluate(() => localStorage.getItem('synapse.notice')) === '2', 'dismissal remembered in local storage (synapse.notice = 2, the notice version since the sound setting)');
     const r = await page.goto(`${base}/some/unknown/path`);
     check(r?.status() === 200 && await page.locator('.app').count() === 1, 'an unknown path still falls back to the app');
     check((await ctx.cookies()).length === 0, 'no cookies set');

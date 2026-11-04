@@ -34,6 +34,10 @@ export class Swarm {
   private t = 0;
   private played = false;
   private lap: Lap | null = null;
+  /** The solid car as drawn this frame, for its engine sound: speed (m/s) and lateral demand (0..1 of the grip). */
+  carV = 0;
+  carTurn = 0;
+  private lastHdg: number | null = null;
   private finaleOn = false;
   private readonly guess: Int32Array;
   private readonly prog: Float64Array;
@@ -193,6 +197,13 @@ export class Swarm {
     car.car.updateMatrix();
     assertFiniteArray(car.car.matrix.elements, 'champion car');
     const dist = (v * dTicks) / TICK_HZ;
+    if (this.lastHdg !== null && dTicks > 0) {
+      let dh = hdg - this.lastHdg; dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
+      // a cut to another generation's car jumps the heading: that is not a turn
+      this.carTurn = Math.abs(dh) > 0.5 ? 0 : Math.min(1, Math.abs((dh * TICK_HZ) / dTicks * v) / CONFIG.car.grip);
+    }
+    this.lastHdg = hdg;
+    this.carV = v;
     for (const w of car.wheels) w.spin.rotation.x = (w.spin.rotation.x + dist / w.r) % (2 * Math.PI);
   }
 

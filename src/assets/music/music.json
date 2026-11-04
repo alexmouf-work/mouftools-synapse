@@ -1,0 +1,95 @@
+{
+ "bpm": 151.99,
+ "beat": 0.3947628133429831,
+ "bar": 1.5790512533719323,
+ "bars": 8,
+ "pre": 0.3947628133429831,
+ "phrases": [
+  {
+   "name": "intro",
+   "pool": "build",
+   "srcBar": 0,
+   "file": "intro.mp3"
+  },
+  {
+   "name": "breakdown",
+   "pool": "build",
+   "srcBar": 72,
+   "file": "breakdown.mp3"
+  },
+  {
+   "name": "drive-a",
+   "pool": "race",
+   "srcBar": 8,
+   "file": "drive-a.mp3"
+  },
+  {
+   "name": "drive-b",
+   "pool": "race",
+   "srcBar": 16,
+   "file": "drive-b.mp3"
+  },
+  {
+   "name": "lift-a",
+   "pool": "race",
+   "srcBar": 24,
+   "file": "lift-a.mp3"
+  },
+  {
+   "name": "lift-b",
+   "pool": "race",
+   "srcBar": 32,
+   "file": "lift-b.mp3"
+  },
+  {
+   "name": "push-a",
+   "pool": "race",
+   "srcBar": 40,
+   "file": "push-a.mp3"
+  },
+  {
+   "name": "push-b",
+   "pool": "race",
+   "srcBar": 48,
+   "file": "push-b.mp3"
+  },
+  {
+   "name": "soar-a",
+   "pool": "race",
+   "srcBar": 56,
+   "file": "soar-a.mp3"
+  },
+  {
+   "name": "soar-b",
+   "pool": "race",
+   "srcBar": 64,
+   "file": "soar-b.mp3"
+  }
+ ],
+ "tracks": {
+  "race": {
+   "gainDb": -9.0,
+   "note": "DM DOKURO phrases above; measured -6.96 LUFS"
+  },
+  "lounge": {
+   "file": "lounge.mp3",
+   "bpm": 130.0,
+   "beat": 0.46153846153846156,
+   "bars": 128,
+   "pre": 0.46153846153846156,
+   "post": 0.9230769230769231,
+   "loop": "self, one-beat cross-fade at the phrase line",
+   "gainDb": -0.2,
+   "srcStart": 16.002308,
+   "srcEnd": 252.31,
+   "note": "Kevin MacLeod, Airport Lounge (CC BY 4.0); measured -15.78 LUFS"
+  },
+  "winner": {
+   "file": "winner.mp3",
+   "once": true,
+   "gainDb": -4.1,
+   "note": "measured -11.91 LUFS; plays once then back to the mode music"
+  }
+ },
+ "targetLufs": -16
+}

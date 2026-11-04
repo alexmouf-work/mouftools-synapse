@@ -222,6 +222,21 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   once the brain has trained weights; the finished training view has Drive too.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
+- `audio/` — sound (plan: `docs/plans/2026-11-04-sound.md`); client only, src/common has none. `audio.ts`: one
+  AudioContext created on the first pointerdown, keydown or touchstart (browsers need a gesture), master → music and
+  effects buses, mute (localStorage `synapse.sound`, the speaker buttons `button.sound`: pressed = sound on), suspend
+  while the tab is hidden, `ctxToPerf` (context time → when it is heard, via `getOutputTimestamp`). `music.ts`: three
+  tracks on their own gains from `src/assets/music/music.json` (race −9.0 dB, lounge −0.2 dB, winner −4.1 dB, all to
+  −16 LUFS). The race track is ten 8-bar phrases on the bar grid, queued a second ahead (natural neighbours butt-join;
+  jumps cross-fade one beat on the downbeat); modes `lounge` (the sandbox workbench: a 128-bar loop joined on itself),
+  `race` (training and drive), `build` (intro ↔ breakdown, for the lobbies to come). `startRace()` jumps into the
+  intro's build-up and returns the countdown's context times with Go on the drop; `win()` plays the winner once and
+  returns to the mode. Files (`?url` imports via `import.meta.glob`, so hashed and cached as `assets/`) are fetched
+  after first paint, the lounge first, and decoded once unlocked. `sfx.ts`: the countdown blips (F♯5; Go F♯–A–C♯ an
+  octave up) and `Engine` (motor whine with speed, road roar, tyre squeal when the sides differ; every parameter eased
+  with setTargetAtTime). `countdown.ts`: "5, 4, 3, 2, 1, Go" on the music when sound is on, else a plain timer with the
+  same two-beat spacing. The drive view holds the car on the line until Go and then plays the recorded run from tick
+  0 (hashes unchanged); the training view's solid car has a quieter engine.
 
 ## scripts
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
@@ -242,12 +257,18 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `scripts/checks/preview.ts` — the production build: `vite build`, then `vite preview` (static with SPA fallback,
   as on Vercel) at the real budget: workbench loads, training phase hash = Node, drive hash = Node, render smoke on
   both views, bloom audit, `?T=` ignored, deep links fall back to the app, no `/bench` in the build, console clean.
+- `scripts/checks/audio.ts` — sound in headless Chromium (autoplay allowed): locked until the first click, then the
+  lounge; Drive → race mode, the countdown 5…1, Go on the music, the car held at tick 0 until Go and moving after,
+  Go on the drop, drive hash = Node; back → the lounge; `win()` plays the winner then the lounge again; a hidden tab
+  suspends; mute silences the master and survives a reload; muted, the countdown runs on the plain timer; console
+  clean.
 - `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench,
-  training, drive and production-build checks.
+  training, drive, production-build, legal and audio checks.
 
 ## Deploy
 Static site. `vite build` → `dist/` (`index.html`, hashed `assets/`: the app ~70 kB JS, the 3-D stage chunk with
-three.js ~570 kB loaded on first Train or Drive, the training worker, self-hosted fonts). `vercel.json`: build with
+three.js ~570 kB loaded on first Train or Drive, the training worker, self-hosted fonts, the music: lounge 3.8 MB, ten
+race phrases 3.3 MB, winner 1.0 MB, fetched after first paint). `vercel.json`: build with
 `npm ci` and `npm run build`, every unknown path rewritten to `index.html`, `assets/` cached for a year (immutable),
 `index.html` no-cache, nosniff and a referrer policy. The principal imports the repo in Vercel and adds the
 `synapse` CNAME to `cname.vercel-dns.com` (steps in README).

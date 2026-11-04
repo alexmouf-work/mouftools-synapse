@@ -15,7 +15,7 @@ body { background: var(--bg); color: var(--text); font: 16px/1.55 Arial, Helveti
 .legal h1 { font-size: 28px; margin: 22px 0 4px; }
 .legal .date { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
 .legal h2 { font-size: 18px; margin: 28px 0 6px; }
-.legal p, .legal li { margin: 0 0 10px; }
+.legal p, .legal li { margin: 0 0 10px; overflow-wrap: anywhere; }
 .legal ul { padding-left: 20px; margin: 0 0 10px; }
 .legal a { color: var(--accent); }
 .legal table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 14px; }

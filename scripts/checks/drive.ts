@@ -81,6 +81,7 @@ async function main() {
     check(genomeHash(sv.draft.genome) === genomeHash(trained), 'trained brain saved (= Node run)');
     await page.click('#tvDrive');
     await waitFrames(page);
+    await page.waitForFunction(() => window.__drive?.go === true, null, { timeout: 30_000 }); // the countdown holds the car until Go
     let d = await drive(page);
     check(d?.trackSeed === firstTrack, `drives the unseen track of its training run (${d?.trackSeed})`);
     check(d?.hash === node.hash, `drive hash ${d?.hash} = Node replay ${node.hash}`);
