@@ -1,0 +1,16 @@
+/* First-visit storage notice and the legal links: Arial, square corners, the page's own tokens with fallbacks. */
+#notice { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; align-items: center; gap: 12px;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: var(--panel, #fff); color: var(--text, #1d2330); border-top: 1px solid var(--line, #d9dee8);
+  font: 14px/1.4 Arial, Helvetica, sans-serif; box-shadow: 0 -2px 8px rgba(20, 30, 50, .08); }
+#notice p { margin: 0; flex: 1; min-width: 0; }
+#notice a { color: var(--accent, #2f6fde); }
+#notice button { flex: none; min-width: 64px; min-height: 40px; border: 1px solid var(--accent, #2f6fde); border-radius: 0;
+  background: var(--accent, #2f6fde); color: #fff; font: 700 14px Arial, Helvetica, sans-serif; cursor: pointer; }
+#notice button:focus-visible, #notice a:focus-visible { outline: 2px solid var(--accent, #2f6fde); outline-offset: 2px; }
+/* while the notice shows, the app and the full-screen views stop above it */
+body.notice-open .app { padding-bottom: var(--notice-h, 0px); }
+body.notice-open .tv { bottom: var(--notice-h, 0px); }
+.legal-links { margin: auto 0 0; font: 12px Arial, Helvetica, sans-serif; color: var(--muted, #6a7385); }
+.legal-links a { color: inherit; }
+.legal-links a:hover { color: var(--text, #1d2330); }

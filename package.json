@@ -11,14 +11,15 @@
     "check:purity": "tsx scripts/checks/purity.ts",
     "check:determinism": "tsx scripts/checks/determinism.ts",
     "check:bench": "tsx scripts/checks/bench.ts",
-    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench && npm run check:workbench && npm run check:training && npm run check:drive && npm run check:preview",
+    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench && npm run check:workbench && npm run check:training && npm run check:drive && npm run check:preview && npm run check:legal",
     "bench": "tsx scripts/sim/bench.ts",
     "bench:browser": "tsx scripts/checks/bench-browser.ts",
     "check:workbench": "tsx scripts/checks/workbench.ts",
     "check:training": "tsx scripts/checks/training.ts",
     "check:drive": "tsx scripts/checks/drive.ts",
     "preview": "vite preview",
-    "check:preview": "tsx scripts/checks/preview.ts"
+    "check:preview": "tsx scripts/checks/preview.ts",
+    "check:legal": "tsx scripts/checks/legal.ts"
   },
   "devDependencies": {
     "@fontsource/atkinson-hyperlegible": "5.3.0",

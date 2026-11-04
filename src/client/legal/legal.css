@@ -1,0 +1,26 @@
+/* Privacy, terms and cookie pages: plain reading pages in the site's look (Arial, square corners, light and dark). */
+:root { --bg: #f4f6fa; --panel: #ffffff; --line: #d9dee8; --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15181e; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2; --accent: #6b9cff; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 16px/1.55 Arial, Helvetica, sans-serif; padding-bottom: 80px; }
+.legal { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+.legal header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.legal .word { font-weight: 700; font-size: 20px; color: var(--text); text-decoration: none; }
+.legal nav { display: flex; gap: 14px; font-size: 14px; }
+.legal nav a { color: var(--muted); }
+.legal nav a[aria-current="page"] { color: var(--text); font-weight: 700; text-decoration: none; }
+.legal h1 { font-size: 28px; margin: 22px 0 4px; }
+.legal .date { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+.legal h2 { font-size: 18px; margin: 28px 0 6px; }
+.legal p, .legal li { margin: 0 0 10px; }
+.legal ul { padding-left: 20px; margin: 0 0 10px; }
+.legal a { color: var(--accent); }
+.legal table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 14px; }
+.legal th, .legal td { text-align: left; vertical-align: top; border: 1px solid var(--line); padding: 7px 9px; background: var(--panel); }
+.legal th { font-weight: 700; }
+.legal code { font-family: Arial, Helvetica, sans-serif; font-weight: 700; }
+.legal footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+.legal a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

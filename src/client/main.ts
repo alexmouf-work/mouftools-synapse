@@ -8,6 +8,7 @@ import '@fontsource/chakra-petch/600.css';
 import '@fontsource/chakra-petch/700-italic.css';
 import './ui/workbench/workbench.css';
 import './ui/training/training.css';
+import { showNotice } from './legal/notice';
 import { openDrive } from './ui/drive/driveView';
 import { openTraining } from './ui/training/trainingView';
 import { currentSaved, replaceSaved, setActive, start } from './ui/workbench/workbench';
@@ -30,6 +31,7 @@ function drive(s: Saved) {
 }
 
 start({ onTrain: train, onDrive: drive });
+showNotice();
 const view = new URLSearchParams(location.search).get('view');
 if (view === 'train') train(currentSaved());
 else if (view === 'drive') drive(currentSaved());
