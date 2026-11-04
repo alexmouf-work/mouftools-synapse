@@ -138,3 +138,4 @@ Rulings from the principal, verbatim where quoted. Newest last.
   for some reason." · "add a + button on the boundary between layers so that it is clearer that layers can be added. do
   it at the mid-bottom on the edges between layers." → equal regions per column, everything centred; a "+" at the foot
   of each boundary inserts a hidden layer there (replaces the separate "+ Layer" button; up to 3).
+- "the container on the right should say \"tap a neuron to inspect it\""
