@@ -54,6 +54,13 @@ Boundary, whisker and object-vector cells read the surroundings, so they work on
 place cells are anchored to the world, so they pay off when it stays the same: sandbox keeps your track until
 "New track"; a match keeps one track for all rounds.
 
+## 3ab. Every neuron has a built-in bias (2026-11-04)
+Without the bias cell, a quiet brain outputs zero and can't hold "drive forward": backprop failed to learn and the
+default brain drove a median 7 m on a new track. Principal: "the neurons can have a bias internally as well, that's
+totally fine by me." Every hidden neuron and every wheel gets a learned bias (its resting level, like a real neuron's
+threshold). Not a cell on the board, no energy cost of its own; both trainers learn it (backprop: Δb = η·δ). The
+inspector shows it once trained, and the neuron's transfer curve shifts with it.
+
 ## 3aa. Twice the energy; no limit in the sandbox (2026-11-04)
 - "increase the max energy allowed for a brain by 2x": every cost is halved (senses 1–1.5%, neurons 0.75–1.5%, wires
   0.075%, wheels 0.75%), so the same brain uses half the supply. Default brain: 4–11%, speed 89–96%.

@@ -214,3 +214,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "show the amount of energy each neuron uses when click on it directly. show the total energy used by the layer when
   looking at the processing function. energy used should be shown as \"at maximum firing rate, uses xx% energy\""
 - "please build all the changes and push to development when ready." → `docs/plans/2026-11-04-build-order.md`.
+- Bias: asked how to fix brains that can't hold "drive forward" without the bias cell → "Built-in thresholds
+  (Recommended)" · "the neurons can have a bias internally as well, that's totally fine by me."
