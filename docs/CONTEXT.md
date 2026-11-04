@@ -216,3 +216,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "please build all the changes and push to development when ready." → `docs/plans/2026-11-04-build-order.md`.
 - Bias: asked how to fix brains that can't hold "drive forward" without the bias cell → "Built-in thresholds
   (Recommended)" · "the neurons can have a bias internally as well, that's totally fine by me."
+- "the page should start on the title screen. it should keep playing music continuously from the title onwards,
+  smoothly but quickly transitioning between tracks. move the privacy, terms and cookies as well as song references to
+  the title page in a rail across the bottom. it should keep playing even when not focused."
