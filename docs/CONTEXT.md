@@ -72,3 +72,13 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "domain is set up. you can access the site at synapse.mouftools.com"
 - "let's work on a development branch for now." → work happens on `development`; `main` (live) moves on the
   principal's word.
+- After playing milestone 1: "it's great, but has some simple issues."
+  1. "it doesn't make the user engage with the actual neural computation enough. that should be much more at the
+     forefront."
+  2. "the neuron connection is finnicky to do. make it easier, and default to a neuron in one layer connecting to all
+     neurons in the previous layer."
+  3. "in the active brain thing, show the firing rates of each cell in the whole brain, rather than just the inputs"
+  4. "rotate the car 90 degrees in the workshop."
+  5. "show the mean brain in real time during training."
+  6. "create a title screen with \"sandbox mode\" and \"match mode\""
+  7. "match mode should work via a room code. I can give you access to supabase if you need it for realtime natches."
