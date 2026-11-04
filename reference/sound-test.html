@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Synapse sound test</title>
+<style>
+:root { --bg: #eef1f6; --panel: #ffffff; --line: #d9dee8; --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; --spike: #ffc21a; --hi: #e8443a; --lo: #2c6bd9; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #15181e; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2; --accent: #6b9cff; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #15181e; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2; --accent: #6b9cff; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.45 Arial, Helvetica, sans-serif; padding: 16px; }
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 12px; }
+h1 { font-size: 20px; margin: 0; }
+section { background: var(--panel); border: 1px solid var(--line); padding: 14px; }
+h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { min-height: 44px; padding: 0 16px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 0; font: inherit; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+button:disabled { opacity: .5; cursor: default; }
+.status { font-variant-numeric: tabular-nums; color: var(--muted); min-height: 1.4em; }
+.status b { color: var(--text); }
+.map { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-top: 10px; }
+.map div { position: relative; height: 34px; border: 1px solid var(--line); font-size: 10px; display: grid; place-items: center; text-align: center; line-height: 1.1; overflow: hidden; }
+.map div.build { border-top: 3px solid var(--lo); }
+.map div.race { border-top: 3px solid var(--hi); }
+.map div i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); width: 0; }
+.map div.now { font-weight: 700; color: var(--accent); }
+.count { font-size: 64px; font-weight: 700; text-align: center; min-height: 80px; }
+label { display: grid; grid-template-columns: 90px 1fr 48px; gap: 10px; align-items: center; margin-top: 8px; }
+input[type=range] { width: 100%; }
+output { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+.note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+</style></head><body>
+<main>
+  <h1>Synapse sound test</h1>
+  <section>
+    <h2>Music</h2>
+    <div class="row">
+      <button class="primary" id="start" type="button">Start sound</button>
+      <button id="build" type="button" aria-pressed="false" disabled>Build</button>
+      <button id="race" type="button" aria-pressed="false" disabled>Race (countdown)</button>
+      <button id="mute" type="button" aria-pressed="false" disabled>Mute</button>
+    </div>
+    <p class="status" id="status">Press Start sound.</p>
+    <div class="map" id="map"></div>
+    <p class="note">Blue: building sections (quiet intro, breakdown). Red: racing sections. Changes happen on the beat:
+      to race, the music jumps into the intro's build-up and the countdown lands Go on the drop; back to building, it
+      cross-fades into the breakdown at the next half-phrase.</p>
+  </section>
+  <section>
+    <h2>Countdown</h2>
+    <div class="count" id="count" aria-live="assertive"></div>
+  </section>
+  <section>
+    <h2>Car</h2>
+    <div class="row"><button id="engine" type="button" aria-pressed="false" disabled>Engine on</button></div>
+    <label>Speed <input id="speed" type="range" min="0" max="100" value="0"><output id="speedV">0%</output></label>
+    <label>Turning <input id="turn" type="range" min="0" max="100" value="0"><output id="turnV">0%</output></label>
+    <p class="note">Electric wheel motors: a whine that rises with speed, road roar that grows with it, and tyre squeal
+      when the wheels on each side turn at different speeds.</p>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+// ---- the track, cut into 8-bar phrases on the bar grid (152 BPM); each file has 1 beat before and 2 after ----
+const BPM = 151.99, BEAT = 60 / BPM, BAR = 4 * BEAT, PRE = BEAT, LEN = 8 * BAR;
+const PHRASES = [
+  ['intro', 'build'], ['breakdown', 'build'],
+  ['drive-a', 'race'], ['drive-b', 'race'], ['lift-a', 'race'], ['lift-b', 'race'],
+  ['push-a', 'race'], ['push-b', 'race'], ['soar-a', 'race'], ['soar-b', 'race'],
+];
+// what follows what. "natural" pairs were next to each other in the original, so they join seamlessly.
+const NEXT = { build: { intro: 'breakdown', breakdown: 'intro' }, race: { 'drive-a': 'drive-b', 'drive-b': 'lift-a', 'lift-a': 'lift-b', 'lift-b': 'push-a', 'push-a': 'push-b', 'push-b': 'soar-a', 'soar-a': 'soar-b', 'soar-b': 'drive-a', intro: 'drive-a', breakdown: 'intro' } };
+const NATURAL = new Set(['breakdown>intro', 'intro>drive-a', 'drive-a>drive-b', 'drive-b>lift-a', 'lift-a>lift-b', 'lift-b>push-a', 'push-a>push-b', 'push-b>soar-a', 'soar-a>soar-b']);
+
+let ctx, music, sfx, buffers = {}, mode = 'build', cur = null, nxt = null, countdown = null;
+$('map').innerHTML = PHRASES.map(([n, p]) => `<div class="${p}" data-n="${n}">${n}<i></i></div>`).join('');
+
+const curve = (up) => { const c = new Float32Array(64); for (let i = 0; i < 64; i++) { const t = i / 63; c[i] = up ? Math.sin(t * Math.PI / 2) : Math.cos(t * Math.PI / 2); } return c; };
+/** Play phrase `name` so that its bar `fromBar` lands on context time `when`. join: 'butt' (seamless neighbour) or 'xfade' (a jump). */
+function play(name, when, fromBar = 0, join = 'butt') {
+  const src = ctx.createBufferSource(), g = ctx.createGain();
+  src.buffer = buffers[name]; src.connect(g).connect(music);
+  const lead = join === 'xfade' ? BEAT / 2 : 0.012;
+  const at = when - lead, off = PRE + fromBar * BAR - lead;
+  g.gain.setValueAtTime(0, at); g.gain.setValueCurveAtTime(curve(true), at, lead * 2 > 0.03 ? lead * 2 : 0.024);
+  src.start(Math.max(at, ctx.currentTime), Math.max(0, off + Math.max(0, ctx.currentTime - at)));
+  return { name, src, g, at: when, bar0: when - fromBar * BAR, end: when + (8 - fromBar) * BAR };
+}
+function fadeOut(p, when, join) {
+  const lead = join === 'xfade' ? BEAT / 2 : 0.012, at = when - lead, dur = join === 'xfade' ? BEAT : 0.024;
+  p.g.gain.cancelScheduledValues(at); p.g.gain.setValueAtTime(1, at); p.g.gain.setValueCurveAtTime(curve(false), at, dur);
+  p.src.stop(at + dur + 0.05);
+}
+// drop a queued phrase and undo the current one's queued fade-out, so it can carry on or be re-joined
+function cancelNext() {
+  if (!nxt) return;
+  try { nxt.src.stop(); } catch {}
+  nxt = null;
+  const t = ctx.currentTime + 0.02, gp = cur.g.gain;
+  if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(t); else gp.cancelScheduledValues(t);
+  gp.setValueAtTime(1, t + 0.01);
+  try { cur.src.stop(cur.end + 2 * BEAT); } catch {}
+}
+// the scheduler: keeps the next phrase queued about a second ahead
+function tick() {
+  if (!cur) return;
+  const now = ctx.currentTime;
+  if (!nxt && cur.end - now < 1.2) {
+    const name = NEXT[mode][cur.name] ?? (mode === 'race' ? 'drive-a' : 'breakdown'), join = NATURAL.has(`${cur.name}>${name}`) ? 'butt' : 'xfade';
+    fadeOut(cur, cur.end, join); nxt = play(name, cur.end, 0, join);
+  }
+  if (nxt && now >= nxt.at) { cur = nxt; nxt = null; }
+  // display
+  const bar = Math.max(0, Math.floor((now - cur.bar0) / BAR));
+  $('status').innerHTML = `<b>${mode === 'race' ? 'Racing' : 'Building'}</b> · ${cur.name} · bar ${Math.min(bar + 1, 8)} of 8`;
+  document.querySelectorAll('.map div').forEach((d) => { const on = d.dataset.n === cur.name; d.classList.toggle('now', on); d.querySelector('i').style.width = on ? `${Math.min(100, (now - cur.bar0) / LEN * 100)}%` : '0'; });
+  if (countdown) {
+    const i = countdown.ticks.findIndex((t) => now < t);
+    const shown = i === -1 ? (now < countdown.go + 0.8 ? 'Go!' : '') : i === 0 ? '' : String(6 - i);
+    $('count').textContent = shown; if (shown === '' && i === -1) countdown = null;
+  }
+}
+// next bar line of the current phrase at least `min` s away
+const nextBar = (min = 0.15, every = 1) => { const now = ctx.currentTime; let k = Math.ceil((now + min - cur.bar0) / (BAR * every)); return { k: k * every, t: cur.bar0 + k * every * BAR }; };
+
+function toRace() {
+  tick();
+  if (mode === 'race' || countdown) return;
+  // jump into the intro's second half (its build-up) on the next bar; the intro runs naturally into the drop
+  // (already in the intro's bars 4–5: just carry on)
+  let introBar0;
+  const into = (ctx.currentTime - cur.bar0) / BAR;
+  if (cur.name === 'intro' && into >= 4 && into < 5.4) { cancelNext(); introBar0 = cur.bar0; }
+  else { const b = nextBar(); cancelNext(); fadeOut(cur, b.t, 'xfade'); cur.end = b.t; nxt = play('intro', b.t, 4, 'xfade'); introBar0 = nxt.bar0; }
+  mode = 'race';
+  // 5, 4, 3, 2, 1 every two beats from bar 6, beat 3; Go on the downbeat of the drop
+  const go = introBar0 + 8 * BAR, ticks = [5, 4, 3, 2, 1].map((n, i) => go - (10 - 2 * i) * BEAT);
+  countdown = { ticks: [...ticks, go], go };
+  ticks.forEach((t) => beep(t, false)); beep(go, true);
+  setPressed();
+}
+function toBuild() {
+  tick();
+  if (mode === 'build') return;
+  mode = 'build'; countdown = null; $('count').textContent = '';
+  // cross-fade into the breakdown at the next half-phrase line
+  const b = nextBar(0.15, 4); cancelNext();
+  if (b.t >= cur.end - 0.01) { setPressed(); return; } // the phrase ends there anyway: the scheduler takes it
+  fadeOut(cur, b.t, 'xfade'); cur.end = b.t; nxt = play('breakdown', b.t, 0, 'xfade');
+  setPressed();
+}
+function setPressed() { $('build').setAttribute('aria-pressed', mode === 'build'); $('race').setAttribute('aria-pressed', mode === 'race'); }
+
+// ---- countdown blips, pitched to the track (F# minor / D major) ----
+function beep(t, go) {
+  const f = go ? [1479.98, 1760.0, 2217.46] : [739.99];
+  const g = ctx.createGain(); g.connect(sfx);
+  const len = go ? 0.6 : 0.14;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(go ? 0.32 : 0.45, t + 0.006); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  for (const hz of f) { for (const [type, mul] of [['triangle', 1], ['sine', 2]]) { const o = ctx.createOscillator(); o.type = type; o.frequency.value = hz * mul; const og = ctx.createGain(); og.gain.value = mul === 1 ? 1 / f.length : 0.25 / f.length; o.connect(og).connect(g); o.start(t); o.stop(t + len + 0.05); } }
+}
+
+// ---- engine: electric wheel motors, road roar, tyre squeal ----
+let eng = null;
+function noiseBuf() { const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = b.getChannelData(0); let last = 0; for (let i = 0; i < d.length; i++) { last = 0.97 * last + 0.03 * (Math.random() * 2 - 1); d[i] = last * 6; } return b; }
+function engineOn() {
+  const out = ctx.createGain(); out.gain.value = 0; out.connect(sfx);
+  const whine = ctx.createOscillator(); whine.type = 'sawtooth';
+  const whine2 = ctx.createOscillator(); whine2.type = 'square';
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 4;
+  const wg = ctx.createGain(); wg.gain.value = 0.18; const w2g = ctx.createGain(); w2g.gain.value = 0.05;
+  whine.connect(wg).connect(lp); whine2.connect(w2g).connect(lp); lp.connect(out);
+  const nb = noiseBuf();
+  const road = ctx.createBufferSource(); road.buffer = nb; road.loop = true; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.7; const rg = ctx.createGain(); road.connect(bp).connect(rg).connect(out);
+  const sq = ctx.createBufferSource(); sq.buffer = nb; sq.loop = true; sq.playbackRate.value = 1.7; const sbp = ctx.createBiquadFilter(); sbp.type = 'bandpass'; sbp.frequency.value = 2600; sbp.Q.value = 9; const sg = ctx.createGain(); sg.gain.value = 0; sq.connect(sbp).connect(sg).connect(out);
+  [whine, whine2, road, sq].forEach((n) => n.start());
+  eng = { out, whine, whine2, lp, rg, bp, sg, nodes: [whine, whine2, road, sq] };
+  out.gain.setTargetAtTime(1, ctx.currentTime, 0.1); setEngine();
+}
+function engineOff() { if (!eng) return; const e = eng; eng = null; e.out.gain.setTargetAtTime(0, ctx.currentTime, 0.08); e.nodes.forEach((n) => n.stop(ctx.currentTime + 0.5)); }
+function setEngine() {
+  const v = $('speed').value / 100, turn = $('turn').value / 100; $('speedV').textContent = `${Math.round(v * 100)}%`; $('turnV').textContent = `${Math.round(turn * 100)}%`;
+  if (!eng) return;
+  const t = ctx.currentTime, k = 0.06;
+  const hz = 70 + 520 * v; // motor whine follows wheel speed
+  eng.whine.frequency.setTargetAtTime(hz, t, k); eng.whine2.frequency.setTargetAtTime(hz * 1.5, t, k);
+  eng.lp.frequency.setTargetAtTime(500 + 3200 * v, t, k);
+  eng.rg.gain.setTargetAtTime(0.02 + 0.22 * v, t, k); eng.bp.frequency.setTargetAtTime(250 + 900 * v, t, k);
+  eng.sg.gain.setTargetAtTime(turn > 0.35 ? (turn - 0.35) * 0.5 * (0.3 + v) : 0, t, k);
+}
+$('speed').oninput = setEngine; $('turn').oninput = setEngine;
+
+$('start').onclick = async () => {
+  $('start').disabled = true; $('start').textContent = 'Loading…';
+  ctx = new AudioContext(); music = ctx.createGain(); music.gain.value = 0.7; sfx = ctx.createGain(); sfx.gain.value = 0.9;
+  const master = ctx.createGain(); music.connect(master); sfx.connect(master); master.connect(ctx.destination);
+  await Promise.all(PHRASES.map(async ([n]) => { buffers[n] = await ctx.decodeAudioData(await (await fetch(`${n}.mp3`)).arrayBuffer()); }));
+  cur = play('intro', ctx.currentTime + 0.3, 0, 'butt');
+  $('start').textContent = 'Playing'; ['build', 'race', 'mute', 'engine'].forEach((id) => ($(id).disabled = false)); setPressed();
+  setInterval(tick, 50);
+  $('mute').onclick = () => { const m = $('mute').getAttribute('aria-pressed') !== 'true'; $('mute').setAttribute('aria-pressed', m); master.gain.setTargetAtTime(m ? 0 : 1, ctx.currentTime, 0.05); };
+};
+$('build').onclick = () => ctx && toBuild();
+$('race').onclick = () => ctx && toRace();
+$('engine').onclick = () => { const on = $('engine').getAttribute('aria-pressed') !== 'true'; $('engine').setAttribute('aria-pressed', on); on ? engineOn() : engineOff(); };
+</script>
+</body></html>

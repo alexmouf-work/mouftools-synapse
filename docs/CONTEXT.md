@@ -177,3 +177,17 @@ Rulings from the principal, verbatim where quoted. Newest last.
   please."
 - "there's a really weird zooming in effect that shows when I look at the artifact." → the brain mock-up page was 8 px
   taller than its window (body margin); a frame sized to its content grew, the page re-scaled, and so on. Fixed.
+- "give the site a privacy policy and terms of service. link to those on the synapse website. don't give them .html
+  links, they should just have normal looking slugs (eg synapse.mouftools.com/privacy) and so on. keep them simple, add
+  cookie policy and make sure that we comply with UK GDPR, adding a cookie banner at the bottom when first accessing the
+  site." · "I've got the following env vars set up in vercel: SUPABASE_PROJECT_URL, SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY" · contact for the policies: "alexander@enkefalos.co.uk" → `docs/plans/2026-11-04-legal-pages.md`.
+- "change the site so that the match button is replaced with \"Multiplayer\". Add a \"VS Computer\" button as well.
+  that will show 10 players competing." · "into match mode, please add a countdown timer for the matches before they
+  start."
+- Music (one track supplied): "chop it up into bits so that we can play it at the correct times. We need music playing
+  at all times, and it needs to transition very smoothly. we can repeat sections. Use the high energy parts for the
+  racing segments and the low energy parts for the building segments." · "add sound effects for \"5, 4, 3, 2, 1, go\"."
+  · "add sound effects for the car driving too, which will play appropriately for how fast the car is driving." →
+  `docs/plans/2026-11-04-sound.md`.
+- "please let me know when it's ready on the dev branch. I've connected a preview deployment so that I can see."

@@ -24,6 +24,16 @@ h1 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -.01em; }
 .note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
 .back { margin-top: 12px; background: none; border: 0; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; padding: 6px; }
 [hidden] { display: none !important; }
+.race { position: fixed; inset: 0; display: grid; grid-template-columns: min(20vw, 280px) 1fr; background: var(--bg); }
+.grid-list { background: var(--panel); border-right: 1px solid var(--line); padding: 12px; overflow: auto; }
+.grid-list h2 { margin: 0 0 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.grid-list ol { margin: 0; padding-left: 22px; font-size: 14px; line-height: 1.9; }
+.grid-list li.you { font-weight: 700; color: var(--accent); }
+.track { position: relative; min-width: 0; }
+.track canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.count { position: absolute; inset: 0; display: grid; place-items: center; font-size: min(28vh, 160px); font-weight: 700; color: var(--text); pointer-events: none; }
+.count.go { color: var(--accent); }
+.back.over { position: absolute; right: 12px; top: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
 </style></head><body>
 <canvas id="net" aria-hidden="true"></canvas>
 <main class="card">
@@ -31,20 +41,50 @@ h1 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -.01em; }
   <p class="tag">Build a brain. Train it. Race it.</p>
   <section id="home">
     <button class="btn primary" type="button">Sandbox</button>
-    <button class="btn" type="button" id="toMatch">Match</button>
+    <button class="btn" type="button" id="toCpu">VS Computer</button>
+    <button class="btn" type="button" id="toMatch">Multiplayer</button>
   </section>
   <section id="match" hidden>
     <button class="btn primary" type="button">Create a room</button>
     <p class="or">or join one</p>
     <form class="join" onsubmit="return false"><input id="code" maxlength="4" placeholder="CODE" aria-label="Room code" autocomplete="off"><button class="btn" type="submit">Join</button></form>
-    <p class="note">Up to 100 players</p>
+    <p class="note">Up to 100 players · a countdown before each race</p>
     <button class="back" type="button" id="back">Back</button>
   </section>
 </main>
+<section class="race" id="race" hidden aria-label="Race start">
+  <aside class="grid-list"><h2>10 players</h2><ol id="players"></ol></aside>
+  <div class="track"><canvas id="map" aria-label="Starting grid"></canvas><div class="count" id="count" aria-live="assertive"></div>
+    <button class="back over" type="button" id="leave">Leave</button></div>
+</section>
 <script>
 const $ = (id) => document.getElementById(id), css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 $('toMatch').onclick = () => { $('home').hidden = true; $('match').hidden = false; $('code').focus(); };
 $('back').onclick = () => { $('match').hidden = true; $('home').hidden = false; };
+// VS Computer: you and nine computer brains on one track, a countdown, then the race
+const NAMES = ['You', 'Axon', 'Dendrite', 'Myelin', 'Soma', 'Glia', 'Cortex', 'Purkinje', 'Hebb', 'Golgi'];
+let tick = null;
+function startRace() {
+  document.querySelector('.card').hidden = true; c.hidden = true; $('race').hidden = false;
+  $('players').innerHTML = NAMES.map((n, i) => `<li${i ? '' : ' class="you"'}>${n}</li>`).join('');
+  let n = 5; const show = () => { const el = $('count'); el.textContent = n > 0 ? n : 'Go!'; el.classList.toggle('go', n <= 0); if (n < 0) { el.textContent = ''; clearInterval(tick); } n--; };
+  show(); clearInterval(tick); tick = setInterval(show, 1000); grid();
+}
+$('toCpu').onclick = startRace;
+$('leave').onclick = () => { clearInterval(tick); $('race').hidden = true; document.querySelector('.card').hidden = false; c.hidden = false; };
+function grid() {
+  const m = $('map'), r = m.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 2); m.width = r.width * dpr; m.height = r.height * dpr;
+  const q = m.getContext('2d'); q.scale(dpr, dpr);
+  const N = 360, pts = Array.from({ length: N }, (_, i) => { const t = i / N * Math.PI * 2; return [1.45 * Math.sin(t), 0.95 * Math.sin(t) * Math.cos(t)]; });
+  const s = Math.min((r.width - 60) / 2.9, (r.height - 60) / 1.0), P = (p) => [r.width / 2 + p[0] * s, r.height / 2 + p[1] * s];
+  const path = (a, b, col, w) => { q.strokeStyle = col; q.lineWidth = w; q.lineJoin = 'round'; q.beginPath(); for (let i = a; i <= b; i++) { const [x, y] = P(pts[(i + N) % N]); i === a ? q.moveTo(x, y) : q.lineTo(x, y); } q.stroke(); };
+  path(0, N, css('--wire'), 22); path(N / 2 - 40, N / 2 + 40, '#ffffff', 25); path(N / 2 - 40, N / 2 + 40, css('--muted'), 22);
+  // two-by-two grid behind the start line
+  for (let k = 0; k < 10; k++) { const i = N / 4 - 4 - Math.floor(k / 2) * 5, a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], m2 = Math.hypot(dx, dy), side = k % 2 ? 1 : -1;
+    const [x, y] = P(a); q.fillStyle = k ? css('--spike') : css('--accent'); q.beginPath(); q.arc(x - dy / m2 * 5 * side, y + dx / m2 * 5 * side, k ? 4 : 5, 0, 7); q.fill(); }
+  const [sx, sy] = P(pts[N / 4]), [ux, uy] = P(pts[N / 4 + 1]), um = Math.hypot(ux - sx, uy - sy), nx = -(uy - sy) / um, ny = (ux - sx) / um;
+  q.strokeStyle = css('--text'); q.lineWidth = 3; q.beginPath(); q.moveTo(sx - nx * 13, sy - ny * 13); q.lineTo(sx + nx * 13, sy + ny * 13); q.stroke(); // start line, across the road
+}
 // a quiet brain behind the card: columns of cells, fully wired, firing at their own rates
 const c = $('net'), g = c.getContext('2d'), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let W, H, cells = [], wires = [], seed = 7;

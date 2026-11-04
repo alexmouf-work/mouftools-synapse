@@ -42,15 +42,21 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
 - Replaces today's status panel and graph panel. Still to settle: where the highlighted car's brain goes, if anywhere
   (my default: nowhere during training; it's in the drive view).
 
-## 4. Matches
+## 4. Matches ("Multiplayer"), and VS Computer
+- **VS Computer**: you against nine computer brains, 10 cars on one track, offline. The computer brains come from
+  trained presets of varied skill.
+- **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
+  then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.
 - **Only the nearest cars are drawn as 3-D cars** (5–20 by device, as in training), nearest to the camera's car. The
   rest exist only as dots on a **map in a corner**, the player's own car highlighted.
 - To check before building: the cost of 100 brains × 60 s on a phone. Measured, not assumed; the match screen can
   show the race once it's computed if a weak device needs it.
-- Match mode still waits for the Supabase project URL and anon key.
+- Supabase variables are set in Vercel (`SUPABASE_PROJECT_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`);
+  how they reach the build safely is in `2026-11-04-legal-pages.md`.
 
 ## 5. Title screen (mock-up `reference/title-screen-mockup.html`)
-- "Synapse", one line ("Build a brain. Train it. Race it."), two buttons: **Sandbox** and **Match**.
-- Match opens: **Create a room**, or **join** with a 4-letter room code; "Up to 100 players"; Back.
+- "Synapse", one line ("Build a brain. Train it. Race it."), three buttons: **Sandbox**, **VS Computer**,
+  **Multiplayer** (was "Match").
+- Multiplayer opens: **Create a room**, or **join** with a 4-letter room code; "Up to 100 players"; Back.
 - Behind the card, a quiet fully wired brain whose cells flash at their own rates (still if reduced motion is set).
