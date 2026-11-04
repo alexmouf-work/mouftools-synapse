@@ -33,9 +33,12 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
 ## 3. Training view (supersedes section 10 of the brain designer v2 plan)
 - One **info panel on the left**, full height, **at most a fifth of the width**, a section of its own (not an
   overlay); the camera fills the rest of the screen. Nothing on the right.
-- **Random agents from each generation**: as each generation is evaluated, **5** of its agents, picked at random, drive
-  on the track, **all as ghosts** (2026-11-04, replaces "5–20 by device").
-- **12× playback; each generation takes 5 s**: the shown cars replay their whole 60 s episode at 12×, so you see how
+- **Random agents from each generation**: as each generation is evaluated, a random handful of its agents (as many as
+  before: 5–20 by device) drive on the track, **all as ghosts**. ("5 cars" was withdrawn the same day: "let's keep it
+  as many cars as we had before, but load them more lazily so that we don't have a lag spike".)
+- **Loaded lazily**: car meshes are made once and reused; each generation's paths are prepared a few cars per frame (or
+  off the main thread) ahead of when they're needed, so a new generation never causes a frame spike.
+- **Fast playback (12×, so a generation takes about 5 s), as much of the course as possible**: the shown cars replay their whole 60 s episode at 12×, so you see how
   far they really get, not just the first bend. Then the next generation's five start. If training runs ahead of the
   replay, the view skips to the newest finished generation rather than queueing. The accelerating playback (v2 plan, section 10) is dropped: "didn't really look how I
   wanted".

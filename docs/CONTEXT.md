@@ -226,3 +226,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   speed, so each generation takes 5 seconds. I also want driving to go further during training. it looks like the cars
   only make it round the first bend and then the training resets. this may not actually be the case in the real thing,
   but it's what it looks like."
+- "Actually, a change to that: let's keep it as many cars as we had before, but load them more lazily so that we don't
+  have a lag spike when we try to load them. Try to let them complete as much of the course as possible in the training
+  session, but at a way faster speed than real racing."
