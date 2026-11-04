@@ -20,24 +20,25 @@
   --accent: #6b9cff; --accent-soft: #24304a; --band: rgba(107,156,255,.06); --node: #232933; --car: #9fb0d0; --minus: #ff7085;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
 *, *::before, *::after { box-sizing: border-box; }
-html, body { height: 100%; }
+html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 14px; -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; touch-action: manipulation; }
 button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* One layout, phone-landscape sized (860 × 400), scaled whole to fit any screen: a laptop is the phone app, larger. */
 html, body { overflow: hidden; }
-.app { position: absolute; left: 0; top: 0; width: 860px; height: 400px; transform-origin: 0 0; display: grid;
+.app { position: fixed; left: 0; top: 0; width: 860px; height: 400px; transform-origin: 0 0; display: grid;
   grid-template-rows: 36px 30px 1fr; gap: 6px; padding: 6px 10px; font-size: 12px; }
 .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .word { font-weight: 700; font-size: 15px; }
 .alloc { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 11.5px; min-width: 0; }
 .alloc b { font-family: var(--mono); font-weight: 400; font-variant-numeric: tabular-nums; }
-.split { position: relative; width: 140px; height: 10px; border-radius: 5px; background: var(--speed); overflow: hidden; flex: none; }
-.split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .2s ease; }
+.split { position: relative; width: 140px; height: 10px; border-radius: 0; background: var(--speed); overflow: hidden; flex: none; }
+.split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .12s linear; }
+.split s { position: absolute; inset: 0 auto 0 0; background: var(--spike); opacity: .35; }
 .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
 .btn { min-height: 30px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px; border-radius: 0; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; font-size: 12px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-.rulebar { display: flex; align-items: center; justify-content: center; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.rulebar { display: flex; align-items: center; justify-content: center; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 0; }
 .tr { display: flex; gap: 2px; flex: none; }
 .tr button { height: 22px; border: 1px solid transparent; background: transparent; border-radius: 0; cursor: pointer; font-size: 11px; padding: 0 7px; }
 .tr button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
@@ -46,7 +47,7 @@ html, body { overflow: hidden; }
 .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
 .nums b { color: var(--text); font-weight: 400; }
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 6px; min-height: 0; }
-.board { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+.board { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 0; overflow: hidden;
   background: radial-gradient(var(--dot) 1px, transparent 1.1px) 0 0 / 16px 16px, var(--canvas); }
 .tray { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px; z-index: 1; background: var(--panel); border-right: 1px solid var(--line); }
 .tray .sense { height: 40px; flex: none; }
@@ -58,25 +59,30 @@ html, body { overflow: hidden; }
 #net { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
 #net .hit { pointer-events: auto; cursor: pointer; }
 .tools { position: absolute; right: 6px; bottom: 6px; z-index: 4; display: flex; gap: 6px; }
-.side { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
 .side h2 { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 4px; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; margin: 0; font-size: 11.5px; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); font-size: 11px; text-align: right; }
 .fx { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.fx button { min-height: 28px; border: 1px solid var(--line); background: transparent; border-radius: 0; cursor: pointer; display: flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 11px; }
+.fx button { min-height: 40px; min-width: 0; border: 1px solid var(--line); background: transparent; border-radius: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 2px; font-size: 11px; }
 .fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
-.fx svg { width: 16px; height: 10px; flex: none; }
+.fx svg { width: 20px; height: 13px; flex: none; }
 .acts { display: grid; gap: 4px; }
 .acts .btn { box-shadow: none; text-align: left; white-space: normal; padding: 5px 9px; line-height: 1.25; font-size: 11.5px; }
 .acts .danger { color: var(--minus); }
-.desc { margin: 0 0 4px; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desc { margin: 0 0 4px; font-size: 10.5px; line-height: 1.3; color: var(--muted); }
 .bin { margin-top: auto; align-self: flex-end; height: 36px; width: 36px; border: 0; border-radius: 50%; background: #d9465b; color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
 .bin:active { transform: scale(.97); }
 #graph { display: block; width: 100%; aspect-ratio: 1; margin: 2px 0 6px; }
 #insp { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.4; }
-#toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 10px; z-index: 9; max-width: calc(100% - 32px); }
+#toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 0; z-index: 9; max-width: calc(100% - 32px); }
 #rotate { display: none; }
+dialog#confirm { border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); padding: 14px; width: 260px; box-shadow: var(--shadow); font-size: 12.5px; line-height: 1.4; }
+dialog#confirm::backdrop { background: rgba(10, 14, 22, .45); }
+dialog#confirm p { margin: 0 0 12px; }
+.cf { display: flex; justify-content: flex-end; gap: 6px; }
+.btn.red { background: #d9465b; border-color: #d9465b; color: #fff; font-weight: 700; }
 @media (orientation: portrait) and (max-width: 700px) {
   body:not(.portrait-ok) #rotate { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg); padding: 24px; text-align: center; }
 }
@@ -90,9 +96,10 @@ html, body { overflow: hidden; }
     <div class="tr" id="trainers" role="group" aria-label="Trainer"></div>
     <div class="alloc" aria-label="Energy split: brain power against speed">
       <span>Brain <b id="aBrain"></b></span>
-      <div class="split"><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
+      <div class="split"><s id="aRange"></s><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
       <span>Speed <b id="aSpeed"></b></span>
     </div>
+    <button class="btn" type="button" id="reset">Reset</button>
     <button class="btn" type="button" id="drive" aria-pressed="false">Drive</button>
     <button class="btn primary" type="button" id="train">Train</button>
   </header>
@@ -110,6 +117,7 @@ html, body { overflow: hidden; }
 </div>
 <div id="rotate"><div><h1 style="margin:0 0 8px;font-size:20px">Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button" style="margin-top:12px">Continue in portrait</button></div></div>
 <div id="toast" hidden></div>
+<dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
@@ -135,7 +143,7 @@ const dirTag = (d) => (Math.abs(d) < 1 ? 'ahead' : `${d < 0 ? 'left' : 'right'} 
 const SENSES = [
   { id: 'boundary', name: 'Boundary vector cells', sym: 'wall', cost: 3, max: 7, about: 'Fire the nearer a wall is inside their field, which faces one way from the car. Like the border and boundary-vector cells of a rat. More cells spread their fields across the front.', tag: (k, n) => dirTag(spread(k, n)) },
   { id: 'object', name: 'Landmark cells', sym: 'flag', cost: 3, max: 5, about: 'Fire the nearer the finish line is inside their field, like the object-vector cells of the entorhinal cortex.', tag: (k, n) => dirTag(spread(k, n)) },
-  { id: 'hd', name: 'Head direction', sym: 'arrow', cost: 2, max: 8, about: 'Fires as a cosine of the car’s compass heading. One cell can’t tell left from right; two (cosine and sine) pin the heading down.', tag: (k, n) => `prefers ${Math.round(360 * k / n * (n === 2 ? 0.5 : 1))}°` },
+  { id: 'hd', name: 'Head direction cells', sym: 'arrow', cost: 2, max: 8, about: 'Fires as a cosine of the car’s compass heading. One cell can’t tell left from right; two (cosine and sine) pin the heading down.', tag: (k, n) => `prefers ${Math.round(360 * k / n * (n === 2 ? 0.5 : 1))}°` },
   { id: 'grid', name: 'Grid cells', sym: 'hex', cost: 2, max: 6, about: 'Fire at the corners of a hexagonal grid laid over the ground. The first two take two scales; more take spread phases.', tag: (k) => `${k % 2 ? 'large' : 'small'} scale, phase ${Math.floor(k / 2) + 1}` },
   { id: 'speed', name: 'Speed cells', sym: 'gauge', cost: 2, max: 1, about: 'Fire faster the faster the car goes.', tag: () => '' },
 ];
@@ -158,7 +166,21 @@ function brainShare() {
   return sens + neur + wires().length * WIRE_COST;
 }
 function tryChange(apply, undo, what) { apply(); const b = brainShare(); if (b > 100) { undo(); toast('Over 100%.'); return false; } return true; }
-function showAlloc() { const b = brainShare(); $('aFill').style.width = `${clamp(b, 0, 100)}%`; $('aBrain').textContent = `${Math.round(b)}%`; $('aSpeed').textContent = `${Math.round(100 - b)}%`; }
+// Each tick, every cell spends its cost × its firing rate (and each wire its cost × its source's rate); what is left
+// of the supply goes to speed. brainShare() is the flat-out case: a design may not pass 100% even then.
+function loadOf(rate) {
+  let e = 0; const cost = (id) => id.startsWith('i:') ? SENSES.find((q) => id.startsWith(`i:${q.id}:`)).cost : id.startsWith('o:') ? WHEEL_COST : FX[S.layers[depth(id) - 1].fn].cost;
+  for (const ids of allLayers()) for (const id of ids) e += cost(id) * rate(id);
+  for (const [a] of wires()) e += WIRE_COST * rate(a);
+  return e;
+}
+const restRate = (id) => id.startsWith('i:') ? 0 : id.startsWith('o:') ? 0.5 : FX[S.layers[depth(id) - 1].fn].rate(FX[S.layers[depth(id) - 1].fn].f(0));
+function showAlloc(live) {
+  const top = brainShare(), lo = live ?? loadOf(restRate), f = (v) => Math.round(clamp(v, 0, 100));
+  $('aFill').style.width = `${f(lo)}%`; $('aRange').style.width = live == null ? `${f(top)}%` : '0%';
+  $('aBrain').textContent = live == null ? `${f(lo)}–${f(top)}%` : `${f(lo)}%`;
+  $('aSpeed').textContent = live == null ? `${100 - f(top)}–${100 - f(lo)}%` : `${100 - f(lo)}%`;
+}
 
 // ---- the replay the brain runs on ----
 function world(t) {
@@ -200,8 +222,8 @@ function layout() {
   const perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol), colGap = 30;
   ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: regions[0].cx + (col - (cols - 1) / 2) * colGap, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' }); });
   S.layers.forEach((l, L) => {
-    const x = regions[L + 1].cx, step = Math.min(34, (box.h - 122) / Math.max(l.n - 1, 1));
-    layerIds(L).forEach((id, k) => P.set(id, { x, y: box.h / 2 + 25 + (k - (l.n - 1) / 2) * step, kind: 'mid', L }));
+    const x = regions[L + 1].cx, step = Math.min(34, (box.h - 85) / (l.n + 1));
+    layerIds(L).forEach((id, k) => P.set(id, { x, y: (box.h - 5) / 2 + (k - (l.n - 1) / 2) * step, step, kind: 'mid', L }));
   });
   const last = regions[C - 1], carW = Math.min(bw * 0.86, 160), carH = carW * 0.52;
   car = { cx: last.cx, cy: box.h / 2 + 8, W: carW, H: carH };
@@ -222,9 +244,9 @@ function render() {
   S.layers.forEach((l, L) => {
     const p = P.get(layerIds(L)[0]); if (!p) return;
     const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Layer ${L + 1}: ${FX[l.fn].n}. Tap to change.` }, svg);
-    el('rect', { x: p.x - 32, y: 30, width: 64, height: 22, rx: 0, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
-    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 18} 41) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
-    const e = t(p.x + 7, 45, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none'); g.appendChild(e);
+    el('rect', { x: p.x - 32, y: 6, width: 64, height: 22, rx: 0, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
+    el('path', { d: FX[l.fn].g, transform: `translate(${p.x - 18} 17) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    const e = t(p.x + 7, 21, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)' }); e.setAttribute('pointer-events', 'none'); g.appendChild(e);
     g.addEventListener('click', (ev) => { ev.stopPropagation(); S.sel = `layer:${L}`; render(); });
   });
   // car, front to the right
@@ -251,30 +273,31 @@ function render() {
       el('circle', { cx: p.x, cy: p.y, r: 9, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
       el('path', { d: FX[S.layers[p.L].fn].g, transform: `translate(${p.x} ${p.y}) scale(.55)`, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
     } else {
-      el('rect', { x: p.x - 9, y: p.y - 6, width: 18, height: 12, rx: 3.5, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--car)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
-      el('rect', { x: p.x - 7, y: p.y - 4, width: 14, height: 8, rx: 2, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
+      el('rect', { x: p.x - 9, y: p.y - 6, width: 18, height: 12, rx: 0, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--car)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+      el('rect', { x: p.x - 7, y: p.y - 4, width: 14, height: 8, rx: 0, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
       el('path', { 'data-arrow': id, d: '', style: 'stroke:var(--accent);fill:none', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, g);
     }
-    el('circle', { cx: p.x, cy: p.y, r: 13, fill: 'transparent' }, g); // touch target, never reaching a neighbour
+    el('circle', { cx: p.x, cy: p.y, r: p.kind === 'mid' ? 12 : 13, fill: 'transparent' }, g); // touch target, never reaching a neighbour
     g.addEventListener('click', (ev) => { ev.stopPropagation(); tap(id); });
   }
   S.layers.forEach((l, L) => {
     const ids = layerIds(L), last = P.get(ids[ids.length - 1]); if (!last) return;
     const add = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': `Add a neuron to layer ${L + 1}` }, svg);
-    el('circle', { cx: last.x, cy: last.y + 22, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
-    el('path', { d: `M ${last.x - 4} ${last.y + 22} H ${last.x + 4} M ${last.x} ${last.y + 18} V ${last.y + 26}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
+    el('circle', { cx: last.x, cy: last.y + last.step, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
+    el('path', { d: `M ${last.x - 4} ${last.y + last.step} H ${last.x + 4} M ${last.x} ${last.y + last.step - 4} V ${last.y + last.step + 4}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
     add.addEventListener('click', (ev) => { ev.stopPropagation(); if (l.n >= 8) return toast('Eight neurons per layer is the limit here.'); tryChange(() => l.n++, () => l.n--, 'Another neuron'); render(); inspect(); });
   });
   const minus = (x, y, r, label, fn) => {
     const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'aria-label': label }, svg);
-    el('circle', { cx: x, cy: y, r, style: 'fill:var(--panel);stroke:var(--minus)', 'stroke-width': 1.4 }, g);
-    el('path', { d: `M ${x - r * .45} ${y} H ${x + r * .45}`, style: 'stroke:var(--minus)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, g);
+    const big = r > 9; // same ring and stroke as the matching "+"
+    el('circle', { cx: x, cy: y, r, style: `fill:var(--panel);stroke:${big ? 'var(--accent)' : 'var(--line)'}`, 'stroke-width': big ? 1.4 : 1.5 }, g);
+    el('path', { d: `M ${x - (big ? 5 : 4)} ${y} H ${x + (big ? 5 : 4)}`, style: 'stroke:var(--accent)', 'stroke-width': big ? 2 : 2.2, 'stroke-linecap': 'round' }, g);
     g.addEventListener('click', (ev) => { ev.stopPropagation(); fn(); S.sel = null; render(); });
   };
   S.layers.forEach((l, L) => {
     const first = P.get(layerIds(L)[0]); if (!first) return;
-    if (l.n > 1) minus(first.x, first.y - 22, 8, `Remove a neuron from layer ${L + 1}`, () => l.n--);
-    if (S.layers.length > 1) minus(regions[L + 1].cx, 15, 11, `Remove layer ${L + 1}`, () => S.layers.splice(L, 1));
+    if (l.n > 1) minus(first.x, first.y - first.step, 8, `Remove a neuron from layer ${L + 1}`, () => l.n--);
+    if (S.layers.length > 1) minus(regions[L + 1].cx, box.h - 22, 11, `Remove layer ${L + 1}`, () => S.layers.splice(L, 1));
   });
   // a "+" at the bottom of each boundary between columns inserts a hidden layer there
   if (S.layers.length < 3) for (let i = 0; i < regions.length - 1; i++) {
@@ -292,9 +315,9 @@ function tap(id) { S.sel = S.sel === id ? null : id; render(); }
 // ---- side panel ----
 // one line about what each kind of cell does
 const DESC = {
-  boundary: 'Fires as a wall nears its side.', object: 'Fires near the finish line.',
-  hd: 'Fires when facing its angle.', grid: 'Fires on a hexagonal grid.', speed: 'Fires faster at speed.',
-  neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.', layer: 'Every neuron here works the same way.',
+  boundary: 'Fires faster when approaching a wall.', object: 'Fires faster when the finish line is in view.',
+  hd: 'Fires faster when facing a given angle.', grid: 'Fires on a hexagonal grid.', speed: 'Fires faster at higher speeds.',
+  neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.', layer: 'All neurons here work alike.',
 };
 const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const binBtn = (id, label) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
@@ -490,6 +513,7 @@ function frame(now) {
   const w = world(active ? simT : 8);
   if (!active) { svg.querySelectorAll('[data-spk]').forEach((n) => n.setAttribute('opacity', 0)); svg.querySelectorAll('[data-arrow]').forEach((n) => n.setAttribute('d', '')); drawSymbols(simT, w); requestAnimationFrame(frame); return; }
   const act = forward(w);
+  showAlloc(loadOf((id) => rateOf(id, act.get(id) ?? 0)));
   for (const [id, v] of act) {
     const node = svg.querySelector(`[data-spk="${CSS.escape(id)}"]`); if (!node) continue;
     const rate = rateOf(id, v);
@@ -504,6 +528,11 @@ let SCALE = 1;
 function fit() { const a = document.querySelector('.app'); SCALE = Math.min(innerWidth / 860, innerHeight / 400); a.style.transform = `translate(${(innerWidth - 860 * SCALE) / 2}px, ${(innerHeight - 400 * SCALE) / 2}px) scale(${SCALE})`; renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * SCALE); }
 addEventListener('resize', () => { fit(); render(); }); fit();
 $('train').onclick = () => { S.trainedAs = brainSig(); render(); };
-$('drive').onclick = () => { active = !active; $('drive').setAttribute('aria-pressed', String(active)); $('drive').textContent = active ? 'Stop' : 'Drive'; };
+// reset goes back to the starting brain, only after a confirmation
+const START = () => ({ count: { boundary: 1, object: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] });
+$('reset').onclick = () => $('confirm').showModal();
+$('cfNo').onclick = () => $('confirm').close();
+$('cfYes').onclick = () => { Object.assign(S, START(), { trainedAs: null, sel: null }); $('confirm').close(); buildTray(); render(); };
+$('drive').onclick = () => { active = !active; if (!active) setTimeout(() => showAlloc(), 0); $('drive').setAttribute('aria-pressed', String(active)); $('drive').textContent = active ? 'Stop' : 'Drive'; };
 buildTray(); buildTrainers(); render(); requestAnimationFrame(frame);
 </script>

@@ -53,7 +53,14 @@ Boundary, whisker and object-vector cells read the surroundings, so they work on
 place cells are anchored to the world, so they pay off when it stays the same: sandbox keeps your track until
 "New track"; a match keeps one track for all rounds.
 
-## 3b. Energy is an allocation: brain power against speed (agreed 2026-11-04)
+## 3a. Speed follows firing (2026-11-04, replaces the fixed split below)
+"the speed is higher when less neurons fire per tick." Each tick, every cell spends its cost × its firing rate (a wire,
+its cost × its source's rate); what is left of the supply is that tick's top speed. A design is still refused if it
+would pass 100% with everything firing flat out, so speed never reaches zero. In build mode the bar shows the range,
+resting to flat out (e.g. brain 8–23%, speed 77–92%); while active it shows the current tick. Teaching point: quiet,
+sparse brains run faster; ReLU idles silent, tanh and sigmoid idle at half rate and pay for it.
+
+## 3b. (superseded) Energy is an allocation: brain power against speed (agreed 2026-11-04)
 - One supply, always 100%, split two ways: **brain** (cells on the field, neurons, wires) and **speed** (the rest).
   Top speed scales with the speed share. Fixed by the design (principal: "Fixed by design"); it doesn't move while
   driving.
@@ -73,6 +80,9 @@ The player can only inspect cells, add or remove cells (and layers of cells), an
 forgiving tap-to-wire idea from round 2 is dropped.
 
 - Lines of identical neurons, as today. Default: each layer fully connected to the one before (ruling 2026-11-04).
+- Layers: a "−" at the foot of each hidden column (in the row of the boundary "+"s) removes it; "−", neurons and
+  "+" share one even spacing; minus and plus are drawn alike. Reset (top bar) returns to the starting brain after a
+  confirmation. Square corners everywhere; circles stay circles (2026-11-04).
 - Wires keep their weight colours: red −1, black 0, green +1, thicker and brighter with size, but only once the
   brain is trained; before that (and after any edit) they are plain grey (2026-11-04).
 - A "+" under each layer's neurons adds one and a "−" above them removes one; a "+" at the foot of each column
@@ -111,10 +121,10 @@ Everything works by tap: tap a sense in the tray to add a cell, tap a cell to in
 another to toggle a wire, tap a layer's header to set its function. Every target is at least 44 px; nothing relies on
 hover; phones use landscape.
 
-## 10. Training view (2026-11-04)
+## 10. Training view (2026-11-04; layout superseded by `2026-11-04-tracks-training-matches.md` section 3)
 5–20 cars on the track (fewer on weaker devices), each a random member of the population; one, picked at random, is
 highlighted with its brain shown beside the track (a toggle shows the mean brain). Playback starts at real speed and
-accelerates until it matches the computer's training speed.
+accelerates until it matches the computer's training speed. ~~(accelerating playback dropped 2026-11-04)~~
 
 ## Agreed 2026-11-04
 - Place cells recognise landmarks (walls, finish line) and replace the eyes; counts start at head direction 1, grid 2,

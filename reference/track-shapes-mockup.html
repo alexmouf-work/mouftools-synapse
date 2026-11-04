@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Synapse track shapes</title>
+<style>
+:root { --bg: #eef1f6; --panel: #ffffff; --line: #d9dee8; --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; --canvas: #f6f8fb; --road: #b9c1cf; --deck: #8f9aae; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #15181e; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2; --accent: #6b9cff; --canvas: #1a1e25; --road: #4a5363; --deck: #7c889e; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #15181e; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2; --accent: #6b9cff; --canvas: #1a1e25; --road: #4a5363; --deck: #7c889e; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: Arial, Helvetica, sans-serif; padding: 16px; }
+h1 { font-size: 18px; margin: 0 0 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; max-width: 1100px; }
+figure { margin: 0; background: var(--panel); border: 1px solid var(--line); padding: 8px; }
+figcaption { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+canvas { width: 100%; aspect-ratio: 4 / 3; display: block; background: var(--canvas); }
+.prof { aspect-ratio: 6 / 1; margin-top: 6px; }
+</style></head><body>
+<h1>Track shapes</h1>
+<div class="grid" id="g"></div>
+<script>
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+// closed Catmull-Rom through control points (unit scale)
+function spline(pts, per = 40) {
+  const out = [], n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    for (let k = 0; k < per; k++) { const t = k / per, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map((d) => 0.5 * (2 * p1[d] + (-p0[d] + p2[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 + (-p0[d] + 3 * p1[d] - 3 * p2[d] + p3[d]) * t3))); }
+  }
+  return out;
+}
+const circ = (k, f) => Array.from({ length: k }, (_, i) => { const a = i / k * Math.PI * 2; const r = f(a); return [r * Math.cos(a), r * Math.sin(a)]; });
+const SHAPES = [
+  ['Loop', spline(circ(9, (a) => 1 + 0.12 * Math.sin(3 * a + 1)))],
+  ['Kidney', spline(circ(12, (a) => { const d = Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2)); return 1 - 0.42 * Math.exp(-3 * d * d); }))],
+  ['Hairpin', spline([[-1.3, -0.5], [0.9, -0.55], [1.3, -0.2], [1.1, 0.15], [0.1, 0.05], [-0.05, 0.25], [0.9, 0.35], [1.2, 0.6], [0.6, 0.8], [-1.3, 0.6], [-1.55, 0.05]])],
+  ['Chicane', spline([[-1.3, -0.6], [-0.3, -0.62], [0, -0.42], [0.3, -0.62], [1.3, -0.6], [1.55, 0], [1.3, 0.6], [-1.3, 0.6], [-1.55, 0]])],
+  ['Dogleg', spline([[-1.2, -0.8], [0.2, -0.8], [0.45, -0.55], [0.45, -0.05], [1.2, 0.05], [1.35, 0.5], [1.0, 0.8], [-1.2, 0.8], [-1.45, 0.4], [-1.45, -0.5]])],
+  ['Clover', spline(circ(18, (a) => 0.75 + 0.3 * Math.cos(3 * a)))],
+];
+const N8 = 360, EIGHT = Array.from({ length: N8 }, (_, i) => { const t = i / N8 * Math.PI * 2; return [1.45 * Math.sin(t), 0.95 * Math.sin(t) * Math.cos(t)]; });
+SHAPES.push(['Figure eight', EIGHT, true]);
+// height on the lap: 0 on the ground; a deck over the crossing on the second pass (render only)
+const deck = (i, n) => { const d = Math.abs(i / n - 0.5) * n * (360 / n), flat = 12, ramp = 40; return d < flat ? 1 : d < flat + ramp ? 0.5 + 0.5 * Math.cos(Math.PI * (d - flat) / ramp) : 0; };
+for (const [name, pts, bridge] of SHAPES) {
+  const f = document.createElement('figure'); f.innerHTML = `<figcaption>${name}</figcaption><canvas></canvas>${bridge ? '<canvas class="prof" aria-label="Height round the lap"></canvas>' : ''}`; document.getElementById('g').appendChild(f);
+  requestAnimationFrame(() => {
+    const c = f.querySelector('canvas'), r = c.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 2); c.width = r.width * dpr; c.height = r.height * dpr;
+    const g = c.getContext('2d'); g.scale(dpr, dpr);
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const s = Math.min((r.width - 30) / (x1 - x0), (r.height - 30) / (y1 - y0)), P = (p) => [r.width / 2 + (p[0] - (x0 + x1) / 2) * s, r.height / 2 + (p[1] - (y0 + y1) / 2) * s];
+    const n = pts.length, W = 11;
+    const path = (a, b, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.lineJoin = 'round'; g.beginPath(); for (let i = a; i <= b; i++) { const [x, y] = P(pts[(i + n) % n]); i === a ? g.moveTo(x, y) : g.lineTo(x, y); } if (a === 0 && b === n) g.closePath(); g.stroke(); };
+    path(0, n, css('--road'), W);
+    if (bridge) { const a = n / 2 - 40, b = n / 2 + 40; g.save(); g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = 7; path(a, b, css('--deck'), W + 3); g.restore(); path(a, b, '#ffffff', W + 3); path(a, b, css('--deck'), W); }
+    const st = bridge ? Math.round(n / 4) : 0, [sx, sy] = P(pts[st]), [tx, ty] = P(pts[st + 2]), m = Math.hypot(tx - sx, ty - sy); g.strokeStyle = css('--text'); g.lineWidth = 2.5; g.beginPath(); g.moveTo(sx - (ty - sy) / m * 7, sy + (tx - sx) / m * 7); g.lineTo(sx + (ty - sy) / m * 7, sy - (tx - sx) / m * 7); g.stroke();
+    if (bridge) {
+      const pc = f.querySelector('.prof'), pr = pc.getBoundingClientRect(); pc.width = pr.width * dpr; pc.height = pr.height * dpr; const h = pc.getContext('2d'); h.scale(dpr, dpr);
+      h.fillStyle = css('--deck'); h.beginPath(); h.moveTo(0, pr.height); for (let i = 0; i <= n; i++) h.lineTo(i / n * pr.width, pr.height - 4 - deck(i % n, n) * (pr.height - 14)); h.lineTo(pr.width, pr.height); h.fill();
+      h.fillStyle = css('--muted'); h.font = '10px Arial'; h.fillText('height round the lap', 4, 11); h.textAlign = 'center'; h.fillStyle = css('--text'); h.fillText('over', pr.width / 2, 22);
+    }
+  });
+}
+</script>
+</body></html>

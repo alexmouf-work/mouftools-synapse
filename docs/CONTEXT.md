@@ -151,3 +151,29 @@ Rulings from the principal, verbatim where quoted. Newest last.
   positive and negative weights until after training." → a "−" above each layer's neurons removes one; a "−" at the top
   of each hidden column removes that layer (shown while there is more than one); wires are plain grey until the brain
   is trained, and any edit returns them to grey.
+- "add a button to reset the brain somewhere, and make it come up with a confirmation prompt before it actually runs.
+  make the buttons to choose response curve (sigmoid, tanh, etc.) change so that they fit properly."
+- "make matches against opponents have a limit of 100 participants. only load the nearest ones with physical car, and
+  show the map in the corner."
+- "on the actual training page, change it so that there's the \"info panel\" on the left hand side, and nothing on the
+  right. the info panel's top half will be the graph of fitness per generation, and the bottom half will be the map
+  with all of the cars on it."
+- "make more interesting map shapes, including a figure eight. the figure eight will have to have a higher part and a
+  lower part, so that the cars don't cheat. find a way to make that work, without actually simulating the 3rd
+  dimension." → plan `docs/plans/2026-11-04-tracks-training-matches.md`.
+- Descriptions, verbatim: "\"boundary vector cell\" : fires faster when approaching a wall" · "\"landmark cell\" : fires
+  faster when the finish line is in view" · "\"head direction cell\" : fires faster when facing a given angle" ·
+  "\"grid cell\" : fires on a hexagonal grid" · "\"speed cell\" fires faster at higher speeds"
+- "let's change the system so that the neurons being used will indeed affect the speed. the speed is higher when less
+  neurons fire per tick."
+- "make the minus symbol in its bubble be styled the same way as the plus one below it, including colours. same goes
+  for the plus symbols on the edges. add minus symbols to remove a layer, in the middle of each section but vertically
+  aligned to the plus symbols. use the same spacing between the neurons as between the plus and minus buttons."
+- "use square corners rather than squircles across the whole site."
+- "the panel on the side should be less wide - it should take up only at maximum a fifth of the whole page. it
+  shouldn't look like an overlay and instead should be a section of its own, with the camera shown on the right taking
+  up the rest of the screen. the training accelerating thing didn't really look how I wanted to, so let's revert it.
+  show some random agents from each generation." · "I like all of the track shapes. show me the title screen now
+  please."
+- "there's a really weird zooming in effect that shows when I look at the artifact." → the brain mock-up page was 8 px
+  taller than its window (body margin); a frame sized to its content grew, the page re-scaled, and so on. Fixed.
