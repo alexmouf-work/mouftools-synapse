@@ -219,3 +219,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "the page should start on the title screen. it should keep playing music continuously from the title onwards,
   smoothly but quickly transitioning between tracks. move the privacy, terms and cookies as well as song references to
   the title page in a rail across the bottom. it should keep playing even when not focused."
+- "the input neurons (not the buttons to choose them) are much too small to be legible. please make them larger." ·
+  "change the train again button to say \"keep training\"" · "please also build the side panel as directed. I don't
+  see it in the dev build." → training-view side panel brought forward (B6 after B2c).

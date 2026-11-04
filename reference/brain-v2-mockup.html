@@ -238,16 +238,16 @@ function layout() {
   trayW = $('tray').offsetLeft + $('tray').offsetWidth;
   P = new Map();
   const C = S.layers.length + 2, Wb = box.w - trayW;
-  R = 10.5;
-  const insN = inputIds().length, perCol0 = Math.max(1, Math.floor((box.h - 34 - 40) / (2 * R + 9))), inCols = Math.max(1, Math.ceil(insN / perCol0));
-  const needIn = inCols * (2 * R + 9) + 10, needCar = 112;
+  R = 16; // input cells: large enough to read their symbols (2026-11-04)
+  const insN = inputIds().length, perCol0 = Math.max(1, Math.floor((box.h - 34 - 40) / (2 * R + 6))), inCols = Math.max(1, Math.ceil(insN / perCol0));
+  const needIn = inCols * (2 * R + 6) + 10, needCar = 112;
   let widths = Array(C).fill(Wb / C);
   if (Wb / C < needIn || Wb / C < needCar) { const wIn = Math.max(needIn, 0), wCar = needCar, rest = (Wb - wIn - wCar) / S.layers.length; widths = [wIn, ...Array(S.layers.length).fill(rest), wCar]; }
   let acc = trayW;
   regions = widths.map((w) => { const r = { x0: acc, x1: acc + w, cx: acc + w / 2 }; acc += w; return r; });
   const bw = widths[C - 1];
-  const ins = inputIds(), top = 34, avail = box.h - top - 40, pitch = 2 * R + 9; // the bottom row stays clear for the layer buttons
-  const perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol), colGap = Math.min(30, (regions[0].x1 - regions[0].x0 - 10) / Math.max(cols, 1));
+  const ins = inputIds(), top = 34, avail = box.h - top - 40, pitch = 2 * R + 6; // the bottom row stays clear for the layer buttons
+  const perCol = Math.max(1, Math.floor(avail / pitch)), cols = Math.ceil(ins.length / perCol), colGap = Math.min(2 * R + 6, (regions[0].x1 - regions[0].x0 - 10) / Math.max(cols, 1));
   ins.forEach((id, i) => { const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol); P.set(id, { x: regions[0].cx + (col - (cols - 1) / 2) * colGap, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' }); });
   S.layers.forEach((l, L) => {
     const x = regions[L + 1].cx, step = Math.min(34, (box.h - 85) / (l.n + 1));
@@ -310,7 +310,7 @@ function render() {
       el('rect', { x: p.x - 7, y: p.y - 4, width: 14, height: 8, rx: 0, 'data-spk': id, style: 'fill:var(--spike)', opacity: 0 }, g);
       el('path', { 'data-arrow': id, d: '', style: 'stroke:var(--accent);fill:none', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, g);
     }
-    el('circle', { cx: p.x, cy: p.y, r: p.kind === 'mid' ? 12 : 13, fill: 'transparent' }, g); // touch target, never reaching a neighbour
+    el('circle', { cx: p.x, cy: p.y, r: p.kind === 'mid' ? 12 : p.kind === 'in' ? R + 1.5 : 13, fill: 'transparent' }, g); // touch target, never reaching a neighbour
     g.addEventListener('click', (ev) => { ev.stopPropagation(); tap(id); });
   }
   S.layers.forEach((l, L) => {
@@ -516,7 +516,7 @@ function drawSymbols(t, w) {
   renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
   const draw = (sym, cx, cy, size) => { if (size < 8) return; const x = cx - size / 2, y = r.height - cy - size / 2; renderer.setViewport(x, y, size, size); renderer.setScissor(x, y, size, size); cam.aspect = 1; cam.updateProjectionMatrix(); SYM[sym].upd(t, w); renderer.render(SYM[sym].s, cam); };
   const tr = $('tray'); document.querySelectorAll('.sense').forEach((b) => { const s = SENSES.find((q) => q.id === b.dataset.s); draw(s.sym, tr.offsetLeft + b.offsetLeft + b.offsetWidth / 2, tr.offsetTop + b.offsetTop + b.offsetHeight / 2, b.offsetHeight - 6); });
-  for (const [id, p] of P) if (p.kind === 'in') draw(SENSES.find((q) => q.id === id.split(':')[1]).sym, p.x, p.y, R * 1.6);
+  for (const [id, p] of P) if (p.kind === 'in') draw(SENSES.find((q) => q.id === id.split(':')[1]).sym, p.x, p.y, R * 1.7);
 }
 
 // ---- the learning rule, always on screen (mock-up numbers from the replay) ----
