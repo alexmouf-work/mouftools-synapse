@@ -90,7 +90,7 @@ html, body { overflow: hidden; }
       <div class="split"><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
       <span>Speed <b id="aSpeed"></b></span>
     </div>
-    <button class="btn" type="button">Drive</button>
+    <button class="btn" type="button" id="drive" aria-pressed="false">Drive</button>
     <button class="btn primary" type="button">Train</button>
   </header>
   <div class="rulebar" aria-label="Learning rule"><div class="eq" id="eq"></div></div>
@@ -375,12 +375,15 @@ function showRule(act, t) {
   if (p && q && hl) { const x1 = p.x + (p.kind === 'in' ? R : 11), x2 = q.x - (q.kind === 'out' ? 9 : 11), dx = x2 - x1; hl.setAttribute('d', `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`); }
 }
 
-// ---- the always-running loop ----
+// ---- build mode: nothing fires; an active brain (driving or training) fires ----
+let active = false;
 const flash = new Map(), phase = new Map();
 let last = performance.now(), simT = 8;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; simT += dt;
-  const w = world(simT), act = forward(w);
+  const w = world(active ? simT : 8);
+  if (!active) { svg.querySelectorAll('[data-spk]').forEach((n) => n.setAttribute('opacity', 0)); svg.querySelectorAll('[data-arrow]').forEach((n) => n.setAttribute('d', '')); drawSymbols(simT, w); requestAnimationFrame(frame); return; }
+  const act = forward(w);
   for (const [id, v] of act) {
     const node = svg.querySelector(`[data-spk="${CSS.escape(id)}"]`); if (!node) continue;
     const rate = rateOf(id, v);
@@ -394,5 +397,6 @@ function frame(now) {
 let SCALE = 1;
 function fit() { const a = document.querySelector('.app'); SCALE = Math.min(innerWidth / 860, innerHeight / 400); a.style.transform = `translate(${(innerWidth - 860 * SCALE) / 2}px, ${(innerHeight - 400 * SCALE) / 2}px) scale(${SCALE})`; renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * SCALE); }
 addEventListener('resize', () => { fit(); render(); }); fit();
+$('drive').onclick = () => { active = !active; $('drive').setAttribute('aria-pressed', String(active)); $('drive').textContent = active ? 'Stop' : 'Drive'; };
 buildTray(); buildTrainers(); render(); requestAnimationFrame(frame);
 </script>

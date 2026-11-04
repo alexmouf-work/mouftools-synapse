@@ -117,3 +117,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "remove the dotted background from the input neuron selection, and line them all up alongside each other in a column
   of 5 elements. show only the formula for the delta rule, no calculation directly happening. don't show the neuron
   selected in that area either. centre the delta rule, and directly call it \"Learning Rule : [equation]\""
+- "don't show the neurons firing until they're inside the active brain. if the brain is in build mode, don't activate
+  any of them" → supersedes the always-running workbench brain: build mode is still; firing shows only while training
+  or driving.

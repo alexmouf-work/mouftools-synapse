@@ -73,10 +73,9 @@ place cells are anchored to the world, so they pay off when it stays the same: s
 - Its four wheels are the motor neurons: they flash at their rate, and a small arrow on each shows its speed and
   direction.
 
-## 6. The brain is always running
-To keep the computation in front of you, the brain runs continuously on the workbench: the senses replay your last
-drive (or a demo lap before you've driven), and every cell flashes as it would on the track. Change a wire, a cell or
-the neuron type and the firing changes immediately.
+## 6. Build mode is still (2026-11-04, supersedes "always running")
+While you build, nothing fires: no flashes, no wheel arrows. Cells and neurons fire only inside an active brain, while
+training or driving. The sense symbols keep a gentle idle motion.
 
 ## 7. Look
 The symbols are low-poly 3-D models in the workbench's plain style (soft, matte, flat colours on the light/dark
@@ -95,7 +94,7 @@ accelerates until it matches the computer's training speed.
 ## Agreed 2026-11-04
 - Place cells recognise landmarks (walls, finish line) and replace the eyes; counts start at head direction 1, grid 2,
   place 2 (walls, finish line); adding cells re-tunes them automatically.
-- The brain runs continuously on the workbench, replaying the last drive.
+- ~~The brain runs continuously on the workbench~~ → superseded 2026-11-04: build mode is still; firing only when active.
 - Plain matte low-poly symbols.
 - Round 2: real cell names; whisker cells added; energy is a fixed brain/speed split; road ahead, energy left and
   bias removed; input cells are symbol circles placed on the field only when used.
