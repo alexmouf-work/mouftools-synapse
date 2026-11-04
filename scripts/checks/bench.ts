@@ -1,4 +1,4 @@
-// Bench time check: one full Starter phase (seed 1, T car-ticks) on 4 worker_threads must finish within
+// Bench time check: one full phase of the default brain (seed 1, T car-ticks) on 4 worker_threads must finish within
 // 1.3 × the committed baseline. Best of 3 runs (review call 2026-10-30: a check that fails on noise gets ignored).
 // The baseline is machine-specific; it records the machine it came from.
 //   npx tsx scripts/checks/bench.ts            check
@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism, cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { CONFIG } from '../../src/common/config';
-import { starterSpec } from '../../src/common/sim/brain';
+import { defaultSpec } from '../../src/common/sim/spec';
 import { runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
 
@@ -19,7 +19,7 @@ async function main() {
   const ms: number[] = [];
   let hash = '';
   for (let k = 0; k < 3; k++) {
-    const r = await runPhase(pool, starterSpec(), 1, { now: () => performance.now() });
+    const r = await runPhase(pool, defaultSpec(), 1, { now: () => performance.now() });
     ms.push(r.trainMs); hash = r.hash;
   }
   await pool.close();

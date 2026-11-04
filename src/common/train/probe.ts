@@ -10,8 +10,8 @@ export function firstTickSignal(env: Env, g: Genome): Float64Array {
   const net = compile(g);
   const t = env.track(0);
   const c = startCar(t);
-  const inputs = new Float64Array(10), vals = new Float64Array(net.nNodes);
-  readSensors(c, t, net.inUsed, env.setup.pool, inputs);
-  evalNet(net, inputs, vals, 0, 0, 0);
+  const inputs = new Float64Array(net.nIn), vals = new Float64Array(net.nNodes);
+  readSensors(c, t, net, inputs);
+  evalNet(net, inputs, vals);
   return signalOf(net, vals);
 }

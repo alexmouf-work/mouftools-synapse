@@ -1,6 +1,6 @@
-// Determinism golden hashes (3 seeds): track geometry, a recorded 600-tick race (under budget and over budget, so the
-// noise path is covered), and a short training phase per trainer (evolution, backprop) run inline and on 4
-// worker_threads (must match each other and the golden). golden.json is written only by this script:
+// Determinism golden hashes (3 seeds): track geometry, recorded 600-tick races (the default brain, and a heavy brain
+// with every sense and two layers, whose energy load caps its speed), and a short training phase per trainer
+// (evolution, backprop) of the default brain run inline and on 4 worker_threads (must match each other and the golden). golden.json is written only by this script:
 //   npx tsx scripts/checks/determinism.ts            check
 //   npx tsx scripts/checks/determinism.ts --update   regenerate (say why in the commit)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG } from '../../src/common/config';
 import { Hasher } from '../../src/common/hash';
 import { Rng } from '../../src/common/rng';
-import { compile, starterSpec } from '../../src/common/sim/brain';
+import { compile } from '../../src/common/sim/brain';
+import { defaultSpec, wireCount, type BrainSpec } from '../../src/common/sim/spec';
 import { newRecording, recordingHash, Runner } from '../../src/common/sim/race';
 import { generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
@@ -19,13 +20,14 @@ const SEEDS = [1, 2, 3];
 const PHASE_T = 600_000; // a few generations of 60 s episodes
 const goldenPath = fileURLToPath(new URL('./golden.json', import.meta.url));
 
-/** perTick: energy anchor; the 30 s race gets perTick × its ticks as its pool. */
-function raceHash(seed: number, perTick: number): string {
-  const ps = phaseSeeds(seed);
-  const spec = starterSpec(), r = new Rng(seed);
-  const net = compile({ spec, w: spec.conns.map(() => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
+const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 6, fn: 'relu' }, { n: 4, fn: 'sigmoid' }] };
+
+/** A recorded 30 s race of `spec` with seeded random weights on the seed's unseen track. */
+function raceHash(seed: number, spec: BrainSpec): string {
+  const ps = phaseSeeds(seed), r = new Rng(seed);
+  const net = compile({ spec, w: Array.from({ length: wireCount(spec) }, () => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
   const rec = newRecording(net, CONFIG.race.ticks);
-  new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, pool: perTick * CONFIG.race.ticks, noiseSeed: ps.raceNoise, earlyStop: false, record: rec });
+  new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, earlyStop: false, record: rec });
   return recordingHash(rec);
 }
 
@@ -37,13 +39,13 @@ async function main() {
   for (const seed of SEEDS) {
     const t = generateTrack(phaseSeeds(seed).unseenTrack);
     const track = new Hasher().u32(t.sub).f64s(t.px).f64s(t.py).f64s(t.curv).u32(t.startIdx).f64s(t.pads.map((p) => p.i0)).hex();
-    const inline = await runPhase(new InlineExecutor(), starterSpec(), seed, { T: PHASE_T });
-    const pooled = await runPhase(pool, starterSpec(), seed, { T: PHASE_T });
+    const inline = await runPhase(new InlineExecutor(), defaultSpec(), seed, { T: PHASE_T });
+    const pooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T });
     if (inline.hash !== pooled.hash) { bad++; console.error(`seed ${seed}: inline ${inline.hash} ≠ 4 workers ${pooled.hash}`); }
-    const bpInline = await runPhase(new InlineExecutor(), starterSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
-    const bpPooled = await runPhase(pool, starterSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
+    const bpInline = await runPhase(new InlineExecutor(), defaultSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
+    const bpPooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T, trainer: 'backprop' });
     if (bpInline.hash !== bpPooled.hash) { bad++; console.error(`seed ${seed} backprop: inline ${bpInline.hash} ≠ 4 workers ${bpPooled.hash}`); }
-    got[seed] = { track, race: raceHash(seed, CONFIG.budget[0]), raceOverBudget: raceHash(seed, 3), phase: inline.hash, phaseBackprop: bpInline.hash };
+    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), phase: inline.hash, phaseBackprop: bpInline.hash };
   }
   await pool.close();
   if (update) {
@@ -57,7 +59,7 @@ async function main() {
     if (golden[seed]?.[k] !== got[seed][k]) { bad++; console.error(`seed ${seed} ${k}: got ${got[seed][k]}, golden ${golden[seed]?.[k]}`); }
   }
   if (bad) { console.error(`determinism: ${bad} mismatch(es)`); process.exit(1); }
-  console.log(`determinism: ${SEEDS.length} seeds match golden (track, race, over-budget race, evolution and backprop phases inline = 4 workers)`);
+  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, evolution and backprop phases inline = 4 workers)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

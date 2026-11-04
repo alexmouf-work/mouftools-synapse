@@ -1,14 +1,12 @@
 // The drive view's 3-D rig, from the look mock-up: the detailed car in the player's yellow with each wheel spinning
-// at its own output (backwards when the output is negative), the six eye rays cast from the car's real sensor
-// directions (brighter as a wall gets closer; unwired eyes faint; flickering when over budget), and the chase,
-// broadcast and showroom cameras. Poses come from a recorded drive; nothing here feeds the sim.
+// at its own output (backwards when the output is negative), one ray per boundary vector cell, cast along the centre
+// of its field (sensors.bearingDir) up to its 20 m range and brighter as a wall gets closer, and the chase, broadcast
+// and showroom cameras. Poses come from a recorded drive; nothing here feeds the sim.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CONFIG } from '../../common/config';
-import { EYE_COUNT } from '../../common/sim/spec';
-import { eyeDirection, eyeDistance } from '../../common/sim/sensors';
-import type { CarState } from '../../common/sim/car';
-import type { Track } from '../../common/sim/track';
+import { bearingDir } from '../../common/sim/sensors';
+import { castRay, type Track } from '../../common/sim/track';
 import { makeCar, type CarModel } from './car';
 import { assertFiniteArray } from './guard';
 import { toWorld, yawOf } from './trackMesh';
@@ -18,15 +16,14 @@ export interface DrivePose {
   x: number; y: number; hdg: number; v: number; idx: number;
   /** Wheel outputs FL, FR, RL, RR (−1..1). */
   wheels: ArrayLike<number>;
-  /** Which eyes are wired (6). */
-  eyesUsed: ArrayLike<number>;
-  /** Over-budget noise level 0..1. */
-  noise: number;
+  /** Field centre of each boundary vector cell (degrees clockwise from the nose). */
+  beams: ArrayLike<number>;
   stuck: boolean;
 }
 
 const WHEEL_SPIN = 18; // rad/s at output ±1: readable on screen, direction and rate follow the output
-const RANGE = CONFIG.sensors.eyeRange;
+const RANGE = CONFIG.senses.boundary.rangeM;
+const MAX_BEAMS = CONFIG.senses.boundary.max;
 
 export class DriveRig {
   readonly car: CarModel;
@@ -45,14 +42,14 @@ export class DriveRig {
   private tvIdx = -1;
   private tvSpots: { i: number; p: THREE.Vector3 }[] = [];
   private track: Track | null = null;
-  private readonly probe = { x: 0, y: 0, hdg: 0 } as CarState;
-  readonly rayDist = new Float64Array(EYE_COUNT);
+  readonly rayDist = new Float64Array(MAX_BEAMS);
+  private shown = 0;
 
   constructor(glowTex: THREE.Texture, private readonly camera: THREE.PerspectiveCamera, dom: HTMLElement) {
     this.car = makeCar('#ffc21a', '#14161d', glowTex);
     this.group.add(this.car.car);
     const col = new THREE.Color('#ffc21a').multiplyScalar(2.4);
-    for (let e = 0; e < EYE_COUNT; e++) {
+    for (let e = 0; e < MAX_BEAMS; e++) {
       const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
       const beam = new THREE.Mesh(this.beamGeo, mat), hit = new THREE.Mesh(this.hitGeo, mat);
       beam.userData.glow = true; hit.userData.glow = true;
@@ -68,10 +65,10 @@ export class DriveRig {
   /** Put the camera exactly where it wants to be on the next update (no easing). */
   snapNow(): void { this.snap = true; this.tvIdx = -1; this.swing = 0; }
 
-  /** World unit direction of each eye's beam as drawn (for the beam-direction check). */
+  /** World unit direction of each boundary cell's beam as drawn (for the beam-direction check). */
   beamDirs(): number[][] {
     const v = new THREE.Vector3();
-    return this.beams.map((b) => b.beam.getWorldDirection(v).toArray());
+    return this.beams.slice(0, this.shown).map((b) => b.beam.getWorldDirection(v).toArray());
   }
 
   setTrack(t: Track, tvSpots: { i: number; p: THREE.Vector3 }[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; }
@@ -96,27 +93,23 @@ export class DriveRig {
     car.updateMatrixWorld();
     assertFiniteArray(car.matrixWorld.elements, 'drive car');
     this.car.wheels.forEach((w, k) => { w.spin.rotation.x = (w.spin.rotation.x + p.wheels[k] * WHEEL_SPIN * dt) % (2 * Math.PI); });
-    // eye rays from the car's sensor directions, at eye height
-    this.probe.x = p.x; this.probe.y = p.y; this.probe.hdg = p.hdg;
+    // one ray per boundary vector cell along its field's centre, at eye height
     const oy = 0.75;
-    for (let e = 0; e < EYE_COUNT; e++) {
-      const d = eyeDistance(this.probe, t, e);
+    this.shown = Math.min(p.beams.length, MAX_BEAMS);
+    for (let e = 0; e < MAX_BEAMS; e++) {
+      const b = this.beams[e], on = e < this.shown;
+      b.beam.visible = on; b.hit.visible = on;
+      if (!on) continue;
+      // the field's direction, from the sim's rule (sensors.bearingDir), sim (x, y) → world (x, −y)
+      const dir = bearingDir(p.hdg, p.beams[e]);
+      const d = castRay(t.grid, p.x, p.y, dir.dx, dir.dy, RANGE);
       this.rayDist[e] = d;
-      const b = this.beams[e];
-      // the eye's own direction, from the sim's rule (sensors.eyeDirection), sim (x, y) → world (x, −y)
-      const dir = eyeDirection(p.hdg, e);
-      let dx = dir.dx, dz = -dir.dy;
-      if (p.noise > 0) { // over budget: the beam shakes (display only)
-        const j = (Math.random() - 0.5) * 0.7 * p.noise, cj = Math.cos(j), sj = Math.sin(j);
-        [dx, dz] = [dx * cj + dz * sj, -dx * sj + dz * cj];
-      }
+      const dx = dir.dx, dz = -dir.dy;
       b.beam.position.set(car.position.x, oy, car.position.z);
       this.v.set(car.position.x + dx * d, oy, car.position.z + dz * d);
       b.beam.lookAt(this.v); b.beam.scale.set(1, 1, Math.max(d, 0.01));
       b.hit.position.copy(this.v); b.hit.rotation.y = time * 3; b.hit.visible = d < RANGE - 0.5;
-      const near = 1 - d / RANGE;
-      const flick = p.noise > 0 ? 1 - p.noise * Math.random() : 1;
-      b.mat.opacity = (p.eyesUsed[e] ? 0.3 + near * 0.7 : 0.1) * flick;
+      b.mat.opacity = 0.3 + (1 - d / RANGE) * 0.7;
     }
     this.camera.near = 0.3;
     this.updateCamera(p, dt, reduceMotion);

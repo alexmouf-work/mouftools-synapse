@@ -16,25 +16,25 @@ let cur: { ctx: KernelCtx; lane: Lane; grad: Float64Array; stats: Float64Array }
 function act(vals: Float64Array, o: number): void {
   const { ctx, lane, grad, stats } = cur!;
   const c = lane.car!, t = ctx.tracks[lane.track];
-  teacherWheels(c, t, target); // the state before this tick's physics: what the brain just saw
+  teacherWheels(c, t, target, c.cap); // the state before this tick's physics: what the brain just saw, at its speed cap
   let sse = 0;
   for (let k = 0; k < 4; k++) { err[k] = target[k] - vals[o + k]; sse += err[k] * err[k]; }
   preActivations(ctx.net, vals, z);
-  backward(ctx.net, vals, z, err, c.noiseA, delta, grad);
+  backward(ctx.net, vals, z, err, delta, grad);
   stats[0] += sse; stats[1] += 1;
   if (lane.mode === 1) { for (let k = 0; k < 4; k++) vals[o + k] = target[k]; stats[2] += 1; }
 }
 
 export const imitate: Kernel = {
-  gradSize: (net) => net.spec.conns.length,
+  gradSize: (net) => net.w.length,
   statSize: 3,
   episodeStart(_ctx, job, lane) {
     lane.mode = episodeDraw(job.seed, lane) < job.params[0] ? 1 : 0;
   },
   tick(ctx, _job, lane, grad, stats) {
-    const { net, runner, setup } = ctx;
+    const { net, runner } = ctx;
     if (z.length < net.nNodes) { z = new Float64Array(net.nNodes); delta = new Float64Array(net.nNodes); }
     if (cur === null || cur.lane !== lane || cur.grad !== grad) cur = { ctx, lane, grad, stats };
-    runner.tick(net, ctx.tracks[lane.track], lane.car!, setup.pool, setup.noiseSeeds[lane.track], undefined, act);
+    runner.tick(net, ctx.tracks[lane.track], lane.car!, undefined, act);
   },
 };

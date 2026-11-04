@@ -126,7 +126,9 @@ export class Stage {
     this.scene.add(sun, sun.target);
 
     this.tex = makeTextures(this.renderer.capabilities.getMaxAnisotropy());
-    const vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.45 });
+    // kerbs, run-off and walls: rough enough that a grazing low sun can't glare over the bloom threshold (a kerb
+    // reached 1.38 at roughness 0.6; bloom audit, brain v2 drive)
+    const vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.45 });
     const strip = fadeNear(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.9, 2.5), side: THREE.DoubleSide }));
     this.mats = {
       road: new THREE.MeshStandardMaterial({ map: this.tex.road, roughness: 0.78, metalness: 0, side: THREE.DoubleSide }),

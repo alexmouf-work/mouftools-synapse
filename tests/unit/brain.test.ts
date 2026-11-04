@@ -1,76 +1,82 @@
 import { describe, expect, it } from 'vitest';
-import { ACTS, type Act } from '../../src/common/config';
-import { compile, evalNet, minimalSpec, starterSpec, transfer } from '../../src/common/sim/brain';
-import { validateSpec, type BrainSpec } from '../../src/common/sim/spec';
+import { ACTS, CONFIG, type Act } from '../../src/common/config';
+import { ACT_CODE, compile, evalNet, nodeRate, rateOf, restRate, transfer } from '../../src/common/sim/brain';
+import { columns, defaultSpec, inputIds, validateSpec, wireCount, wireList, type BrainSpec } from '../../src/common/sim/spec';
 
 const sig = (x: number) => 1 / (1 + Math.exp(-x));
-const EXPECT: Record<Act, (x: number) => number> = {
+const F: Record<Act, (x: number) => number> = {
   linear: (x) => Math.min(Math.max(x, -1), 1),
-  step: (x) => (x > 0 ? 1 : 0),
   relu: (x) => Math.min(Math.max(x, 0), 4),
   sigmoid: sig,
   tanh: Math.tanh,
 };
+const RATE: Record<Act, (y: number) => number> = { linear: (y) => (y + 1) / 2, relu: (y) => Math.min(1, y), sigmoid: (y) => y, tanh: (y) => (y + 1) / 2 };
+const E = CONFIG.energy;
 
-/** bias → n1 (act) → front-left wheel, plus speed → n1. */
-function oneNeuron(act: Act): BrainSpec {
-  return {
-    v: 1, layers: 1, nodes: [{ id: 'n1', layer: 1, act, dropout: 0 }],
-    conns: [{ from: 'i:bias', to: 'n1' }, { from: 'i:spd', to: 'n1' }, { from: 'n1', to: 'o:fl' }],
-  };
-}
+/** One speed cell → one neuron (fn) → the four wheels (tanh). Canonical wires: speed→h, then h→FL, FR, RL, RR. */
+const oneNeuron = (fn: Act): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
 
-describe('brain outputs, hand-computed, for every transfer function', () => {
-  for (const act of ACTS) {
-    it(act, () => {
-      for (const [wb, ws, spd, wo] of [[0.7, 0.5, 0.4, 1.5], [-0.3, 2, -0.2, -0.8], [3, 2, 0.9, 0.25], [0, 0, 0.5, 1]]) {
-        const net = compile({ spec: oneNeuron(act), w: [wb, ws, wo] });
-        const inputs = new Float64Array(10); inputs[9] = 1; inputs[8] = spd;
+describe('brain v2: outputs, rates and the energy load, hand-computed for every function', () => {
+  for (const fn of ACTS) {
+    it(fn, () => {
+      for (const [w0, w1, w2, w3, w4, spd] of [[0.7, 0.5, -1, 2, 0, 0.4], [-3, 2, 1, -0.5, 4, 0.9], [4, -4, 0.2, 0.3, -0.1, 1]]) {
+        const net = compile({ spec: oneNeuron(fn), w: [w0, w1, w2, w3, w4] });
         const vals = new Float64Array(net.nNodes);
-        evalNet(net, inputs, vals, 0, 0, 0);
-        const h = EXPECT[act](wb * 1 + ws * spd);
-        expect(vals[10]).toBeCloseTo(h, 14);
-        expect(vals[net.outStart]).toBeCloseTo(Math.max(-1, Math.min(1, wo * h)), 14);
-        expect(vals[net.outStart + 1]).toBe(0); // unwired wheel
+        const load = evalNet(net, [spd], vals);
+        const h = F[fn](w0 * spd);
+        expect(vals[1]).toBeCloseTo(h, 14);
+        const outs = [w1, w2, w3, w4].map((w) => Math.tanh(w * h));
+        outs.forEach((y, k) => expect(vals[net.outStart + k]).toBeCloseTo(y, 14));
+        // load = Σ (own cost + wires driven × wire cost) × rate
+        const hand = (E.sense.speed + 1 * E.wire) * spd + (E.neuron[fn] + 4 * E.wire) * Math.max(0, Math.min(1, RATE[fn](h)))
+          + outs.reduce((a, y) => a + E.wheel * (y + 1) / 2, 0);
+        expect(load).toBeCloseTo(hand, 12);
       }
     });
   }
-  it('ReLU caps at 4; wheels clamp to −1..1; step is 0 at exactly 0', () => {
-    expect(transfer(1, 9)).toBe(4);
-    expect(transfer(1, -2)).toBe(0);
-    expect(transfer(4, 2.5)).toBe(1);
-    expect(transfer(4, -7)).toBe(-1);
-    expect(transfer(0, 0)).toBe(0);
+  it('rates: tanh and linear map −1..1 to 0..1, ReLU saturates at 1, sigmoid is its own; resting rates', () => {
+    expect(rateOf(ACT_CODE.tanh, -1)).toBe(0); expect(rateOf(ACT_CODE.tanh, 1)).toBe(1);
+    expect(rateOf(ACT_CODE.relu, 3)).toBe(1); expect(rateOf(ACT_CODE.relu, 0)).toBe(0);
+    expect(rateOf(ACT_CODE.sigmoid, 0.3)).toBe(0.3);
+    expect(restRate('relu')).toBe(0); expect(restRate('tanh')).toBe(0.5); expect(restRate('sigmoid')).toBe(0.5); expect(restRate('linear')).toBe(0.5);
+  });
+  it('ReLU caps at 4; linear stays within −1..1', () => {
+    expect(transfer(ACT_CODE.relu, 9)).toBe(4);
+    expect(transfer(ACT_CODE.linear, 2.5)).toBe(1);
+    expect(transfer(ACT_CODE.linear, -7)).toBe(-1);
+  });
+  it('head-direction cells fire at (cos + 1) / 2', () => {
+    const net = compile({ spec: { v: 2, senses: { boundary: 0, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }, w: [0, 0, 0, 0, 0] });
+    expect(nodeRate(net, 0, -1)).toBe(0); expect(nodeRate(net, 0, 1)).toBe(1);
   });
 });
 
-describe('spec validation', () => {
-  const base = (): BrainSpec => ({
-    v: 1, layers: 2,
-    nodes: [{ id: 'n1', layer: 1, act: 'tanh', dropout: 0 }, { id: 'n2', layer: 2, act: 'relu', dropout: 0 }],
-    conns: [{ from: 'i:f', to: 'n1' }, { from: 'n1', to: 'n2' }, { from: 'n2', to: 'o:fl' }],
-  });
-  it('accepts presets and a two-layer net', () => {
-    validateSpec(starterSpec()); validateSpec(minimalSpec()); validateSpec(base());
-    expect(starterSpec().conns.length).toBe(17);
-    expect(minimalSpec().conns.length).toBe(16);
+describe('brain v2: shape', () => {
+  it('the default brain: one boundary cell, one head-direction cell, three tanh neurons, the wheels; fully wired', () => {
+    const s = defaultSpec();
+    validateSpec(s);
+    expect(inputIds(s)).toEqual(['i:boundary:0', 'i:hd:0']);
+    expect(columns(s).map((c) => c.length)).toEqual([2, 3, 4]);
+    expect(wireCount(s)).toBe(2 * 3 + 3 * 4);
+    expect(wireList(s).slice(0, 4)).toEqual([['i:boundary:0', 'h0:0'], ['i:boundary:0', 'h0:1'], ['i:boundary:0', 'h0:2'], ['i:hd:0', 'h0:0']]);
+    expect(compile({ spec: s, w: new Array(18).fill(0) }).ids).toEqual(['i:boundary:0', 'i:hd:0', 'h0:0', 'h0:1', 'h0:2', 'o:fl', 'o:fr', 'o:rl', 'o:rr']);
   });
   const bad: [string, (s: BrainSpec) => void][] = [
-    ['backward wire', (s) => s.conns.push({ from: 'n2', to: 'n1' })],
-    ['same-layer wire', (s) => { s.nodes.push({ id: 'n3', layer: 1, act: 'tanh', dropout: 0 }); s.conns.push({ from: 'n1', to: 'n3' }); }],
-    ['wire into the car', (s) => s.conns.push({ from: 'n1', to: 'i:f' })],
-    ['wire out of a wheel', (s) => s.conns.push({ from: 'o:fl', to: 'n2' })],
-    ['duplicate wire', (s) => s.conns.push({ from: 'i:f', to: 'n1' })],
-    ['dropout', (s) => { s.nodes[0].dropout = 0.1; }],
-    ['four layers', (s) => { s.layers = 4; }],
-    ['unknown act', (s) => { (s.nodes[0] as { act: string }).act = 'gelu'; }],
-    ['eleven in a layer', (s) => { for (let k = 3; k <= 12; k++) s.nodes.push({ id: `n${k}`, layer: 1, act: 'step', dropout: 0 }); }],
-    ['neuron on a missing layer', (s) => { s.nodes[1].layer = 3; }],
+    ['another version', (s) => { (s as { v: number }).v = 1; }],
+    ['eight boundary cells', (s) => { s.senses.boundary = 8; }],
+    ['two speed cells', (s) => { s.senses.speed = 2; }],
+    ['an unknown sense', (s) => { (s.senses as Record<string, number>).eye = 1; }],
+    ['no hidden layer', (s) => { s.layers = []; }],
+    ['nine layers', (s) => { s.layers = Array.from({ length: 9 }, () => ({ n: 1, fn: 'tanh' as const })); }],
+    ['nine in a layer', (s) => { s.layers[0].n = 9; }],
+    ['an empty layer', (s) => { s.layers[0].n = 0; }],
+    ['step (no longer offered)', (s) => { (s.layers[0] as { fn: string }).fn = 'step'; }],
   ];
-  for (const [name, edit] of bad) it(`rejects ${name}`, () => { const s = base(); edit(s); expect(() => validateSpec(s)).toThrow(); });
+  for (const [name, edit] of bad) it(`rejects ${name}`, () => { const s = defaultSpec(); edit(s); expect(() => validateSpec(s)).toThrow(); });
   it('rejects weights out of range or misaligned', () => {
-    expect(() => compile({ spec: base(), w: [1, 2] })).toThrow();
-    expect(() => compile({ spec: base(), w: [1, 2, 4.5] })).toThrow();
-    expect(() => compile({ spec: base(), w: [1, 2, NaN] })).toThrow();
+    const s = defaultSpec();
+    expect(() => compile({ spec: s, w: [1, 2] })).toThrow();
+    expect(() => compile({ spec: s, w: new Array(18).fill(4.5) })).toThrow();
+    expect(() => compile({ spec: s, w: new Array(18).fill(NaN) })).toThrow();
   });
 });

@@ -1,8 +1,9 @@
-// Every tunable, one home. Numbers come from docs/plans/2026-10-30-solo-loop.md §3 and the approved workbench
-// (reference/builder-mockup.html: pins, costs, upkeep). Change them here only; tests and the bench read them from here.
+// Every tunable, one home. Numbers come from the plans (docs/plans/2026-10-30-solo-loop.md §3; brain v2:
+// docs/plans/2026-11-04-brain-designer-v2.md and reference/brain-v2-mockup.html). Change them here only; tests and
+// the bench read them from here.
 
-/** The energy period (principal, 2026-10-31): the budget is a total for one minute of driving. */
-const PERIOD_TICKS = 1200;
+/** Ticks in a run: training episodes and the drive are one minute. */
+const RUN_TICKS = 1200;
 
 export const CONFIG = {
   tick: {
@@ -11,47 +12,34 @@ export const CONFIG = {
   },
 
   /**
-   * Energy anchor per tick, by round (the sandbox uses round 1). The budget is a pool: a run of N ticks gets
-   * anchor × N (energy.poolFor), so the 1-minute period gets anchor × 1200 and shorter runs a prorated share.
+   * Energy (brain v2, 2026-11-04): one supply each tick, % per unit of firing rate (0..1). A cell spends its cost ×
+   * its rate, a wire its cost × its source's rate; what is left is the tick's top speed, never below the floor. Costs
+   * halved 2026-11-04 ("increase the max energy allowed for a brain by 2x").
    */
-  budget: [10, 14, 20, 26, 32],
-
   energy: {
-    periodTicks: PERIOD_TICKS, // the period the pool covers and % of energy budget is measured over
+    sense: { boundary: 1.5, landmark: 1.5, hd: 1, grid: 1, speed: 1 },
+    neuron: { linear: 0.75, relu: 1, sigmoid: 1.5, tanh: 1.5 },
+    wheel: 0.75,
+    wire: 0.075,
+    speedFloor: 10, // %: every car can still move (sandbox has no energy limit; matches refuse > 100% flat out)
   },
-
-  /** Energy cost per tick. Inputs are charged only while wired (ruling 2026-10-30). */
-  cost: {
-    eye: 0.6,
-    road: 0.6,
-    speed: 0.3,
-    energy: 0.3, // "Energy left" input (workbench mock-up)
-    bias: 0,
-    fire: 0.1, // per wire per tick: fire × |sender output × weight| × (1 + skip × (span − 1))
-    skip: 0.5, // surcharge per extra layer a wire spans
-    // Workbench estimate ("est."): before a brain has run, each wire is costed at an assumed mean |sender output × w|
-    // of this much, so a span-1 wire shows fire × 0.5 = 0.05 per tick (the approved mock-up's figure).
-    estimateActivity: 0.5,
-  },
-
-  /**
-   * Neuron upkeep per tick by transfer function (hidden neurons; wheel outputs have no transfer function). Linear
-   * takes step's old cost, the cheapest (principal 2026-11-04: "don't offer step as a function. offer linear as well
-   * as ReLU."); step stays only so old saves can be read and migrated.
-   */
-  upkeep: { linear: 0.2, relu: 0.25, sigmoid: 0.5, tanh: 0.5, step: 0.2 },
 
   brain: {
     weightCap: 4,
     reluCap: 4,
-    maxLayers: 3,
-    maxPerLayer: 10,
+    maxLayers: 8, // hidden layers (2026-11-04: up to 8 × 8)
+    maxPerLayer: 8,
+    newLayerNeurons: 2, // a new layer starts with two
   },
 
-  sensors: {
-    eyeRange: 80, // m; eye input = 1 − d / range
-    speedNorm: 60, // speed input = v / speedNorm
-    roadAhead: 30, // m; road input = signed angle to the centreline this far ahead / π (+ = right)
+  /** The senses (brain v2 §2): how many cells each may have, and their fields. */
+  senses: {
+    boundary: { max: 7, rangeM: 20, widthDeg: 60 }, // a wall within 20 m in the field's direction
+    landmark: { max: 5, rangeM: 40, widthDeg: 70 }, // the finish line within 40 m
+    hd: { max: 8 },
+    grid: { max: 6, smallM: 11, largeM: 26, phaseStep: 2.1 },
+    speed: { max: 1 },
+    fieldSpreadDeg: 150, // several field cells share this much of the front between them
   },
 
   car: {
@@ -103,7 +91,10 @@ export const CONFIG = {
     T: 6_000_000,
     population: 64,
     trainTracks: 2,
-    episodeTicks: PERIOD_TICKS, // a training episode is the whole 1-minute period, with the whole pool (review call 2026-10-31)
+    episodeTicks: RUN_TICKS, // a training episode is one minute (review call 2026-10-31)
+    /** Sandbox: Train asks how many generations (2026-11-04); a phase's budget is that many of evolution's worst case. */
+    generations: [10, 25, 50, 100, 250, 500, 1000],
+    defaultGenerations: 100,
     elites: 4,
     tournament: 3,
     pMutate: 0.2,
@@ -147,7 +138,7 @@ export const CONFIG = {
   },
 
   drive: {
-    ticks: PERIOD_TICKS, // the drive view runs exactly the energy period (review call 2026-10-31)
+    ticks: RUN_TICKS, // the drive view runs one minute
   },
 
   pool: {
@@ -155,9 +146,7 @@ export const CONFIG = {
   },
 } as const;
 
-export type Act = keyof typeof CONFIG.upkeep;
-/** Every transfer function the engine can run (validation; step only for old saves). */
-export const ACTS: readonly Act[] = ['linear', 'relu', 'sigmoid', 'tanh', 'step'];
-/** The ones the workbench offers. */
-export const OFFERED_ACTS: readonly Act[] = ['linear', 'relu', 'sigmoid', 'tanh'];
+/** A hidden layer's function (2026-11-04: Linear, ReLU, Sigmoid, Tanh; no step). The wheels are fixed to tanh. */
+export type Act = keyof typeof CONFIG.energy.neuron;
+export const ACTS: readonly Act[] = ['linear', 'relu', 'sigmoid', 'tanh'];
 export const DT = 1 / (CONFIG.tick.hz * CONFIG.tick.substeps);

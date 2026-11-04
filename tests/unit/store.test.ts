@@ -1,58 +1,49 @@
 import { describe, expect, it } from 'vitest';
-import { draftOf, genomeHash, starterSpec, zeroGenome } from '../../src/common/sim/brain';
-import { parse, serialize, starterSaved } from '../../src/client/ui/workbench/store';
+import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
+import { parse, serialize, startSaved } from '../../src/client/ui/designer/store';
 
-describe('workbench save', () => {
-  it('round-trips name, next id and the genome exactly', () => {
-    const s = starterSpec();
-    const saved = { name: 'Gerald', draft: draftOf({ spec: s, w: s.conns.map((_, k) => (k - 8) / 3) }, 12), train: { seed: 4000000000, phases: 3 } };
+describe('designer save', () => {
+  it('round-trips name, trainer, training history and the genome exactly', () => {
+    const g = defaultGenome(), genome = { ...g, w: g.w.map((_, k) => (k - 8) / 3) };
+    const saved = { name: 'Gerald', genome, train: { seed: 4000000000, phases: 3 }, trainer: 'backprop' as const };
     const back = parse(serialize(saved));
     expect(back.status).toBe('ok');
     expect(back.saved.name).toBe('Gerald');
-    expect(back.saved.draft.nextId).toBe(12);
+    expect(back.saved.trainer).toBe('backprop');
     expect(back.saved.train).toEqual({ seed: 4000000000, phases: 3 });
-    expect(genomeHash(back.saved.draft.genome)).toBe(genomeHash(saved.draft.genome));
+    expect(genomeHash(back.saved.genome)).toBe(genomeHash(genome));
   });
-  it('a v1 save (before training existed) loads with no training history', () => {
-    const v1 = JSON.stringify({ v: 1, name: 'Old', nextId: 4, genome: good.genome });
-    const r = parse(v1);
-    expect(r.status).toBe('ok');
-    expect(r.saved.train).toEqual({ seed: null, phases: 0 });
+  it('a save from before brain v2 (versions 1 and 2) loads as the starting brain, flagged so the designer can say why', () => {
+    for (const v of [1, 2]) {
+      const old = JSON.stringify({ v, name: 'Old', nextId: 4, train: { seed: 5, phases: 2 }, genome: { spec: { v: 1, layers: 1, nodes: [], conns: [] }, w: [] } });
+      const r = parse(old);
+      expect(r.status).toBe('reset');
+      expect(r.saved.name).toBe('Old');
+      expect(r.saved.train).toEqual({ seed: null, phases: 0 });
+      expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
+      expect(parse(serialize(r.saved)).status).toBe('ok'); // once: saved back as v3
+    }
   });
-  it('a save with step neurons loads them as Linear, weights kept, and names them (step is no longer offered)', () => {
-    const g = JSON.parse(JSON.stringify(good.genome));
-    g.spec.nodes[0].act = 'step'; g.spec.nodes[2].act = 'step';
-    g.w = g.w.map((_: number, k: number) => k / 10);
-    const r = parse(JSON.stringify({ ...good, genome: g }));
-    expect(r.status).toBe('ok');
-    expect(r.migrated).toEqual([g.spec.nodes[0].id, g.spec.nodes[2].id]);
-    expect(r.saved.draft.genome.spec.nodes.map((n) => n.act)).toEqual(['linear', g.spec.nodes[1].act, 'linear']);
-    expect(r.saved.draft.genome.w).toEqual(g.w);
-    expect(parse(serialize(r.saved)).migrated).toBeUndefined(); // once: the next load has nothing to migrate
-    expect(parse(serialize(starterSaved())).migrated).toBeUndefined();
-  });
-  it('missing → Starter, quietly', () => {
+  it('missing → the starting brain, quietly', () => {
     const r = parse(null);
     expect(r.status).toBe('missing');
-    expect(genomeHash(r.saved.draft.genome)).toBe(genomeHash(zeroGenome(starterSpec())));
+    expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
   });
-  const good = JSON.parse(serialize(starterSaved()));
+  const good = JSON.parse(serialize(startSaved()));
   const corrupt: [string, string][] = [
-    ['not JSON', '{"v":1,'],
-    ['another version', JSON.stringify({ ...good, v: 3 })],
-    ['a bad training record', JSON.stringify({ ...good, train: { seed: -1, phases: 0 } })],
+    ['not JSON', '{"v":3,'],
+    ['another version', JSON.stringify({ ...good, v: 9 })],
+    ['no name', JSON.stringify({ ...good, name: '' })],
+    ['an unknown trainer', JSON.stringify({ ...good, trainer: 'magic' })],
+    ['bad training history', JSON.stringify({ ...good, train: { seed: -1, phases: 0 } })],
+    ['weights that don\'t fit', JSON.stringify({ ...good, genome: { ...good.genome, w: [1] } })],
     ['no genome', JSON.stringify({ ...good, genome: undefined })],
-    ['a backward wire', JSON.stringify({ ...good, genome: { ...good.genome, spec: { ...good.genome.spec, conns: [{ from: 'o:fl', to: 'n1' }] }, w: [0] } })],
-    ['a weight out of range', JSON.stringify({ ...good, genome: { ...good.genome, w: good.genome.w.map(() => 9) } })],
-    ['weights misaligned', JSON.stringify({ ...good, genome: { ...good.genome, w: [] } })],
-    ['an empty name', JSON.stringify({ ...good, name: ' ' })],
-    ['null', 'null'],
   ];
   for (const [what, text] of corrupt) {
-    it(`corrupt (${what}) → Starter, flagged`, () => {
+    it(`corrupt (${what}) → the starting brain, flagged`, () => {
       const r = parse(text);
       expect(r.status).toBe('corrupt');
-      expect(genomeHash(r.saved.draft.genome)).toBe(genomeHash(zeroGenome(starterSpec())));
+      expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
     });
   }
 });

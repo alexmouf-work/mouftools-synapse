@@ -3,24 +3,24 @@
 //   hash equals a Node replay of the same genome on the same track seed (runDrive).
 // - Render smoke (lit, not uniform), bloom audit (scenery under the threshold), console clean.
 // - Cameras switch; New track re-seeds (new hash); Back returns to the workbench, which now offers Drive.
-// - A brain that pins itself shows "Stuck against the wall" with the time, and the camera keeps moving (no frozen
-//   frame); an over-budget brain shows static. 844×390: panels apart, no horizontal scroll.
+// - An untrained brain (all weights 0: the wheels stay at 0) shows "Not moving" with the time, and the camera keeps
+//   moving (no frozen frame); the energy line shows the brain's load and the speed share it leaves, from the recording.
+//   844×390: panels apart, no horizontal scroll.
 // Screenshots → out/s4/.
 //   npx tsx scripts/checks/drive.ts
 import { mkdirSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
-import { CONFIG } from '../../src/common/config';
-import { addLayer, addNeuron, draftOf, genomeHash, type Draft } from '../../src/common/sim/brain';
-import { estimate } from '../../src/common/sim/energy';
+import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
+import { speedCap } from '../../src/common/sim/energy';
 import { runDrive } from '../../src/common/sim/race';
-import type { Genome } from '../../src/common/sim/spec';
+import { defaultSpec, type Genome } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
-import { starterSpec } from '../../src/common/sim/brain';
-import { parse, SAVE_KEY, serialize } from '../../src/client/ui/workbench/store';
+import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/designer/store';
 
 const OUT = 'out/s4';
+
 const T = 1_000_000;
 const SEED = 7;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -28,27 +28,15 @@ const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignor
 let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 
-/** A brain that turns hard left at full power: it pins itself on the wall within a second or two. */
-const pinned: Genome = {
-  spec: { v: 1, layers: 1, nodes: [], conns: ['o:fl', 'o:rl', 'o:fr', 'o:rr'].map((to) => ({ from: 'i:bias', to })) },
-  w: [0.3, 0.3, 1, 1],
-};
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const trained = (await runPhase(new InlineExecutor(), starterSpec(), SEED, { T })).final;
+  const trained = (await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T })).final;
   const firstTrack = phaseSeeds(SEED, 0).unseenTrack;
   const node = runDrive(trained, firstTrack);
   // a mid-corner moment for the chase screenshot: the car on the tightest bend it reaches in the first 40 s
   let corner = 200, best = 0;
   for (let k = 100; k < 800; k++) { const c = Math.abs(node.track.curv[locateNear(node, k)]); if (c > best) { best = c; corner = k; } }
-  // over budget: the trained brain plus eleven idle tanh neurons (upkeep only: line 1 filled, a second line of four)
-  let over: Draft = draftOf(trained, 4);
-  const grow = (r: ReturnType<typeof addNeuron>) => { if (!r.ok) throw new Error(r.reason); over = r.draft; };
-  for (let k = 0; k < 7; k++) grow(addNeuron(over, 1, 'tanh'));
-  grow(addLayer(over, 'tanh'));
-  for (let k = 0; k < 3; k++) grow(addNeuron(over, 2, 'tanh'));
-  if (estimate(over.genome.spec).total <= CONFIG.budget[0]) throw new Error('over-budget test brain is not over budget');
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -65,7 +53,7 @@ async function main() {
     page.on('pageerror', (e) => errors.push(String(e)));
     if (save) {
       await page.goto(base);
-      await page.evaluate(([k, v]) => localStorage.setItem(k, v), [SAVE_KEY, serialize({ name: 'Test brain', draft: draftOf(save), train: { seed: null, phases: 0 } })]);
+      await page.evaluate(([k, v]) => localStorage.setItem(k, v), [SAVE_KEY, serialize({ name: 'Test brain', genome: save, train: NO_TRAINING, trainer: 'evolution' })]);
     }
     await page.goto(base + query);
     return page;
@@ -78,7 +66,7 @@ async function main() {
     let page = await open(`?seed=${SEED}&T=${T}&view=train`);
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
     const sv = parse(await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY)).saved;
-    check(genomeHash(sv.draft.genome) === genomeHash(trained), 'trained brain saved (= Node run)');
+    check(genomeHash(sv.genome) === genomeHash(trained), 'trained brain saved (= Node run)');
     await page.click('#tvDrive');
     await waitFrames(page);
     await page.waitForFunction(() => window.__drive?.go === true, null, { timeout: 30_000 }); // the countdown holds the car until Go
@@ -94,34 +82,31 @@ async function main() {
     // bloom audit on fixed frames (seek + snapped camera), so a pass means pass
     const aus = await page.evaluate(() => [2, 8, 14, 20, 30, 45, 58].map((t) => window.__drive!.auditAt(t)));
     check(aus.every((a) => a.over === 0), `bloom audit at 2/8/14/20/30/45/58 s: over ${aus.map((a) => (a.over * 100).toFixed(3) + '%').join(' ')} (max ${Math.max(...aus.map((a) => a.max)).toFixed(2)})`);
-    // the energy meter starts at 0 and climbs through the minute (the budget is a pool)
-    await page.evaluate(() => window.__drive!.seek(0.2));
-    await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
-    const e0 = (await drive(page))!.usedPct;
-    await page.evaluate(() => window.__drive!.seek(40));
-    await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
-    const e1 = (await drive(page))!.usedPct;
-    check(e0 < 3 && e1 > e0 + 20, `energy meter climbs with the minute: ${e0.toFixed(1)}% at 0:00 → ${e1.toFixed(0)}% at 0:40`);
-    // beams: each eye's beam leaves the car along exactly that eye's sim direction (a few poses)
-    let worst = 0;
+    // the energy line: the brain's load this tick (from the recording) and the speed share it leaves
+    await page.evaluate(() => window.__drive!.seek(20));
+    await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 2, { timeout: 60_000 });
+    await page.waitForTimeout(300);
+    const en = await drive(page), enText = await page.locator('#dvEnergy').innerText();
+    const wantE = `brain ${Math.round(en!.load)}% · speed ${Math.round(speedCap(en!.load) * 100)}%`;
+    check(en!.load > 0 && en!.load === node.rec.energy[en!.tick] && enText === wantE, `energy line "${enText}" = the recorded load at tick ${en!.tick} and its speed share`);
+    // beams: each boundary vector cell's beam leaves the car along exactly its field's sim direction (a few poses)
+    let worst = 0, nBeams = -1;
     for (const at of [3, 11, 27]) {
       await page.evaluate((x) => window.__drive!.seek(x), at);
       await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
       const bc = await page.evaluate(() => window.__drive!.beamCheck());
+      nBeams = bc.beams.length;
       bc.beams.forEach((b, e) => { worst = Math.max(worst, Math.abs(b[0] - bc.sim[e][0]), Math.abs(b[1] + bc.sim[e][1])); });
     }
-    check(worst < 1e-4, `6 beams point along the sim's eye directions at 3 poses (worst component error ${worst.toExponential(1)})`);
-    // spikes: a near-wall eye spikes more often than a far one, at about SPIKE_MAX_HZ × reading
+    check(worst < 1e-4 && nBeams === trained.spec.senses.boundary, `${nBeams} beam(s), one per boundary cell, along the sim's field directions at 3 poses (worst component error ${worst.toExponential(1)})`);
+    // spikes: every cell flashes at about SPIKE_MAX_HZ × its firing rate
     await page.evaluate(() => { window.__drive!.seek(4); window.__drive!.resetSpikes(); });
     await page.waitForTimeout(5000);
     const sp = await page.evaluate(() => window.__drive!.spikes());
-    const eyes = [0, 1, 2, 3, 4, 5].filter((e) => sp.used[e]);
-    const near = eyes.reduce((a, e) => (sp.mean[e] > sp.mean[a] ? e : a)), far = eyes.reduce((a, e) => (sp.mean[e] < sp.mean[a] ? e : a));
-    check(sp.mean[near] - sp.mean[far] > 0.15 && sp.counts[near] > sp.counts[far],
-      `near eye ${near} (mean reading ${sp.mean[near].toFixed(2)}) spiked ${sp.counts[near]}×, far eye ${far} (${sp.mean[far].toFixed(2)}) ${sp.counts[far]}× in ${sp.seconds.toFixed(1)} s`);
     const expect14 = (e: number) => 14 * sp.mean[e] * sp.seconds;
-    check(eyes.every((e) => Math.abs(sp.counts[e] - expect14(e)) <= 2 + 0.1 * expect14(e)), 'spike counts match 14 Hz × reading for every wired eye');
-    check(sp.counts[9] === 0 || sp.used[9] === 1, 'unwired inputs stay silent');
+    const firing = sp.counts.map((_, e) => e).filter((e) => sp.mean[e] > 0.05);
+    check(firing.length >= 4 && firing.every((e) => Math.abs(sp.counts[e] - expect14(e)) <= 2 + 0.1 * expect14(e)),
+      `spike counts match 14 Hz × firing rate for every cell (${firing.length} firing cells over ${sp.seconds.toFixed(1)} s; senses ${sp.nIn})`);
     mkdirSync('out/s6', { recursive: true });
     await page.screenshot({ path: 'out/s6/drive-chase.png' });
     await page.locator('.dv-brain').screenshot({ path: 'out/s6/panel.png' });
@@ -142,16 +127,13 @@ async function main() {
     await waitFrames(page);
     d = await drive(page);
     check(d?.hash !== node.hash && d?.hash === runDrive(trained, d!.trackSeed).hash, `New track re-seeds (${d?.trackSeed}); its hash matches Node too`);
-    // back to the workbench: Drive is offered for a trained brain
+    // back to the designer, which has no Drive button (the drive view is reached after training)
     await page.click('#dvBack');
-    check(await page.locator('.app').isVisible() && await page.locator('#drive').isVisible(), 'Back to workbench; the workbench shows Drive for the trained brain');
-    await page.context().close();
-    page = await open('');
-    check(!(await page.locator('#drive').isVisible()), 'an untrained Starter has no Drive button');
+    check(await page.locator('.app').isVisible() && await page.locator('#drive').count() === 0, 'Back to workbench shows the designer (no Drive button there)');
     await page.context().close();
 
-    // 2. stuck
-    page = await open(`?view=drive&track=12345`, 1440, 900, false, pinned);
+    // 2. not moving: an untrained brain (every weight 0) keeps its wheels at 0
+    page = await open(`?view=drive&track=12345`, 1440, 900, false, defaultGenome());
     await waitFrames(page);
     await page.evaluate(() => window.__drive!.seek(20));
     await page.waitForFunction(() => window.__drive?.stuck === true, null, { timeout: 60_000 });
@@ -161,24 +143,9 @@ async function main() {
     await page.waitForTimeout(1500);
     const c1 = await page.evaluate(() => window.__drive!.camPos());
     const moved = Math.hypot(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]);
-    check(/Stuck against the wall since \d+:\d\d/.test(note), `stuck note: "${note}"`);
+    check(/Not moving since \d+:\d\d/.test(note), `stuck note: "${note}"`);
     check(moved > 0.3, `camera keeps moving round the stuck car (${moved.toFixed(2)} m in 1.5 s): not a frozen frame`);
     await page.screenshot({ path: `${OUT}/stuck.png` });
-    await page.context().close();
-
-    // 3. over budget
-    page = await open(`?view=drive&track=${firstTrack}`, 1440, 900, false, over.genome);
-    await waitFrames(page);
-    // the pool: no static while energy lasts (≈116% per minute is spent at ≈0:52), static once it is gone
-    await page.evaluate(() => window.__drive!.seek(20));
-    await page.waitForFunction(() => (window.__drive?.tick ?? 0) >= 400, null, { timeout: 60_000 });
-    const early = await drive(page);
-    check((early?.noise ?? 1) === 0 && !(await page.locator('#dvStatic').isVisible()), `over-budget brain at ${(early!.tick / 20).toFixed(0)} s: ${early?.usedPct.toFixed(0)}% of the minute used, no static yet`);
-    await page.evaluate(() => window.__drive!.seek(55));
-    await page.waitForFunction(() => (window.__drive?.noise ?? 0) > 0, null, { timeout: 60_000 });
-    await page.waitForTimeout(800);
-    check(await page.locator('#dvStatic').isVisible(), `over budget: static shown (${await page.locator('#dvStatic').innerText()})`);
-    await page.screenshot({ path: `${OUT}/over-budget.png` });
     await page.context().close();
 
     // 4. landscape phone

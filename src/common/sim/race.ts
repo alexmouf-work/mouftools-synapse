@@ -2,9 +2,8 @@
 // recording frames and activations. Training episodes stop early on a stall or when the car goes too far backwards.
 import { CONFIG } from '../config';
 import { Hasher } from '../hash';
-import { derive, TAG } from '../rng';
 import { compile, evalNet, type Net } from './brain';
-import { noiseLevel, poolFor } from './energy';
+import { speedCap } from './energy';
 import type { Genome } from './spec';
 import { generateTrack } from './track';
 import { readSensors } from './sensors';
@@ -19,10 +18,8 @@ export interface Recording {
   y: Float64Array;
   hdg: Float64Array;
   v: Float64Array;
-  /** Per tick: energy used that tick. */
+  /** Per tick: the brain's energy load that tick (% of the supply; speed got what was left). */
   energy: Float64Array;
-  /** Per tick: energy used so far, after the tick (not part of recordingHash: it follows from `energy`). */
-  used: Float64Array;
   /** Per tick: 1 if the car touched a wall. */
   wall: Uint8Array;
   /** Per tick: centreline progress (m). Not part of recordingHash (it follows from x, y). */
@@ -35,15 +32,12 @@ export interface Recording {
 export function newRecording(net: Net, ticks: number): Recording {
   return {
     x: new Float64Array(ticks), y: new Float64Array(ticks), hdg: new Float64Array(ticks), v: new Float64Array(ticks),
-    energy: new Float64Array(ticks), used: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
+    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
   };
 }
 
 export interface RunOpts {
   ticks: number;
-  /** The run's energy pool (energy.poolFor(ticks)). */
-  pool: number;
-  noiseSeed: number;
   /** Stop on stall / backwards (training episodes). */
   earlyStop: boolean;
   record?: Recording;
@@ -58,7 +52,7 @@ export interface RunResult {
 
 /** Scratch buffers per net size, so the hot loop allocates nothing. */
 export class Runner {
-  private inputs = new Float64Array(10);
+  private inputs = new Float64Array(0);
   private vals = new Float64Array(0);
 
   run(net: Net, t: Track, o: RunOpts): RunResult {
@@ -66,10 +60,10 @@ export class Runner {
     const c = startCar(t);
     let mark = 0;
     for (let k = 0; k < o.ticks; k++) {
-      const wall = this.tick(net, t, c, o.pool, o.noiseSeed);
+      const wall = this.tick(net, t, c);
       const rec = o.record;
       if (rec) {
-        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.energyPrev; rec.used[k] = c.energyUsed; rec.wall[k] = wall ? 1 : 0; rec.prog[k] = c.prog;
+        rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.load; rec.wall[k] = wall ? 1 : 0; rec.prog[k] = c.prog;
         rec.act.set(this.vals.subarray(0, net.nNodes), k * net.nNodes);
         rec.ticks = k + 1;
       }
@@ -87,24 +81,19 @@ export class Runner {
    * and before physics, and may rewrite the wheel outputs vals[outStart .. outStart + 3] (a teacher taking over,
    * sampled or noisy actions); the energy of the brain's own tick is charged either way.
    */
-  tick(
-    net: Net, t: Track, c: CarState, pool: number, noiseSeed: number, actionNoise?: ArrayLike<number>,
-    act?: (vals: Float64Array, outStart: number) => void,
-  ): boolean {
+  tick(net: Net, t: Track, c: CarState, actionNoise?: ArrayLike<number>, act?: (vals: Float64Array, outStart: number) => void): boolean {
     if (this.vals.length < net.nNodes) this.vals = new Float64Array(net.nNodes);
-    c.noiseA = noiseLevel(c.energyUsed, pool);
-    readSensors(c, t, net.inUsed, pool, this.inputs);
-    const used = evalNet(net, this.inputs, this.vals, c.noiseA, noiseSeed, c.tick);
-    if (!Number.isFinite(used)) throw new Error(`race: non-finite energy at tick ${c.tick}`);
+    if (this.inputs.length < net.nIn) this.inputs = new Float64Array(net.nIn);
+    readSensors(c, t, net, this.inputs);
+    const load = evalNet(net, this.inputs, this.vals);
+    if (!Number.isFinite(load)) throw new Error(`race: non-finite energy at tick ${c.tick}`);
+    c.load = load; c.cap = speedCap(load); // what the brain spends this tick, speed gets the rest
     const o = net.outStart, v = this.vals;
     if (actionNoise) {
       for (let k = 0; k < 4; k++) { const x = v[o + k] + actionNoise[k]; v[o + k] = x < -1 ? -1 : x > 1 ? 1 : x; }
     }
     if (act) act(v, o);
-    const wall = stepPhysics(c, t, v[o], v[o + 1], v[o + 2], v[o + 3]);
-    c.energyPrev = used;
-    c.energyUsed += used; // taken from the pool
-    return wall;
+    return stepPhysics(c, t, v[o], v[o + 1], v[o + 2], v[o + 3], c.cap);
   }
 
   /** Node outputs of the last tick (valid until the next call). */
@@ -135,17 +124,14 @@ export function recordingHash(rec: Recording): string {
     .f64s(rec.energy.subarray(0, n)).f64s(rec.act.subarray(0, n * a)).hex();
 }
 
-/** A drive's noise stream is derived from its track seed, so a track seed alone reproduces a drive. */
-export const driveNoiseSeed = (trackSeed: number): number => derive(trackSeed, TAG.raceNoise);
-
 /**
  * The drive view's run: the brain on one track for CONFIG.drive.ticks, deterministic and recorded. The browser plays
  * it back; a Node replay of the same genome and track seed gives the same hash.
  */
-export function runDrive(g: Genome, trackSeed: number, pool: number = poolFor(CONFIG.drive.ticks)) {
+export function runDrive(g: Genome, trackSeed: number) {
   const net = compile(g);
   const track = generateTrack(trackSeed);
   const rec = newRecording(net, CONFIG.drive.ticks);
-  const result = new Runner().run(net, track, { ticks: CONFIG.drive.ticks, pool, noiseSeed: driveNoiseSeed(trackSeed), earlyStop: false, record: rec });
+  const result = new Runner().run(net, track, { ticks: CONFIG.drive.ticks, earlyStop: false, record: rec });
   return { net, track, rec, result, hash: recordingHash(rec) };
 }

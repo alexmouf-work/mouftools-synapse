@@ -7,10 +7,11 @@
 // over the scene, on the music's beat when sound is on: the car is held on the line until Go, then the recorded run
 // plays from tick 0, so the drive itself (and its hash) is exactly the same. The engine sound follows the car.
 import { CONFIG } from '../../../common/config';
-import { energyLeft, noiseLevel, percentOfBudget, poolFor } from '../../../common/sim/energy';
+import { nodeRate } from '../../../common/sim/brain';
+import { speedCap } from '../../../common/sim/energy';
 import { runDrive } from '../../../common/sim/race';
-import { eyeDirection } from '../../../common/sim/sensors';
-import { EYE_COUNT } from '../../../common/sim/spec';
+import { spreadDeg } from '../../../common/sim/senses';
+import { bearingDir } from '../../../common/sim/sensors';
 import { locate } from '../../../common/sim/track';
 import { phaseSeeds } from '../../../common/train/phase';
 import type { CamMode, DrivePose } from '../../render/drive';
@@ -18,7 +19,7 @@ import type { Stage } from '../../render/stage';
 import { raceCountdown } from '../../audio/countdown';
 import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
-import type { Saved } from '../workbench/store';
+import type { Saved } from '../designer/store';
 import { BrainPanel } from './brainPanel';
 import { SpikeTrains } from './spikes';
 
@@ -34,19 +35,19 @@ const fmtLap = (ticks: number) => `${(ticks / HZ).toFixed(1)} s`;
 
 export interface DriveStatus {
   trackSeed: number; hash: string; ticks: number; tick: number; distance: number; laps: number; bestLap: number | null;
-  /** Energy used so far, % of the minute's pool. */
-  usedPct: number;
-  stuck: boolean; noise: number; cam: CamMode; frames: number; webgl: boolean; finalProg: number;
+  /** The brain's energy load this tick (% of the supply); speed got the rest (never below the floor). */
+  load: number;
+  stuck: boolean; cam: CamMode; frames: number; webgl: boolean; finalProg: number;
   probe?: () => { mean: number; sd: number; w: number; h: number };
   bloomAudit?: (mask?: boolean) => { over: number; max: number; mask?: string };
   seek(seconds: number): void;
   /** Seek, snap the camera, draw that frame and run the bloom audit on it (deterministic). */
   auditAt(seconds: number): { over: number; max: number };
   camPos(): number[];
-  /** Spikes per input since resetSpikes, and each input's mean |reading| over that time. */
-  spikes(): { counts: number[]; mean: number[]; seconds: number; used: number[] };
+  /** Spikes per cell (node order) since resetSpikes, each cell's mean firing rate over that time, and how many senses. */
+  spikes(): { counts: number[]; mean: number[]; seconds: number; nIn: number };
   resetSpikes(): void;
-  /** For the car's current pose: each eye's beam direction as drawn (world x, z) and the sim's eye direction (x, y). */
+  /** For the car's current pose: each boundary cell's beam as drawn (world x, z) and the sim's field direction (x, y). */
   beamCheck(): { hdg: number; beams: number[][]; sim: number[][] };
   setCam(m: CamMode): void;
   /** What the countdown shows now ('', '5' … '1', 'Go'), every label it has shown so far, and whether Go has passed. */
@@ -76,7 +77,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   cancelAnimationFrame(raf);
   showArena('drive');
   $('dvName').textContent = saved.name;
-  const run = runDrive(saved.draft.genome, trackSeed);
+  const run = runDrive(saved.genome, trackSeed);
   const { net, track, rec } = run;
   const ticks = rec.ticks, nN = net.nNodes;
   // per-tick facts for the overlay: laps, stalls, noise
@@ -90,15 +91,14 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   for (let k = S; k < ticks; k++) {
     if (maxProg[k] - maxProg[k - S] < CONFIG.train.stallMetres) stuckSince[k] = stuckSince[k - 1] >= 0 ? stuckSince[k - 1] : k - S;
   }
-  // the minute's pool (ruling 2026-10-31): noise only once it is spent, from the total before the tick
-  const pool = poolFor(CONFIG.drive.ticks);
-  const noiseAt = (k: number) => (k > 0 ? noiseLevel(rec.used[k - 1], pool) : 0);
-  const eyesUsed = net.inUsed.subarray(0, 6);
+  // one beam per boundary vector cell, along its field's centre
+  const nB = saved.genome.spec.senses.boundary, beams = Array.from({ length: nB }, (_, k) => spreadDeg(k, nB));
+  const rates = new Float64Array(nN);
 
   const stage: Stage | null = await getStage();
   if (stage) { await stage.setTrack(track, 'drive'); stage.drive.setMode('chase', reduce()); }
   const panel = new BrainPanel($('dvBrain') as HTMLCanvasElement, net);
-  const spikes = new SpikeTrains(net.nIn);
+  const spikes = new SpikeTrains(nN), every = new Uint8Array(nN).fill(1);
   let playT = 0, frames = 0, cam: CamMode = 'chase', guess = track.startIdx, lastUi = -1;
   const cd = raceCountdown(), engine = new Engine(1);
   // the numbers change on their own timers, exactly on time, however slowly frames come
@@ -116,7 +116,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   };
   const endCount = () => { cd.go = Math.min(cd.go, performance.now()); timers.forEach(clearTimeout); timers = []; showCount(''); };
   const status: DriveStatus = {
-    trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, usedPct: 0, laps: 0, bestLap: null, stuck: false, noise: 0, cam, frames: 0,
+    trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, load: 0, laps: 0, bestLap: null, stuck: false, cam, frames: 0,
     webgl: !!stage, finalProg: run.result.prog, countdown: '', countdownSeen: [], go: false, countdownMusic: cd.music,
     probe: stage ? () => stage.probe() : undefined,
     bloomAudit: stage ? (m?: boolean) => stage.bloomAudit(m) : undefined,
@@ -132,12 +132,12 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
       return stage.bloomAudit();
     },
     camPos: () => (stage ? stage.camera.position.toArray() : []),
-    spikes: () => ({ counts: Array.from(spikes.counts), mean: Array.from(spikes.integral, (x) => x / Math.max(spikes.elapsed, 1e-9)), seconds: spikes.elapsed, used: Array.from(net.inUsed) }),
+    spikes: () => ({ counts: Array.from(spikes.counts), mean: Array.from(spikes.integral, (x) => x / Math.max(spikes.elapsed, 1e-9)), seconds: spikes.elapsed, nIn: net.nIn }),
     resetSpikes: () => spikes.reset(),
     beamCheck: () => ({
       hdg: pose.hdg,
       beams: stage ? stage.drive.beamDirs().map((v) => [v[0], v[2]]) : [],
-      sim: Array.from({ length: EYE_COUNT }, (_, e) => { const d = eyeDirection(pose.hdg, e); return [d.dx, d.dy]; }),
+      sim: beams.map((deg) => { const d = bearingDir(pose.hdg, deg); return [d.dx, d.dy]; }),
     }),
   };
   window.__drive = status;
@@ -158,7 +158,7 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   $('dvNew').onclick = () => { leave(); void openDrive(saved, hooks, newSeed()); };
 
   const wheels = new Float64Array(4);
-  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, wheels, eyesUsed, noise: 0, stuck: false };
+  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, wheels, beams, stuck: false };
   let last = performance.now();
   const t0 = last;
   /** Fill `pose` for playback time pt; returns the tick and whether the run has ended. */
@@ -171,7 +171,6 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     pose.v = rec.v[k];
     const ended = pt * HZ >= ticks;
     for (let o = 0; o < 4; o++) wheels[o] = ended ? 0 : rec.act[k * nN + net.outStart + o];
-    pose.noise = ended ? 0 : noiseAt(k);
     pose.stuck = !ended && stuckSince[k] >= 0;
     guess = locate(track, pose.x, pose.y, guess, 40);
     pose.idx = guess;
@@ -195,9 +194,9 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; }
     // the motors: speed from the sim, squeal from one side's wheels outrunning the other's
     engine.set(ended ? 0 : pose.v / CONFIG.car.wheelSpeed, Math.abs((wheels[0] + wheels[2]) - (wheels[1] + wheels[3])) / 2);
-    status.tick = k; status.frames = frames; status.stuck = pose.stuck; status.noise = pose.noise;
+    status.tick = k; status.frames = frames; status.stuck = pose.stuck;
     status.distance = status.go ? rec.prog[k] : 0;
-    status.usedPct = percentOfBudget(rec.used[k], pool);
+    status.load = status.go && !ended ? rec.energy[k] : 0;
     const done = lapAt.filter((t) => t <= k + 1);
     status.laps = done.length;
     const lapTimes = done.map((t, j) => t - (j ? done[j - 1] : 0));
@@ -207,12 +206,9 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
       $('dvTime').textContent = ended ? `${fmtT(ticks / HZ)} · done` : `${fmtT(k / HZ)} / ${fmtT(ticks / HZ)}`;
       $('dvDist').textContent = `${(rec.prog[k] / 1000).toFixed(2)} km · ${done.length} lap${done.length === 1 ? '' : 's'}`;
       $('dvLap').textContent = lapTimes.length ? fmtLap(Math.min(...lapTimes)) : `– (lap ${(track.len / 1000).toFixed(2)} km)`;
-      const usedPct = ended || k > 0 ? percentOfBudget(rec.used[k], pool) : 0;
-      $('dvEnergy').textContent = pose.noise > 0
-        ? `${Math.round(usedPct)}% used · spent · ${Math.round(pose.noise * 100)}% static`
-        : `${Math.round(usedPct)}% used · ${Math.round(100 * energyLeft(rec.used[k], pool))}% left`;
-      $('dvEnergyFill').style.width = `${Math.min(100, usedPct)}%`;
-      $('dvEnergyFill').parentElement?.classList.toggle('over', usedPct > 100);
+      // the energy split this tick: what the brain spends, and the speed share it leaves
+      $('dvEnergy').textContent = `brain ${Math.round(status.load)}% · speed ${Math.round(speedCap(status.load) * 100)}%`;
+      $('dvEnergyFill').style.width = `${Math.min(100, status.load)}%`;
       const st = $('dvStuck');
       st.hidden = !pose.stuck;
       if (pose.stuck) {
@@ -220,14 +216,12 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
         for (let j = Math.max(0, k - 20); j <= k; j++) onWall ||= rec.wall[j] === 1;
         st.textContent = `${onWall ? 'Stuck against the wall' : 'Not moving'} since ${fmtT(stuckSince[k] / HZ)}: it isn't making progress.`;
       }
-      const sc = $('dvStatic');
-      sc.hidden = !(pose.noise > 0);
-      sc.textContent = `Static ${Math.round(pose.noise * 100)}%`;
     }
-    // the input cells spike from this tick's real readings (rate coding); the panel is drawn every frame
+    // every cell spikes at its firing rate this tick (rate coding); still on the line before Go; drawn every frame
     const vals = rec.act.subarray(k * nN, (k + 1) * nN);
-    spikes.update(vals, net.inUsed, ended ? 0 : dt, now / 1000);
-    panel.draw(vals, pose.noise, spikes, now / 1000, reduce());
+    for (let d = 0; d < nN; d++) rates[d] = status.go && !ended ? nodeRate(net, d, vals[d]) : 0;
+    spikes.update(rates, every, status.go && !ended ? dt : 0, now / 1000);
+    panel.draw(vals, rates, spikes, now / 1000, reduce());
   };
   raf = requestAnimationFrame(tick);
 }

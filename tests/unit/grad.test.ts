@@ -1,25 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
-import { compile, evalNet, starterSpec } from '../../src/common/sim/brain';
+import { compile, evalNet } from '../../src/common/sim/brain';
+import { speedCap } from '../../src/common/sim/energy';
 import { startCar } from '../../src/common/sim/car';
-import type { BrainSpec } from '../../src/common/sim/spec';
+import { defaultSpec, wireCount, type BrainSpec } from '../../src/common/sim/spec';
 import { driveTeacher, teacherWheels } from '../../src/common/sim/teacher';
 import { generateTrack } from '../../src/common/sim/track';
 import { Backprop } from '../../src/common/train/backprop';
 import { EpisodeCore } from '../../src/common/train/episodes';
-import { backward, preActivations, wheelSlope } from '../../src/common/train/grad';
+import { backward, preActivations } from '../../src/common/train/grad';
 import { phaseSeeds } from '../../src/common/train/phase';
 import { fresh } from '../../src/common/train/rollout';
 import { hashU } from '../../src/common/rng';
 import { readSensors } from '../../src/common/sim/sensors';
 import { trainerRefusal } from '../../src/common/train/trainer';
 
-/** bias → n1, speed → n1, n1 → FL wheel, speed → FL wheel. */
-const tiny = (act: 'tanh' | 'sigmoid' | 'relu' | 'linear'): BrainSpec => ({
-  v: 1, layers: 1, nodes: [{ id: 'n1', layer: 1, act, dropout: 0 }],
-  conns: [{ from: 'i:bias', to: 'n1' }, { from: 'i:spd', to: 'n1' }, { from: 'n1', to: 'o:fl' }, { from: 'i:spd', to: 'o:fl' }],
-});
-const W = [0.4, -0.6, 0.8, 0.3];
+/** One speed cell → one neuron (fn) → the four wheels (tanh). Canonical wires: speed→h, then h→FL, FR, RL, RR. */
+const tiny = (fn: 'tanh' | 'sigmoid' | 'relu' | 'linear'): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
+const W = [0.6, 0.8, -0.3, 0.5, 0.2];
 const SPD = 0.5, TARGET = 0.9;
 const F: Record<string, [(z: number) => number, (z: number) => number]> = {
   tanh: [Math.tanh, (z) => 1 - Math.tanh(z) ** 2],
@@ -28,45 +26,32 @@ const F: Record<string, [(z: number) => number, (z: number) => number]> = {
   linear: [(z) => z, () => 1],
 };
 
-/** One forward + backward on the tiny net through the engine. */
-function engineGrad(act: 'tanh' | 'sigmoid' | 'relu' | 'linear', a = 0) {
-  const net = compile({ spec: tiny(act), w: W });
-  const inputs = new Float64Array(10); inputs[9] = 1; inputs[8] = SPD;
+/** One forward + backward on the tiny net through the engine, with an error at the front-left wheel only. */
+function engineGrad(fn: 'tanh' | 'sigmoid' | 'relu' | 'linear') {
+  const net = compile({ spec: tiny(fn), w: W });
   const vals = new Float64Array(net.nNodes), z = new Float64Array(net.nNodes), delta = new Float64Array(net.nNodes);
-  evalNet(net, inputs, vals, 0, 0, 0);
+  evalNet(net, [SPD], vals);
   preActivations(net, vals, z);
   const err = [TARGET - vals[net.outStart], 0, 0, 0];
-  const grad = new Float64Array(4);
-  backward(net, vals, z, err, a, delta, grad);
+  const grad = new Float64Array(5);
+  backward(net, vals, z, err, delta, grad);
   return { grad, y: vals[net.outStart] };
 }
 
 describe('the generalised delta rule, hand-computed on a tiny net', () => {
-  for (const act of ['tanh', 'sigmoid', 'relu', 'linear'] as const) {
-    it(act, () => {
-      const [f, df] = F[act];
-      const z1 = W[0] * 1 + W[1] * SPD, y1 = f(z1);
-      const y = W[2] * y1 + W[3] * SPD; // inside −1..1: the wheel's slope is 1
-      const dOut = (TARGET - y) * 1; // output δ = (t − y)·f′(z)
-      const d1 = df(z1) * W[2] * dOut; // hidden δ = f′(z)·Σ w·δ
-      const hand = [d1 * 1, d1 * SPD, dOut * y1, dOut * SPD]; // δ·x per wire
-      const { grad, y: yEngine } = engineGrad(act);
+  for (const fn of ['tanh', 'sigmoid', 'relu', 'linear'] as const) {
+    it(fn, () => {
+      const [f, df] = F[fn];
+      const z1 = W[0] * SPD, y1 = f(z1);
+      const zo = W[1] * y1, y = Math.tanh(zo); // the wheels are tanh
+      const dOut = (TARGET - y) * (1 - y * y); // output δ = (t − y)·f′(z)
+      const d1 = df(z1) * W[1] * dOut; // hidden δ = f′(z)·Σ w·δ (only FL carries an error)
+      const hand = [d1 * SPD, dOut * y1, 0, 0, 0]; // δ·x per wire
+      const { grad, y: yEngine } = engineGrad(fn);
       expect(yEngine).toBeCloseTo(y, 14);
-      for (let k = 0; k < 4; k++) expect(grad[k]).toBeCloseTo(hand[k], 14);
+      for (let k = 0; k < 5; k++) expect(grad[k]).toBeCloseTo(hand[k], 14);
     });
   }
-  it('over budget every slope is scaled by (1 − a)', () => {
-    const clean = engineGrad('tanh').grad, noisy = engineGrad('tanh', 0.25).grad;
-    expect(noisy[2]).toBeCloseTo(0.75 * clean[2], 14); // one slope (the wheel's)
-    expect(noisy[0]).toBeCloseTo(0.75 * 0.75 * clean[0], 14); // two (wheel and n1)
-  });
-  it('a wheel pinned at ±1 passes the error only when it points back into range', () => {
-    expect(wheelSlope(0.3, 1)).toBe(1);
-    expect(wheelSlope(1.5, -0.2)).toBe(1);
-    expect(wheelSlope(1.5, 0.2)).toBe(0);
-    expect(wheelSlope(-1.5, 0.2)).toBe(1);
-    expect(wheelSlope(-1.5, -0.2)).toBe(0);
-  });
   it('the trainer step is Δw = η · (Σ δ·x) / samples', () => {
     const b = new Backprop({ start: 'fresh' }) as unknown as { update(s: Float64Array, st: Float64Array): Float64Array; loss: number };
     const sum = Float64Array.from([1.2, -0.4, 0, 3]), stats = Float64Array.from([8, 4, 0]);
@@ -78,9 +63,10 @@ describe('the generalised delta rule, hand-computed on a tiny net', () => {
 });
 
 describe('copying the teacher (imitate kernel)', () => {
-  const s = phaseSeeds(11), spec = starterSpec();
-  const setup = { spec, trackSeeds: s.trainTracks, noiseSeeds: s.trainNoise, pool: CONFIG.budget[0] * CONFIG.train.episodeTicks, episodeTicks: CONFIG.train.episodeTicks };
-  const w = Float64Array.from(spec.conns, (_, k) => ((k * 7) % 5 - 2) / 4);
+  // the default brain plus a speed cell (so the brain sees something on the start straight)
+  const s = phaseSeeds(11), spec: BrainSpec = { ...defaultSpec(), senses: { ...defaultSpec().senses, speed: 1 } };
+  const setup = { spec, trackSeeds: s.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
+  const w = Float64Array.from({ length: wireCount(spec) }, (_, k) => ((k * 7) % 5 - 2) / 4);
 
   it('one tick of a lane adds exactly the hand-built δ·x for e = teacher − brain', () => {
     const core = new EpisodeCore(setup);
@@ -90,14 +76,14 @@ describe('copying the teacher (imitate kernel)', () => {
     const t = core.tracks[0];
     const c = startCar(t, (t.startIdx + Math.floor(hashU(3, 0, 0) * t.n)) % t.n);
     const net = compile({ spec, w: Array.from(w) });
-    const inputs = new Float64Array(10), vals = new Float64Array(net.nNodes), z = new Float64Array(net.nNodes), delta = new Float64Array(net.nNodes);
-    readSensors(c, t, net.inUsed, setup.pool, inputs);
-    evalNet(net, inputs, vals, 0, 0, 0);
+    const inputs = new Float64Array(net.nIn), vals = new Float64Array(net.nNodes), z = new Float64Array(net.nNodes), delta = new Float64Array(net.nNodes);
+    readSensors(c, t, net, inputs);
+    const load = evalNet(net, inputs, vals);
     const target = new Float64Array(4);
-    teacherWheels(c, t, target);
+    teacherWheels(c, t, target, speedCap(load)); // labelled at the speed cap the brain's energy leaves
     preActivations(net, vals, z);
-    const grad = new Float64Array(spec.conns.length);
-    backward(net, vals, z, [0, 1, 2, 3].map((k) => target[k] - vals[net.outStart + k]), 0, delta, grad);
+    const grad = new Float64Array(wireCount(spec));
+    backward(net, vals, z, [0, 1, 2, 3].map((k) => target[k] - vals[net.outStart + k]), delta, grad);
     expect(Array.from(out.grad)).toEqual(Array.from(grad));
     expect(grad.some((g) => g !== 0)).toBe(true);
     expect(out.stats[1]).toBe(1);
@@ -117,7 +103,7 @@ describe('the teacher', () => {
   it('laps every one of 10 tracks in a minute without touching a wall', () => {
     for (let seed = 1; seed <= 10; seed++) {
       const t = generateTrack(phaseSeeds(seed).unseenTrack);
-      const r = driveTeacher(t, CONFIG.drive.ticks, CONFIG.budget[0] * CONFIG.drive.ticks);
+      const r = driveTeacher(t, CONFIG.drive.ticks);
       expect(r.prog, `seed ${seed}`).toBeGreaterThan(2 * t.len);
       expect(r.wallTicks, `seed ${seed}`).toBe(0);
     }
@@ -125,13 +111,11 @@ describe('the teacher', () => {
 });
 
 describe('refusals', () => {
-  it('backprop refuses step neurons with a reason the workbench can show, and init throws it', () => {
-    const spec = starterSpec();
-    expect(trainerRefusal('backprop', spec)).toBeNull();
-    expect(trainerRefusal('evolution', spec)).toBeNull();
-    const stepped: BrainSpec = { ...spec, nodes: spec.nodes.map((n) => (n.id === 'n2' ? { ...n, act: 'step' } : n)) };
-    const why = trainerRefusal('backprop', stepped);
-    expect(why).toMatch(/step neurons have none \(n2\)/);
-    expect(trainerRefusal('evolution', stepped)).toBeNull();
+  it('every function on every layer has a slope, so no trainer refuses a brain', () => {
+    for (const fn of ['linear', 'relu', 'sigmoid', 'tanh'] as const) {
+      const spec: BrainSpec = { ...defaultSpec(), layers: [{ n: 3, fn }, { n: 2, fn }] };
+      expect(trainerRefusal('backprop', spec)).toBeNull();
+      expect(trainerRefusal('evolution', spec)).toBeNull();
+    }
   });
 });

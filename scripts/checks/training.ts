@@ -1,5 +1,5 @@
 // Training view browser check (S3), headless Chromium on SwiftShader:
-// - Train from the workbench finishes; the saved genome hash changes; the phase hash equals the Node run's.
+// - Train from the designer (the generations popup, default 100) finishes; the saved genome hash changes; the phase hash equals the Node run's.
 // - 1 vs 4 workers (and the default pool) → the same hash; training the same saved brain twice → the same result.
 // - Train again continues from the saved weights (carry, next phase) and matches Node; Stop leaves the brain as it was.
 // - Ghost capacity ≥ population; render smoke: the frame is lit and not uniform (no black bloom frame); console clean.
@@ -12,13 +12,15 @@ import { mkdirSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
 import { CONFIG } from '../../src/common/config';
-import { genomeHash, starterSpec, zeroGenome } from '../../src/common/sim/brain';
+import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
+import { defaultSpec } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { runPhase } from '../../src/common/train/phase';
-import { parse, SAVE_KEY } from '../../src/client/ui/workbench/store';
+import { parse, SAVE_KEY } from '../../src/client/ui/designer/store';
 
 const OUT = 'out/s3';
 const T = 1_000_000; // checks use a smaller budget (dev-only ?T=); the screenshots use the real one
+const GENS = CONFIG.train.defaultGenerations; // what the popup offers first
 const SEED = 7;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
@@ -27,8 +29,8 @@ const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const node1 = await runPhase(new InlineExecutor(), starterSpec(), SEED, { T });
-  const node2 = await runPhase(new InlineExecutor(), starterSpec(), SEED, { T, phase: 1, start: 'carry', genome: node1.final });
+  const node1 = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS });
+  const node2 = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, phase: 1, start: 'carry', genome: node1.final });
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -50,15 +52,16 @@ async function main() {
   const waitState = (page: Page, st: string, ms = 600_000) => page.waitForFunction((x) => window.__training?.state === x, st, { timeout: ms });
   const saved = async (page: Page) => {
     const r = parse(await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY));
-    if (r.status === 'corrupt') throw new Error(`saved brain corrupt: ${r.why}`); // 'missing' = an untouched Starter
+    if (r.status === 'corrupt') throw new Error(`saved brain corrupt: ${r.why}`); // 'missing' = an untouched starting brain
     return r.saved;
   };
-  const starterHash = genomeHash(zeroGenome(starterSpec()));
+  const starterHash = genomeHash(defaultGenome());
+  const train = async (page: Page) => { await page.click('#train'); await page.click('#tdGo'); };
 
   try {
-    // 1. train from the workbench
+    // 1. train from the designer
     let page = await open(`?seed=${SEED}&T=${T}`);
-    await page.click('#train');
+    await train(page);
     await page.waitForFunction(() => (window.__training?.frames ?? 0) > 2, null, { timeout: 120_000 });
     const pr = await page.evaluate(() => window.__training!.probe!());
     check(pr.mean > 30 && pr.sd > 5, `render smoke: mean luminance ${pr.mean.toFixed(1)}, spread ${pr.sd.toFixed(1)} (${pr.w}×${pr.h})`);
@@ -66,7 +69,7 @@ async function main() {
     let s = await status(page);
     let sv = await saved(page);
     check(s?.hash === node1.hash, `browser phase hash ${s?.hash} = Node ${node1.hash} (${s?.workers} workers)`);
-    check(genomeHash(sv.draft.genome) !== starterHash && genomeHash(sv.draft.genome) === genomeHash(node1.final), 'trained genome saved; hash changed from the untrained Starter and equals Node\'s');
+    check(genomeHash(sv.genome) !== starterHash && genomeHash(sv.genome) === genomeHash(node1.final), 'trained genome saved; hash changed from the untrained starting brain and equals Node\'s');
     check(sv.train.seed === SEED && sv.train.phases === 1, `training history saved (seed ${sv.train.seed}, phases ${sv.train.phases})`);
     check((s?.ghostCapacity ?? 0) >= CONFIG.train.population, `ghost capacity ${s?.ghostCapacity} ≥ population ${CONFIG.train.population}`);
     check(s?.webgl === true && (s?.frames ?? 0) > 0, `3-D view drew ${s?.frames} frames (${s?.quality} quality)`);
@@ -74,14 +77,14 @@ async function main() {
 
     // 2. back to the workbench, then Train again: carry, next phase
     await page.click('#tvBack');
-    check(await page.locator('.app').isVisible() && !(await page.locator('#trainView').isVisible()), 'Back to workbench shows the workbench');
-    await page.click('#train');
+    check(await page.locator('.app').isVisible() && !(await page.locator('#trainView').isVisible()), 'Back to workbench shows the designer');
+    await train(page);
     await waitState(page, 'running', 60_000);
     await waitState(page, 'done');
     s = await status(page);
     sv = await saved(page);
     check(s?.start === 'carry' && s?.phase === 1 && s?.hash === node2.hash, `Train again continues from the saved weights (carry, run 2), hash ${s?.hash} = Node ${node2.hash}`);
-    check(sv.train.phases === 2 && genomeHash(sv.draft.genome) === genomeHash(node2.final), 'second run saved');
+    check(sv.train.phases === 2 && genomeHash(sv.genome) === genomeHash(node2.final), 'second run saved');
     await page.context().close();
 
     // 3. the same saved brain trained again → same result; 1 and 4 workers → same hash
@@ -100,7 +103,7 @@ async function main() {
     await page.waitForFunction(() => (window.__training?.gen ?? 0) >= 2, null, { timeout: 120_000 });
     await page.click('#tvStop');
     await waitState(page, 'stopped', 120_000);
-    check(genomeHash((await saved(page)).draft.genome) === starterHash, 'Stop: the brain keeps its weights (still the untrained Starter)');
+    check(genomeHash((await saved(page)).genome) === starterHash, 'Stop: the brain keeps its weights (still the untrained starting brain)');
     await page.context().close();
 
     // 5. landscape phone

@@ -5,7 +5,7 @@
 import { CONFIG } from '../config';
 import { compile, setWeights, zeroGenome, type Net } from '../sim/brain';
 import { newRecording, Runner, type Recording } from '../sim/race';
-import type { BrainSpec } from '../sim/spec';
+import { wireCount, type BrainSpec } from '../sim/spec';
 import { generateTrack, type Track } from '../sim/track';
 import { KERNELS } from './kernels';
 import { RolloutCore, type LaneOut, type RolloutJob } from './rollout';
@@ -13,9 +13,6 @@ import { RolloutCore, type LaneOut, type RolloutJob } from './rollout';
 export interface EpisodeSetup {
   spec: BrainSpec;
   trackSeeds: number[];
-  noiseSeeds: number[];
-  /** Energy pool per episode (energy.poolFor(episodeTicks): the minute's budget prorated, review call 2026-10-31). */
-  pool: number;
   episodeTicks: number;
 }
 
@@ -73,7 +70,6 @@ export class EpisodeCore {
   private rec: Recording | null = null;
   private lanes: RolloutCore | null = null;
   constructor(readonly s: EpisodeSetup) {
-    if (s.trackSeeds.length !== s.noiseSeeds.length) throw new Error('episodes: one noise seed per track');
     this.tracks = s.trackSeeds.map(generateTrack);
     this.net = compile(zeroGenome(s.spec));
   }
@@ -81,7 +77,7 @@ export class EpisodeCore {
     return (this.lanes ??= new RolloutCore(this.s, this.tracks, KERNELS)).run(job);
   }
   run(w: Float64Array, count: number, record = false): { out: Float64Array; paths: Paths | null } {
-    const nW = this.s.spec.conns.length, nT = this.tracks.length;
+    const nW = wireCount(this.s.spec), nT = this.tracks.length;
     if (w.length !== count * nW) throw new Error(`episodes: ${w.length} weights for ${count} × ${nW}`);
     const out = new Float64Array(count * nT * RESULT_STRIDE);
     const S = pathSamples(this.s.episodeTicks);
@@ -93,7 +89,7 @@ export class EpisodeCore {
       for (let k = 0; k < nT; k++) {
         const rec = paths && k === 0 ? (this.rec as Recording) : undefined;
         const r = this.runner.run(this.net, this.tracks[k], {
-          ticks: this.s.episodeTicks, pool: this.s.pool, noiseSeed: this.s.noiseSeeds[k], earlyStop: true, record: rec,
+          ticks: this.s.episodeTicks, earlyStop: true, record: rec,
         });
         const o = (p * nT + k) * RESULT_STRIDE;
         out[o] = r.prog; out[o + 1] = r.wallTicks; out[o + 2] = r.ticks;

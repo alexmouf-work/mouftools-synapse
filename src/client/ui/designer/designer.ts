@@ -1,0 +1,498 @@
+// The brain designer (B3), ported from reference/brain-v2-mockup.html (the UI spec) onto the real engine: a tray of
+// senses (tap to add a cell), the field (sense cells as 3-D symbol circles, lines of identical neurons, the car whose
+// wheels are motor neurons), and a narrow panel for whatever you tapped, with its activation graph. Every column is
+// fully wired to the next; taps only inspect. Build mode is still: nothing fires here (brains fire while training and
+// driving). The whole 860 × 400 layout is scaled to fit the screen. Every change goes through the pure edit ops in
+// common/sim/brain.ts and is saved; energy figures come from common/sim/energy.ts.
+import { ACTS, CONFIG, type Act } from '../../../common/config';
+import {
+  addSense, ACT_CODE, defaultGenome, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer,
+  type EditResult,
+} from '../../../common/sim/brain';
+import { cellMax, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
+import { fieldAct, fieldWidthDeg, gridAct, gridPhase, gridScale, hdAct, hdPreferred, SENSE_INFO, spreadDeg } from '../../../common/sim/senses';
+import { columns, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
+import { trainerInfo } from '../../../common/train/trainer';
+import { weightStyle } from '../weights';
+import { load, NO_TRAINING, save, type Saved, type TrainerId } from './store';
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
+  const e = document.getElementById(id);
+  if (!e) throw new Error(`designer: #${id} missing`);
+  return e as T;
+};
+const NS = 'http://www.w3.org/2000/svg';
+type Attrs = Record<string, string | number | null | undefined>;
+const el = (t: string, a: Attrs = {}, p?: Element): SVGElement => {
+  const e = document.createElementNS(NS, t);
+  for (const k in a) if (a[k] != null) e.setAttribute(k, String(a[k]));
+  if (p) p.appendChild(e);
+  return e;
+};
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const MODE: Mode = 'sandbox'; // vs CPU and Multiplayer will pass 'match' (refuses a design past 100% flat out)
+
+/** Functions as the designer shows them (one per hidden layer; wheels fixed to tanh). */
+export const FX: Record<Act, { n: string; g: string }> = {
+  linear: { n: 'Linear', g: 'M-8 6 L8 -6' },
+  relu: { n: 'ReLU', g: 'M-8 3 H0 L8 -5' },
+  sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4' },
+  tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5' },
+};
+const SYM: Record<SenseId, string> = { boundary: 'wall', landmark: 'flag', hd: 'arrow', grid: 'hex', speed: 'gauge' };
+const DESC = { neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.' };
+/** The trainers in the picker, with the rule the strip shows (principal 2026-11-04: "Learning Rule : [equation]"). */
+export const TRAINERS: { id: TrainerId; n: string; eq: string }[] = [
+  { id: 'evolution', n: 'Evolution', eq: 'w′ = w + σ·ε' },
+  { id: 'backprop', n: 'Backprop', eq: 'Δw = η·δ·x' },
+  { id: 'ac', n: 'Actor-critic', eq: 'Δw = α·δ·∂log π/∂w' },
+  { id: 'arp', n: 'A<sub>RP</sub>', eq: 'Δw = ρ·(±y − p)·x' },
+];
+const GENS = [10, 25, 50, 100, 250, 500, 1000];
+
+// ---- state ----
+const loaded = load();
+interface State { saved: Saved; sel: string | null; gens: number }
+const W: State = { saved: loaded.saved, sel: null, gens: 100 };
+const spec = (): BrainSpec => W.saved.genome.spec;
+const trained = (): boolean => W.saved.genome.w.some((x) => x !== 0);
+let onTrain: (s: Saved, generations: number) => void = () => toast('Training isn’t available here.');
+let active = true;
+let saveWarned = false;
+
+function persist(): void {
+  if (!save(W.saved) && !saveWarned) { saveWarned = true; toast('This browser won’t keep your brain, so changes last until you close the tab.'); }
+}
+function commit(r: EditResult, what?: string): boolean {
+  if (!r.ok) { if (r.reason === 'energy' && r.why) toast(`${what ?? 'That'}: ${r.why}`); return false; }
+  W.saved = { ...W.saved, genome: r.genome, train: { seed: W.saved.train.seed, phases: 0 } };
+  persist();
+  return true;
+}
+
+// ---- layout (as the mock-up: equal regions per column unless the inputs or the car need more) ----
+interface Pos { x: number; y: number; kind: 'in' | 'mid' | 'out'; L?: number; step?: number }
+let P = new Map<string, Pos>(), box = { w: 1000, h: 600 }, trayW = 54, R = 10.5;
+let regions: { x0: number; x1: number; cx: number }[] = [];
+let car = { cx: 0, cy: 0, W: 0, H: 0 };
+const svg = () => $('net') as unknown as SVGSVGElement;
+const board = () => $('board');
+
+function layout(): void {
+  const s = spec(), b = board();
+  box = { w: b.clientWidth, h: b.clientHeight };
+  svg().setAttribute('viewBox', `0 0 ${box.w} ${box.h}`);
+  const tray = $('tray');
+  trayW = tray.offsetLeft + tray.offsetWidth;
+  P = new Map();
+  const C = s.layers.length + 2, Wb = box.w - trayW;
+  R = 10.5;
+  const ins = inputIds(s), top = 34, avail = box.h - top - 40, pitch = 2 * R + 9; // the bottom row stays clear for the layer buttons
+  const perCol = Math.max(1, Math.floor(avail / pitch)), inCols = Math.max(1, Math.ceil(ins.length / perCol));
+  const needIn = inCols * pitch + 10, needCar = 112;
+  let widths = Array(C).fill(Wb / C) as number[];
+  if (Wb / C < needIn || Wb / C < needCar) {
+    const rest = (Wb - needIn - needCar) / s.layers.length;
+    widths = [needIn, ...Array(s.layers.length).fill(rest), needCar];
+  }
+  let acc = trayW;
+  regions = widths.map((w) => { const r = { x0: acc, x1: acc + w, cx: acc + w / 2 }; acc += w; return r; });
+  const cols = Math.ceil(ins.length / perCol), colGap = Math.min(30, (regions[0].x1 - regions[0].x0 - 10) / Math.max(cols, 1));
+  ins.forEach((id, i) => {
+    const col = Math.floor(i / perCol), row = i % perCol, inCol = Math.min(perCol, ins.length - col * perCol);
+    P.set(id, { x: regions[0].cx + (col - (cols - 1) / 2) * colGap, y: top + avail / 2 + (row - (inCol - 1) / 2) * Math.max(pitch, Math.min(34, avail / inCol)), kind: 'in' });
+  });
+  s.layers.forEach((l, L) => {
+    const x = regions[L + 1].cx, step = Math.min(34, (box.h - 85) / (l.n + 1));
+    layerIds(s, L).forEach((id, k) => P.set(id, { x, y: (box.h - 5) / 2 + (k - (l.n - 1) / 2) * step, step, kind: 'mid', L }));
+  });
+  const last = regions[C - 1], carW = Math.min(widths[C - 1] * 0.86, 160), carH = carW * 0.52;
+  car = { cx: last.cx, cy: box.h / 2 + 8, W: carW, H: carH };
+  OUTPUTS.forEach((o, i) => P.set(o.id, { x: car.cx + (i < 2 ? 0.27 : -0.27) * car.W, y: car.cy + (i % 2 === 0 ? -0.5 : 0.5) * car.H, kind: 'out' }));
+}
+/** Bottom-row buttons shrink so a "+" on a boundary and the "−" mid-column never touch. */
+const rowR = () => { const hw = Math.min(...regions.slice(1, -1).map((r) => r.x1 - r.x0), 999); return Math.max(9.5, Math.min(11, hw / 4 - 1)); };
+
+// ---- drawing ----
+function render(): void {
+  if (!active) return;
+  layout();
+  const g0 = svg(), s = spec();
+  g0.innerHTML = '';
+  const isTrained = trained();
+  const bg = el('rect', { x: trayW, y: 0, width: box.w - trayW, height: box.h, fill: 'transparent', class: 'hit' }, g0);
+  regions.forEach((r, i) => { if (i % 2 === 0) el('rect', { x: r.x0, y: 0, width: r.x1 - r.x0, height: box.h, style: 'fill:var(--band)', 'pointer-events': 'none' }, g0); });
+  bg.addEventListener('click', () => { W.sel = null; render(); });
+  const t = (x: number, y: number, str: string, a: Attrs = {}, parent: Element = g0) => {
+    const e = el('text', { x, y, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, 'letter-spacing': '1.2', style: 'fill:var(--muted)', 'font-family': 'Arial, Helvetica, sans-serif', ...a }, parent);
+    e.textContent = str;
+    return e;
+  };
+  if (!inputIds(s).length) t(trayW + 60, box.h / 2, '+ a sense', { 'font-weight': 400, 'letter-spacing': '0' });
+  // layer headers: the function for that line, tappable
+  s.layers.forEach((l, L) => {
+    const p = P.get(layerIds(s, L)[0]);
+    if (!p) return;
+    const g = el('g', { class: 'hit', role: 'button', tabindex: 0, 'data-layer': L, 'aria-label': `Layer ${L + 1}: ${FX[l.fn].n}. Tap to change.` }, g0);
+    const cw = Math.min(64, regions[L + 1].x1 - regions[L + 1].x0 - 8), narrow = cw < 60;
+    el('rect', { x: p.x - cw / 2, y: 6, width: cw, height: 22, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.2 }, g);
+    el('path', { d: FX[l.fn].g, transform: `translate(${narrow ? p.x : p.x - 18} 17) scale(.7)`, fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    if (!narrow) t(p.x + 7, 21, FX[l.fn].n, { 'font-size': 10.5, 'letter-spacing': '0', style: 'fill:var(--text)', 'pointer-events': 'none' }, g);
+    g.addEventListener('click', (ev) => { ev.stopPropagation(); W.sel = `layer:${L}`; render(); });
+  });
+  // car, front to the right
+  const { cx, cy, W: cw, H: ch } = car, w = cw / 2, h = ch / 2;
+  el('path', { d: `M ${cx - w} ${cy - h * .8} Q ${cx - w} ${cy - h} ${cx - w * .86} ${cy - h} L ${cx + w * .55} ${cy - h} L ${cx + w} ${cy - h * .78} Q ${cx + w * 1.08} ${cy} ${cx + w} ${cy + h * .78} L ${cx + w * .55} ${cy + h} L ${cx - w * .86} ${cy + h} Q ${cx - w} ${cy + h} ${cx - w} ${cy + h * .8} Z`, style: 'fill:var(--car);fill-opacity:.1;stroke:var(--car);stroke-opacity:.35', 'stroke-width': 1.5 }, g0);
+  el('path', { d: `M ${cx - w * .32} ${cy - h * .6} Q ${cx + w * .46} ${cy - h * .66} ${cx + w * .32} ${cy} Q ${cx + w * .46} ${cy + h * .66} ${cx - w * .32} ${cy + h * .6} Z`, style: 'fill:var(--car);fill-opacity:.12;stroke:var(--car);stroke-opacity:.25' }, g0);
+  // wires: grey until trained, then their weights (red −1, black 0, green +1)
+  const wg = el('g', { 'data-wires': '' }, g0);
+  const wl = wireList(s), ws = W.saved.genome.w;
+  wl.forEach(([a, b], k) => {
+    const p = P.get(a), q = P.get(b);
+    if (!p || !q) return;
+    const hot = W.sel && (a === W.sel || b === W.sel);
+    const x1 = p.x + (p.kind === 'in' ? R : 11), x2 = q.x - (q.kind === 'out' ? 9 : 11), dx = x2 - x1;
+    const st = weightStyle(ws[k]);
+    const dim = W.sel && !W.sel.startsWith('layer') && !hot;
+    el('path', {
+      d: `M ${x1} ${p.y} C ${x1 + dx * .45} ${p.y}, ${x2 - dx * .45} ${q.y}, ${x2} ${q.y}`, fill: 'none', 'data-w': k,
+      style: `stroke:${isTrained ? st.css : 'var(--muted)'}`, 'stroke-width': isTrained ? 0.6 + st.width * 0.5 : 1,
+      opacity: dim ? 0.1 : isTrained ? 0.25 + st.alpha * 0.6 : 0.45, 'stroke-linecap': 'round',
+    }, wg);
+  });
+  // cells (tap to inspect)
+  for (const [id, p] of P) {
+    const g = el('g', { class: 'hit cell', 'data-id': id, role: 'button', tabindex: 0, 'aria-label': cellLabel(id) }, g0);
+    const sel = W.sel === id;
+    if (p.kind === 'in') {
+      el('circle', { cx: p.x, cy: p.y, r: R, style: `fill:transparent;stroke:${sel ? 'var(--accent)' : 'var(--line)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+    } else if (p.kind === 'mid') {
+      el('circle', { cx: p.x, cy: p.y, r: 11, style: `fill:${sel ? 'var(--accent-soft)' : 'var(--node)'};stroke:${sel ? 'var(--accent)' : 'var(--muted)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+      el('path', { d: FX[s.layers[p.L as number].fn].g, transform: `translate(${p.x} ${p.y}) scale(.55)`, fill: 'none', style: 'stroke:var(--text)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
+    } else {
+      el('rect', { x: p.x - 9, y: p.y - 6, width: 18, height: 12, style: `fill:var(--node);stroke:${sel ? 'var(--accent)' : 'var(--car)'}`, 'stroke-width': sel ? 3 : 1.5 }, g);
+    }
+    el('circle', { cx: p.x, cy: p.y, r: p.kind === 'mid' ? 12 : 13, fill: 'transparent', class: 'target' }, g); // touch target
+    g.addEventListener('click', (ev) => { ev.stopPropagation(); W.sel = W.sel === id ? null : id; render(); });
+  }
+  // a "+" under each layer's neurons adds one (gone at the limit); a "−" above them removes one
+  s.layers.forEach((l, L) => {
+    const ids = layerIds(s, L), last = P.get(ids[ids.length - 1]);
+    if (!last || l.n >= CONFIG.brain.maxPerLayer) return;
+    const add = el('g', { class: 'hit btnc', role: 'button', tabindex: 0, 'data-add-n': L, 'aria-label': `Add a neuron to layer ${L + 1}` }, g0);
+    const y = last.y + (last.step as number);
+    el('circle', { cx: last.x, cy: y, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
+    el('path', { d: `M ${last.x - 4} ${y} H ${last.x + 4} M ${last.x} ${y - 4} V ${y + 4}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
+    add.addEventListener('click', (ev) => { ev.stopPropagation(); commit(setLayerSize(W.saved.genome, L, l.n + 1, MODE), 'Another neuron'); render(); });
+  });
+  const minus = (x: number, y: number, r: number, label: string, data: Attrs, fn: () => void) => {
+    const g = el('g', { class: 'hit btnc', role: 'button', tabindex: 0, 'aria-label': label, ...data }, g0);
+    const big = r > 9, a = big ? r * 0.45 : 4;
+    el('circle', { cx: x, cy: y, r, style: `fill:var(--panel);stroke:${big ? 'var(--accent)' : 'var(--line)'}`, 'stroke-width': big ? 1.4 : 1.5 }, g);
+    el('path', { d: `M ${x - a} ${y} H ${x + a}`, style: 'stroke:var(--accent)', 'stroke-width': big ? 2 : 2.2, 'stroke-linecap': 'round' }, g);
+    g.addEventListener('click', (ev) => { ev.stopPropagation(); fn(); W.sel = null; render(); });
+  };
+  s.layers.forEach((l, L) => {
+    const first = P.get(layerIds(s, L)[0]);
+    if (!first) return;
+    if (l.n > 1) minus(first.x, first.y - (first.step as number), 8, `Remove a neuron from layer ${L + 1}`, { 'data-rm-n': L }, () => commit(setLayerSize(W.saved.genome, L, l.n - 1)));
+    if (s.layers.length > 1) minus(regions[L + 1].cx, box.h - 22, rowR(), `Remove layer ${L + 1}`, { 'data-rm-l': L }, () => commit(removeLayer(W.saved.genome, L)));
+  });
+  // a "+" at the bottom of each boundary between columns inserts a hidden layer there (gone at the limit)
+  if (s.layers.length < CONFIG.brain.maxLayers) for (let i = 0; i < regions.length - 1; i++) {
+    const x = regions[i].x1, y = box.h - 22, r = rowR(), a = r * 0.45;
+    const add = el('g', { class: 'hit btnc', role: 'button', tabindex: 0, 'data-add-l': i, 'aria-label': 'Add a layer here' }, g0);
+    el('circle', { cx: x, cy: y, r, style: 'fill:var(--panel);stroke:var(--accent)', 'stroke-width': 1.4 }, add);
+    el('path', { d: `M ${x - a} ${y} H ${x + a} M ${x} ${y - a} V ${y + a}`, style: 'stroke:var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round' }, add);
+    add.addEventListener('click', (ev) => { ev.stopPropagation(); commit(insertLayer(W.saved.genome, i, MODE), 'A new layer'); W.sel = null; render(); });
+  }
+  showAlloc();
+  if (!holdPanel) inspect();
+  symbolsDirty = true;
+}
+
+function cellLabel(id: string): string {
+  const s = spec();
+  if (id.startsWith('i:')) { const [, sid, k] = id.split(':'); return `${SENSE_INFO[sid as SenseId].name.replace(/s$/, '')} ${Number(k) + 1}`; }
+  if (id.startsWith('o:')) return `${OUTPUTS.find((o) => o.id === id)?.label} wheel`;
+  const [L, k] = id.slice(1).split(':').map(Number);
+  return `Layer ${L + 1} neuron ${k + 1} (${FX[s.layers[L].fn].n})`;
+}
+
+// ---- the energy split: brain power against speed (resting to flat out while building) ----
+function showAlloc(): void {
+  const s = spec(), top = maxLoad(s), lo = restLoad(s, restRate), f = (v: number) => Math.round(Math.max(0, v)), bar = (v: number) => clamp(v, 0, 100);
+  const sp = (load: number) => Math.round(speedCap(load) * 100);
+  $('aFill').style.width = `${bar(lo)}%`;
+  $('aRange').style.width = `${bar(top)}%`;
+  $('aBrain').textContent = f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`;
+  $('aSpeed').textContent = sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%`;
+}
+
+// ---- side panel ----
+const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const binBtn = (id: string, label: string) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
+const fmtE = (v: number) => `${Math.round(v * 10) / 10}%`;
+const useLine = (v: number) => `<p class="use">At maximum firing rate, uses <b>${fmtE(v)}</b> energy</p>`;
+let holdPanel = false; // while the neurons slider is dragged, the board redraws but the panel stays put
+
+function inspect(): void {
+  const box2 = $('insp'), id = W.sel, s = spec();
+  if (!id) { box2.innerHTML = '<p class="empty">Tap a neuron<br>to inspect it</p>'; return; }
+  if (id.startsWith('layer:')) {
+    const L = Number(id.slice(6)), l = s.layers[L];
+    if (!l) { W.sel = null; inspect(); return; }
+    box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${ACTS.map((k) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${FX[k].g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${FX[k].n}</button>`).join('')}</div>`
+      + `<label class="count"><span>Neurons</span><b id="nVal">${l.n}</b><input id="nSlide" type="range" min="1" max="${CONFIG.brain.maxPerLayer}" step="1" value="${l.n}" aria-label="Neurons in layer ${L + 1}"></label>`
+      + `<div id="lUse" style="margin-top:12px">${useLine(layerMax(s, L))}</div>${s.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
+    box2.querySelectorAll<HTMLButtonElement>('[data-fx]').forEach((b) => b.addEventListener('click', () => { commit(setLayerFn(W.saved.genome, L, b.dataset.fx as Act, MODE), 'That function'); render(); }));
+    // the slider sets the layer's size live; a size the energy rule refuses (vs CPU, Multiplayer) snaps back
+    ($('nSlide') as HTMLInputElement).addEventListener('input', (e) => {
+      const inp = e.target as HTMLInputElement, want = Number(inp.value), old = spec().layers[L].n;
+      if (want !== old && !commit(setLayerSize(W.saved.genome, L, want, MODE), 'That many neurons')) inp.value = String(old);
+      $('nVal').textContent = String(spec().layers[L].n);
+      $('lUse').innerHTML = useLine(layerMax(spec(), L));
+      holdPanel = true; render(); holdPanel = false;
+    });
+    if (document.getElementById('rmL')) $('rmL').onclick = () => { commit(removeLayer(W.saved.genome, L)); W.sel = null; render(); };
+    return;
+  }
+  if (id.startsWith('i:')) {
+    const [, sid, ks] = id.split(':'), k = Number(ks), n = s.senses[sid as SenseId];
+    if (k >= n) { W.sel = null; inspect(); return; }
+    box2.innerHTML = `<h2>${SENSE_INFO[sid as SenseId].name.replace(/s$/, '')}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${SENSE_INFO[sid as SenseId].desc}</p>${useLine(senseMax(s, sid as SenseId))}${binBtn('rm', 'Remove this cell')}`;
+    graphSense(sid as SenseId, k, n);
+    $('rm').onclick = () => { commit(removeSense(W.saved.genome, sid as SenseId)); W.sel = null; buildTray(); render(); };
+    return;
+  }
+  if (id.startsWith('h')) {
+    const L = Number(id.slice(1, id.indexOf(':')));
+    if (!s.layers[L]) { W.sel = null; inspect(); return; }
+    box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.neuron}</p>${useLine(cellMax(s, L + 1))}${s.layers[L].n > 1 ? binBtn('rmN', 'Remove this neuron') : ''}`;
+    graphCurve(s.layers[L].fn, 'input');
+    if (document.getElementById('rmN')) $('rmN').onclick = () => { commit(setLayerSize(W.saved.genome, L, s.layers[L].n - 1)); W.sel = null; render(); };
+    return;
+  }
+  box2.innerHTML = `<h2>${OUTPUTS.find((q) => q.id === id)?.label} wheel</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.wheel}</p>${useLine(cellMax(s, columns(s).length - 1))}`;
+  graphCurve('tanh', 'input', 'wheel speed');
+}
+
+// ---- activation-pattern graphs (the panel), from the engine's own sense rules ----
+const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const FONT = 'Arial, Helvetica, sans-serif';
+function gctx(): { g: CanvasRenderingContext2D; w: number } {
+  const c = $('graph') as HTMLCanvasElement, w = c.clientWidth || 140, dpr = Math.min(devicePixelRatio, 2) * SCALE;
+  c.width = Math.round(w * dpr); c.height = Math.round(w * dpr);
+  const g = c.getContext('2d') as CanvasRenderingContext2D;
+  g.scale(dpr, dpr);
+  return { g, w };
+}
+// cold to hot: blue → green → yellow → red
+const STOPS: [number, number[]][] = [[0, [44, 107, 217]], [1 / 3, [63, 179, 90]], [2 / 3, [255, 210, 26]], [1, [232, 68, 58]]];
+export const heat = (a: number, alpha = 0.9) => {
+  a = clamp(a, 0, 1);
+  let i = 0;
+  while (i < STOPS.length - 2 && a > STOPS[i + 1][0]) i++;
+  const [a0, c0] = STOPS[i], [a1, c1] = STOPS[i + 1], t = (a - a0) / (a1 - a0);
+  return `rgba(${c0.map((v, k) => Math.round(v + (c1[k] - v) * t)).join(',')},${alpha})`;
+};
+/** A circular map around the car (front up): the cell's activation for a target at each distance and bearing. */
+function polar(fieldDeg: number, range: number, width: number, ringStep: number): void {
+  const { g, w } = gctx(), c = w / 2, Rr = w / 2 - 12;
+  g.fillStyle = css('--canvas'); g.beginPath(); g.arc(c, c, Rr, 0, 7); g.fill();
+  for (let y = -Rr; y <= Rr; y += 1) for (let x = -Rr; x <= Rr; x += 1) {
+    const r = Math.hypot(x, y);
+    if (r > Rr) continue;
+    let off = Math.atan2(x, -y) * 180 / Math.PI - fieldDeg;
+    off -= 360 * Math.round(off / 360);
+    g.fillStyle = heat(fieldAct(off, (r / Rr) * range, range, width), 0.9);
+    g.fillRect(c + x - 0.5, c + y - 0.5, 1.2, 1.2);
+  }
+  g.lineWidth = 0.75; g.font = `9px ${FONT}`; g.strokeStyle = '#ffffff'; g.fillStyle = '#ffffff';
+  for (let d = ringStep; d <= range + 0.01; d += ringStep) {
+    const rr = (d / range) * Rr;
+    g.globalAlpha = 0.5; g.beginPath(); g.arc(c, c, rr, 0, 7); g.stroke();
+    g.globalAlpha = 1; g.fillText(`${d} m`, c + 3, c - rr + 10);
+  }
+  g.globalAlpha = 1;
+  g.beginPath(); g.moveTo(c, c - 7); g.lineTo(c + 4.5, c + 5); g.lineTo(c - 4.5, c + 5); g.closePath(); g.fill();
+}
+interface PlotOpts { x: number[]; y: number[]; xt: number[]; yt: number[]; xl: string; yl: string }
+/** An x/y frame: faint grid, solid axes through 0, tick labels, axis titles. */
+function plot(o: PlotOpts) {
+  const { g, w } = gctx(), l = 30, r = w - 8, t = 8, b = w - 30;
+  const X = (v: number) => l + ((r - l) * (v - o.x[0])) / (o.x[1] - o.x[0]), Y = (v: number) => b - ((b - t) * (v - o.y[0])) / (o.y[1] - o.y[0]);
+  g.font = `9px ${FONT}`; g.lineWidth = 1; g.strokeStyle = css('--line');
+  for (const v of o.xt) { g.beginPath(); g.moveTo(X(v), t); g.lineTo(X(v), b); g.stroke(); }
+  for (const v of o.yt) { g.beginPath(); g.moveTo(l, Y(v)); g.lineTo(r, Y(v)); g.stroke(); }
+  const x0 = X(clamp(0, o.x[0], o.x[1])), y0 = Y(clamp(0, o.y[0], o.y[1]));
+  g.strokeStyle = css('--text'); g.lineWidth = 1.2; g.beginPath(); g.moveTo(l, y0); g.lineTo(r, y0); g.moveTo(x0, t); g.lineTo(x0, b); g.stroke();
+  g.fillStyle = css('--muted'); g.textAlign = 'center'; for (const v of o.xt) g.fillText(String(v), X(v), b + 11);
+  g.textAlign = 'right'; for (const v of o.yt) g.fillText(String(v), l - 4, Y(v) + 3);
+  g.fillStyle = css('--text'); g.textAlign = 'center'; g.fillText(o.xl, (l + r) / 2, b + 24);
+  g.save(); g.translate(9, (t + b) / 2); g.rotate(-Math.PI / 2); g.fillText(o.yl, 0, 0); g.restore(); g.textAlign = 'start';
+  return { g, X, Y };
+}
+const line = (g: CanvasRenderingContext2D, n: number, xy: (u: number) => [number, number]) => {
+  g.strokeStyle = css('--spike'); g.lineWidth = 2.2; g.beginPath();
+  for (let i = 0; i <= n; i++) { const [x, y] = xy(i / n); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+  g.stroke();
+};
+function wave(pref: number): void {
+  const { g, X, Y } = plot({ x: [0, 360], y: [-1, 1], xt: [0, 90, 180, 270, 360], yt: [-1, 0, 1], xl: 'heading (°)', yl: 'activation' });
+  line(g, 180, (u) => [X(u * 360), Y(hdAct((u * 2 * Math.PI), pref))]);
+}
+/** A track-like map with the grid cell's firing over it (the track on top so it stays visible), with a 50 m bar. */
+function gridMap(k: number): void {
+  const { g, w } = gctx(), metres = 220, m2p = w / metres;
+  g.fillStyle = css('--canvas'); g.fillRect(0, 0, w, w);
+  const sc = gridScale(k), ph = gridPhase(k);
+  for (let y = 0; y < w; y += 1) for (let x = 0; x < w; x += 1) { g.fillStyle = heat(gridAct(x / m2p, y / m2p, sc, ph), 0.75); g.fillRect(x, y, 1.2, 1.2); }
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 64; i++) { const a = (i / 64) * Math.PI * 2, rr = 0.36 + 0.07 * Math.sin(a * 3) + 0.04 * Math.cos(a * 2); pts.push([w / 2 + Math.cos(a) * rr * w, w / 2 + Math.sin(a) * rr * w * 0.82]); }
+  const road = (col: string, width: number, alpha: number) => { g.globalAlpha = alpha; g.strokeStyle = col; g.lineWidth = width; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.stroke(); g.globalAlpha = 1; };
+  road('#f4f6fa', (14 * w) / 160, 0.55); road('#1d2330', 1.2, 0.8);
+  g.fillStyle = '#ffffff'; g.font = `bold 9px ${FONT}`;
+  const bar = 50 * m2p; g.fillRect(6, w - 8, bar, 2); g.fillText('50 m', 8 + bar, w - 4);
+}
+/** A transfer curve, from the engine's own function. */
+function graphCurve(fn: Act, xl: string, yl = 'output'): void {
+  const code = ACT_CODE[fn], ymin = fn === 'relu' || fn === 'sigmoid' ? 0 : -1, ymax = fn === 'relu' ? 4 : 1;
+  const { g, X, Y } = plot({ x: [-4, 4], y: [ymin, ymax], xt: [-4, 0, 4], yt: [...new Set([ymin, 0, ymax])], xl, yl });
+  line(g, 160, (u) => { const xv = -4 + 8 * u; return [X(xv), Y(clamp(transfer(code, xv), ymin, ymax))]; });
+}
+function speedLine(): void {
+  const top = CONFIG.car.wheelSpeed;
+  const { g, X, Y } = plot({ x: [0, top], y: [0, 1], xt: [0, top / 2, top], yt: [0, 1], xl: 'speed (m/s)', yl: 'activation' });
+  line(g, 1, (u) => [X(u * top), Y(u)]);
+}
+function graphSense(id: SenseId, k: number, n: number): void {
+  const S = CONFIG.senses;
+  if (id === 'boundary') polar(spreadDeg(k, n), S.boundary.rangeM, fieldWidthDeg('boundary', n), 5);
+  else if (id === 'landmark') polar(spreadDeg(k, n), S.landmark.rangeM, fieldWidthDeg('landmark', n), 10);
+  else if (id === 'hd') wave(hdPreferred(k, n));
+  else if (id === 'grid') gridMap(k);
+  else speedLine();
+}
+
+// ---- tray of senses ----
+function buildTray(): void {
+  const tr = $('tray');
+  tr.querySelectorAll('.sense').forEach((n) => n.remove());
+  for (const id of SENSE_IDS) {
+    const b = document.createElement('button'), info = SENSE_INFO[id];
+    b.type = 'button'; b.className = 'sense'; b.dataset.s = id;
+    b.setAttribute('aria-label', `Add a ${info.name.replace(/ cells$/, '').toLowerCase()} cell`);
+    const full = spec().senses[id] >= CONFIG.senses[id].max;
+    b.innerHTML = full ? '' : '<span class="plus" aria-hidden="true">+</span>';
+    if (full) { b.disabled = true; b.classList.add('full'); }
+    b.addEventListener('click', () => {
+      if (spec().senses[id] >= CONFIG.senses[id].max) return;
+      if (commit(addSense(W.saved.genome, id, MODE), `A ${info.name.toLowerCase().replace(/s$/, '')}`)) W.sel = `i:${id}:${spec().senses[id] - 1}`;
+      buildTray(); render();
+    });
+    tr.appendChild(b);
+  }
+  symbolsDirty = true;
+}
+
+// ---- the 3-D symbols (one WebGL layer under the diagram; loaded after first paint) ----
+let symbols: { draw(list: { sym: string; x: number; y: number; size: number }[], t: number, pixelScale: number): void } | null = null;
+let symbolsDirty = true;
+function symbolList() {
+  const out: { sym: string; x: number; y: number; size: number }[] = [];
+  const tr = $('tray');
+  document.querySelectorAll<HTMLButtonElement>('#tray .sense').forEach((b) => out.push({ sym: SYM[b.dataset.s as SenseId], x: tr.offsetLeft + b.offsetLeft + b.offsetWidth / 2, y: tr.offsetTop + b.offsetTop + b.offsetHeight / 2, size: b.offsetHeight - 6 }));
+  for (const [id, p] of P) if (p.kind === 'in') out.push({ sym: SYM[id.split(':')[1] as SenseId], x: p.x, y: p.y, size: R * 1.6 });
+  return out;
+}
+let raf = 0;
+function frame(now: number): void {
+  raf = requestAnimationFrame(frame);
+  if (!active || !symbols) return;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce && !symbolsDirty) return;
+  symbolsDirty = false;
+  symbols.draw(symbolList(), reduce ? 8 : now / 1000, SCALE);
+}
+
+// ---- the learning rule strip and the trainer picker ----
+function buildTrainers(): void {
+  const cur = W.saved.trainer;
+  $('trainers').innerHTML = TRAINERS.map((t) => {
+    let ready = true;
+    try { trainerInfo(t.id); } catch { ready = false; }
+    return `<button type="button" data-tr="${t.id}" aria-pressed="${cur === t.id}"${ready ? '' : ' disabled title="Coming next"'}>${t.n}</button>`;
+  }).join('');
+  $('trainers').querySelectorAll<HTMLButtonElement>('[data-tr]').forEach((b) => { b.onclick = () => { W.saved = { ...W.saved, trainer: b.dataset.tr as TrainerId }; persist(); buildTrainers(); }; });
+  $('eq').innerHTML = `Learning Rule : <span>${(TRAINERS.find((t) => t.id === cur) ?? TRAINERS[0]).eq}</span>`;
+}
+
+// ---- train (asks how many generations: sandbox has no fixed budget) and reset ----
+function buildGens(): void {
+  $('gens').innerHTML = GENS.map((g) => `<button type="button" data-g="${g}" aria-pressed="${g === W.gens}">${g}</button>`).join('');
+  $('gens').querySelectorAll<HTMLButtonElement>('[data-g]').forEach((b) => { b.onclick = () => { W.gens = Number(b.dataset.g); buildGens(); }; });
+}
+
+let tt: ReturnType<typeof setTimeout> | undefined;
+function toast(m: string, ms = 2000): void { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), ms); }
+
+// ---- scale the 860 × 400 layout to the screen (above the storage notice while it shows) ----
+let SCALE = 1;
+function fit(): void {
+  const a = document.querySelector<HTMLElement>('.app');
+  if (!a) return;
+  const notice = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--notice-h')) || 0;
+  const H = innerHeight - notice;
+  SCALE = Math.min(innerWidth / 860, H / 400);
+  a.style.transform = `translate(${(innerWidth - 860 * SCALE) / 2}px, ${(H - 400 * SCALE) / 2}px) scale(${SCALE})`;
+  symbolsDirty = true;
+}
+
+// ---- public ----
+export const currentSaved = (): Saved => W.saved;
+export function setActive(on: boolean): void {
+  active = on;
+  if (on) { fit(); buildTray(); buildTrainers(); render(); }
+}
+export function replaceSaved(s: Saved): void { W.saved = s; persist(); if (active) render(); }
+
+export function start(o: { onTrain: (s: Saved, generations: number) => void }): void {
+  onTrain = o.onTrain;
+  $('train').onclick = () => { buildGens(); ($('trainDlg') as HTMLDialogElement).showModal(); };
+  $('tdNo').onclick = () => ($('trainDlg') as HTMLDialogElement).close();
+  $('tdGo').onclick = () => { ($('trainDlg') as HTMLDialogElement).close(); onTrain(W.saved, W.gens); };
+  $('reset').onclick = () => ($('confirm') as HTMLDialogElement).showModal();
+  $('cfNo').onclick = () => ($('confirm') as HTMLDialogElement).close();
+  $('cfYes').onclick = () => {
+    W.saved = { ...W.saved, genome: defaultGenome(), train: NO_TRAINING };
+    W.sel = null; persist(); ($('confirm') as HTMLDialogElement).close(); buildTray(); render();
+  };
+  $('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
+  addEventListener('resize', () => { fit(); render(); });
+  fit(); buildTray(); buildTrainers(); render();
+  if (loaded.status === 'corrupt') { console.warn(`designer: saved brain unreadable (${loaded.why}); starting from the default brain`); toast('Your saved brain couldn’t be read, so this is the starting brain.'); persist(); }
+  else if (loaded.status === 'reset') { toast('Synapse has changed how brains work, so your brain was reset to the starting brain.', 6000); persist(); }
+  else if (loaded.status === 'unavailable') { saveWarned = true; toast('This browser won’t keep your brain, so changes last until you close the tab.'); }
+  raf = requestAnimationFrame(frame);
+  // the symbols' 3-D layer (three.js) loads after first paint, so it never holds up the designer
+  requestAnimationFrame(() => setTimeout(() => {
+    import('./symbols').then((m) => { symbols = m.createSymbols($('gl') as HTMLCanvasElement); symbolsDirty = true; })
+      .catch((e) => console.warn('designer: no 3-D symbols', e));
+  }, 0));
+}
+
+// for checks (Playwright): the brain as saved, the layout, and a way to render any brain
+declare global {
+  interface Window {
+    __designer?: { spec: () => BrainSpec; scale: () => number; load: (g: Genome) => void; select: (id: string | null) => void; cells: () => string[] };
+  }
+}
+window.__designer = {
+  spec: () => spec(),
+  scale: () => SCALE,
+  load: (g) => { W.saved = { ...W.saved, genome: g, train: NO_TRAINING }; W.sel = null; buildTray(); render(); },
+  select: (id) => { W.sel = id; render(); },
+  cells: () => [...P.keys()],
+};
+void raf;

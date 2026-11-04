@@ -7,6 +7,7 @@ import { hashU } from '../rng';
 import { compile, setWeights, zeroGenome, type Net } from '../sim/brain';
 import { startCar, type CarState } from '../sim/car';
 import { Runner, stopCheck } from '../sim/race';
+import { wireCount } from '../sim/spec';
 import type { Track } from '../sim/track';
 import type { EpisodeSetup } from './episodes';
 
@@ -87,7 +88,7 @@ export class RolloutCore {
   }
 
   run(job: RolloutJob): LaneOut[] {
-    const nW = this.setup.spec.conns.length;
+    const nW = wireCount(this.setup.spec);
     if (job.w.length !== nW) throw new Error(`rollout: ${job.w.length} weights, spec has ${nW} wires`);
     if (this.tracks.length === 0) throw new Error('rollout: no training tracks');
     const k = this.kernels[job.kernel];

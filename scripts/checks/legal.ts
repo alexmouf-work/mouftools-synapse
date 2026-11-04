@@ -67,7 +67,7 @@ async function main() {
     await page.goto(`${base}/`);
     await page.waitForSelector('#notice', { timeout: 10000 });
     check(await page.locator('#notice a[href="/cookies"]').count() === 1, 'first visit: the notice shows, linking the cookie policy');
-    const links = await page.$$eval('.side .legal-links a', (as) => as.map((a) => a.getAttribute('href')));
+    const links = await page.$$eval('.app .legal-links a', (as) => as.map((a) => a.getAttribute('href')));
     check(JSON.stringify(links) === JSON.stringify(PAGES.map((p) => `/${p}`)), `workbench links: ${links.join(' ')}`);
     const nb = await page.locator('#notice').boundingBox();
     check(!!nb && Math.abs(nb.y + nb.height - 800) < 1, 'notice sits at the bottom of the screen');

@@ -8,11 +8,8 @@
 //   speed:    the slowest corner within braking reach caps the speed: v ≤ √(gripUse·grip / |curv| + 2·brakeUse·brake·s).
 import { CONFIG } from '../config';
 import { cos, sin } from '../fmath';
-import { compile } from './brain';
-import type { CarState } from './car';
-import { startCar } from './car';
-import { Runner, type RunResult } from './race';
-import type { BrainSpec } from './spec';
+import { startCar, stepPhysics, type CarState } from './car';
+import type { RunResult } from './race';
 import type { Track } from './track';
 
 const K = CONFIG.car, P = CONFIG.teacher;
@@ -32,8 +29,11 @@ function cornerSpeed2(t: Track): Float64Array {
   return v2;
 }
 
-/** The teacher's wheel targets (FL, FR, RL, RR, each −1..1) for car c on track t. Allocates nothing. */
-export function teacherWheels(c: CarState, t: Track, out: Float64Array): void {
+/**
+ * The teacher's wheel targets (FL, FR, RL, RR, each −1..1) for car c on track t, given this tick's speed cap (the
+ * share the brain's energy leaves for speed: the same output then turns the wheels slower). Allocates nothing.
+ */
+export function teacherWheels(c: CarState, t: Track, out: Float64Array, cap = 1): void {
   const v = c.v > 0 ? c.v : 0;
   const decel = P.brakeUse * K.brake;
   // speed: the slowest corner within braking reach (in v², one square root at the end)
@@ -61,7 +61,8 @@ export function teacherWheels(c: CarState, t: Track, out: Float64Array): void {
     vt = 0;
   }
   const half = (omega * K.trackWidth) / 2;
-  let l = (vt - half) / K.wheelSpeed, r = (vt + half) / K.wheelSpeed;
+  const top = K.wheelSpeed * cap;
+  let l = (vt - half) / top, r = (vt + half) / top;
   // keep the steering difference when a wheel would pass ±1: give up speed, not the turn
   const hi = l > r ? l : r;
   if (hi > 1) { l -= hi - 1; r -= hi - 1; }
@@ -72,23 +73,16 @@ export function teacherWheels(c: CarState, t: Track, out: Float64Array): void {
   out[0] = l; out[1] = r; out[2] = l; out[3] = r;
 }
 
-/** A brain with no wires: it costs nothing, so a teacher-only run never meets the energy noise. */
-const EMPTY: BrainSpec = { v: 1, layers: 1, nodes: [], conns: [] };
-
 /**
- * The teacher alone on a track from the start line (a reference for tests and the bench; not part of any training
- * budget: training charges every tick the teacher drives through the metered env).
+ * The teacher alone on a track from the start line, with no brain to pay for (full speed): a reference for tests and
+ * the bench, not part of any training budget (training charges every tick the teacher drives through the metered env).
  */
-export function driveTeacher(t: Track, ticks: number, pool: number, noiseSeed = 0): RunResult & { maxV: number } {
-  const net = compile({ spec: EMPTY, w: [] });
-  const c = startCar(t), runner = new Runner(), out = new Float64Array(4);
+export function driveTeacher(t: Track, ticks: number): RunResult & { maxV: number } {
+  const c = startCar(t), out = new Float64Array(4);
   let maxV = 0;
-  const act = (vals: Float64Array, o: number) => {
-    teacherWheels(c, t, out);
-    for (let k = 0; k < 4; k++) vals[o + k] = out[k];
-  };
   for (let k = 0; k < ticks; k++) {
-    runner.tick(net, t, c, pool, noiseSeed, undefined, act);
+    teacherWheels(c, t, out, 1);
+    stepPhysics(c, t, out[0], out[1], out[2], out[3], 1);
     if (c.v > maxV) maxV = c.v;
   }
   return { ticks: c.tick, prog: c.prog, maxProg: c.maxProg, wallTicks: c.wallTicks, maxV };

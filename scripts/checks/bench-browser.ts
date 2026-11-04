@@ -1,4 +1,4 @@
-// Browser bench (criterion e): serve /bench/ with Vite, run one Starter phase in headless Chromium, report the time
+// Browser bench (criterion e): serve /bench/ with Vite, run one phase of the default brain in headless Chromium, report the time
 // and check the hash equals the Node run (same code, same split → same bits). Also derives the T that would fit
 // 7 s on this machine (largest 0.5M multiple, clamped 1.5M–6M). This container is not the reference desktop; the
 // 7 s criterion is confirmed there.
@@ -6,7 +6,7 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { CONFIG } from '../../src/common/config';
-import { starterSpec } from '../../src/common/sim/brain';
+import { defaultSpec } from '../../src/common/sim/spec';
 import { runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
 
@@ -20,7 +20,7 @@ interface Run { ms: number; setupMs: number; hash: string; gens: number; ticks: 
 
 async function main() {
   const pool = new NodePool(4);
-  const node = await runPhase(pool, starterSpec(), seed, { trainer, now: () => performance.now() });
+  const node = await runPhase(pool, defaultSpec(), seed, { trainer, now: () => performance.now() });
   await pool.close();
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();

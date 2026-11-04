@@ -28,9 +28,10 @@ export function makeCar(primary: string, trimHex: string, glowTex: THREE.Texture
   const tyreMat = M(new THREE.MeshStandardMaterial({ color: '#15171d', roughness: 0.85, flatShading: true }));
   const carbonMat = M(new THREE.MeshStandardMaterial({ color: '#171a22', roughness: 0.5, metalness: 0.35, flatShading: true }));
   // Satin, not mirror: a sharp clearcoat throws sun glints far over the bloom threshold at some poses (found by the
-  // bloom audit: max 3.6 at some finale poses), so every coat has roughness ≥ 0.45 and the paint a half coat.
+  // bloom audit: max 3.6 at some finale poses), so every coat has roughness ≥ 0.45. The paint is near matte (rough
+  // 0.7, a faint coat): driving into a low sun, the yellow paint still glinted to 1.8 (bloom audit, brain v2 drive).
   const glassMat = M(new THREE.MeshPhysicalMaterial({ color: '#0a1124', roughness: 0.45, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.45, flatShading: true }));
-  const paint = M(new THREE.MeshPhysicalMaterial({ color: primary, metalness: 0.2, roughness: 0.5, clearcoat: 0.5, clearcoatRoughness: 0.45, flatShading: true, envMapIntensity: 0.6 }));
+  const paint = M(new THREE.MeshPhysicalMaterial({ color: primary, metalness: 0, roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.7, flatShading: true, envMapIntensity: 0.6 }));
   const trim = M(new THREE.MeshPhysicalMaterial({ color: trimHex, metalness: 0.35, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.45, flatShading: true }));
   const tail = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 0.15, 0.3) }));
   const led = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.7, 3.0) }));

@@ -1,6 +1,7 @@
 // Renderer guards in Node (three builds geometry without a GL context): one NaN vertex blacks out the frame through
 // bloom, and an instance write past capacity is silently dropped, so both must throw.
 import * as THREE from 'three';
+import { defaultSpec, wireCount } from '../../src/common/sim/spec';
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import { generateTrack } from '../../src/common/sim/track';
@@ -86,8 +87,8 @@ describe('render guards', () => {
     }
   });
   it('a drive is deterministic and its hash covers the run', () => {
-    const spec = { v: 1 as const, layers: 1, nodes: [], conns: [{ from: 'i:f', to: 'o:fl' }, { from: 'i:bias', to: 'o:fr' }, { from: 'i:bias', to: 'o:rl' }, { from: 'i:bias', to: 'o:rr' }] };
-    const a = runDrive({ spec, w: [0.5, 0.8, 0.8, 0.8] }, 42), b = runDrive({ spec, w: [0.5, 0.8, 0.8, 0.8] }, 42), c = runDrive({ spec, w: [0.5, 0.8, 0.8, 0.7] }, 42);
+    const spec = defaultSpec(), n = wireCount(spec), w = Array.from({ length: n }, (_, k) => ((k * 7) % 5 - 2) / 2);
+    const a = runDrive({ spec, w }, 42), b = runDrive({ spec, w: [...w] }, 42), c = runDrive({ spec, w: w.map((x, k) => (k === n - 1 ? x + 0.1 : x)) }, 42);
     expect(a.rec.ticks).toBe(CONFIG.drive.ticks);
     expect(b.hash).toBe(a.hash);
     expect(c.hash).not.toBe(a.hash);

@@ -1,6 +1,7 @@
 # Brain designer v2: design plan (for agreement before mock-ups)
 
-Status: agreed in outline 2026-11-04; mock-up next. Nothing built. Rulings it rests on are in `docs/CONTEXT.md` (2026-11-04).
+Status: built (B2 engine + B3 designer, 2026-11-04; "please build all the changes"); notes and the S1 re-benchmark in
+"As built" at the end. Rulings it rests on are in `docs/CONTEXT.md` (2026-11-04).
 
 ## The idea in one line
 The designer reads like a nervous system: **senses** on the left, shown as living 3-D symbols; a **cortex** of
@@ -151,3 +152,43 @@ accelerates until it matches the computer's training speed. ~~(accelerating play
 - Round 2: real cell names; whisker cells added; energy is a fixed brain/speed split; road ahead, energy left and
   bias removed; input cells are symbol circles placed on the field only when used.
 - Still my default, not yet ruled: same track until "New track"; tanh/sigmoid idle at half rate.
+
+## As built (B2 + B3, 2026-11-04)
+Engine in `src/common/sim` (spec, senses, energy, brain, sensors), designer in `src/client/ui/designer` (a port of the
+mock-up); the details are in `docs/ARCHITECTURE.md`. Choices the plan left open, or that the build had to make:
+- Boundary vector cells read three 20 m rays across their field (centre and both half-widths), weighted by the same
+  field rule the designer's polar graph draws; landmark cells use the nearest point of the finish line. One rule for
+  each sense (`senses.ts`), so the graphs show exactly what the sim computes.
+- Linear is z kept to −1..1 (rate (y + 1)/2), as tanh's range.
+- Any edit leaves an untrained brain (weights 0, grey wires), as the rulings say; Reset too.
+- Sandbox Train asks for generations; the budget is that many of evolution's worst-case generations, evolution stops
+  after that many, backprop spreads that many fitness checks over it (backprop's phases are therefore longer:
+  about 15M car-ticks for 100 generations).
+- The legal and credits line moved into the right end of the rule strip (the panel had no room under the bin at
+  860 × 400); the sound button sits at the end of the top bar.
+- The drive view keeps working: one beam per boundary cell, every cell flashing at its rate, the energy line shows
+  "brain x% · speed y%" for the tick.
+
+### S1 re-benchmark on the default brain (seeds 1–20, evolution, T 6M, 60 s episodes)
+`npm run bench` → `out/bench/report.md`. Measured in the 4-core build container, not the reference desktop.
+
+| | brain v1 Starter (before) | default brain v2 |
+|---|---|---|
+| final training fitness, median (60 s, both tracks) | 3125 | 2505 (17/20 ≥ 500; seeds 8, 9, 19 stay under 400) |
+| trainer gate: end ≥ 1.5× start | 20/20 | 18/20 |
+| (a) median 30 s on the unseen track, final champion | 1467 m | 7 m (gen 1: −1 m; the ratio is meaningless) |
+| (b) final ≥ 80% of a lap in 30 s | 18/20 | 3/20 |
+| (d) Minimal (v2: one boundary cell, one linear neuron) ≥ 50% of a lap | 19/20 | 0/20 |
+| (f) same seed → same hash; 1 vs 4 workers | pass | pass |
+| phase time, Node 4 workers | 3.8 s | median ≈ 3.6 s |
+
+Read: the default brain learns its two training tracks well but hardly carries over to a new one. Its only steady
+signal is the head-direction cell, which is anchored to the world: a champion learns "which way to steer when facing
+north" for those two tracks, and that is wrong on the next. The single boundary cell only sees 20 m ahead. As the plan
+expected, a two-input brain does not lap reliably; adding boundary cells (and speed) is what the player is meant to
+discover. Minimal has no steady input at all (no bias any more), so it never moves.
+
+Backprop on the default brain does not learn (training fitness ≈ 0 on seeds 1–3): with no bias input, the net can't
+produce the constant "forward" the teacher asks for from a boundary reading that is mostly 0 and a cosine that
+changes sign with the heading; the loss stays at ≈ 0.94 per wheel. It is reported, not fixed: that is B4's concern
+(trainers), and the obvious remedy (a steady input) is a design question for the principal.

@@ -1,5 +1,5 @@
-// Headless evolution benchmark (S1 GO / NO-GO). For each seed: train the Starter brain for one phase (T car-ticks) on
-// worker_threads, again on 1 worker (hash must match), train Minimal, then race the gen-1 / mid / final champions
+// Headless benchmark (S1). For each seed: train the default brain (v2) for one phase (T car-ticks) on worker_threads,
+// again on 1 worker (hash must match), train Minimal (one boundary cell, one linear neuron), then race the gen-1 / mid / final champions
 // for 30 s on the seed's unseen track. Writes out/bench/{report.md,report.json,fitness.csv,seed-NN.svg} and prints
 // the pass criterion (solo-loop plan step 1: a, b, c, d, f; e is the browser time, see /bench). --trainer picks the
 // trainer (evolution by default); a gradient trainer's "generations" are its fitness checks (gen 1 = its starting
@@ -8,8 +8,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { availableParallelism, cpus } from 'node:os';
 import { CONFIG } from '../../src/common/config';
-import { compile, genomeHash, minimalSpec, starterSpec } from '../../src/common/sim/brain';
-import { minutePool } from '../../src/common/sim/energy';
+import { compile, genomeHash } from '../../src/common/sim/brain';
+import { defaultSpec, type BrainSpec as Spec } from '../../src/common/sim/spec';
 import { newRecording, Runner } from '../../src/common/sim/race';
 import type { BrainSpec } from '../../src/common/sim/spec';
 import { generateTrack, type Track } from '../../src/common/sim/track';
@@ -33,12 +33,14 @@ const outDir = arg('out', trainer === 'evolution' ? 'out/bench' : `out/bench-${t
 
 interface Raced { prog: number; wallTicks: number; x: Float64Array; y: Float64Array; ticks: number }
 /** A look at the unseen track: a 1-minute run with the full pool (as trained and as the drive), cut at `ticks`. */
-function race(spec: BrainSpec, w: ArrayLike<number>, t: Track, noiseSeed: number, ticks: number = CONFIG.race.ticks): Raced {
+function race(spec: BrainSpec, w: ArrayLike<number>, t: Track, ticks: number = CONFIG.race.ticks): Raced {
   const net = compile({ spec, w: Array.from(w) });
   const rec = newRecording(net, ticks);
-  const r = new Runner().run(net, t, { ticks, pool: minutePool(), noiseSeed, earlyStop: false, record: rec });
+  const r = new Runner().run(net, t, { ticks, earlyStop: false, record: rec });
   return { prog: r.prog, wallTicks: r.wallTicks, x: rec.x, y: rec.y, ticks: rec.ticks };
 }
+/** (d)'s cheap design in brain v2: one boundary vector cell and one linear neuron (there are no presets any more). */
+const minimalSpec = (): Spec => ({ v: 2, senses: { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'linear' }] });
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
 interface Row {
@@ -59,36 +61,36 @@ async function main() {
   for (const seed of seeds) {
     const ps = phaseSeeds(seed);
     const unseen = generateTrack(ps.unseenTrack);
-    const st: PhaseResult = await runPhase(pool, starterSpec(), seed, { T, now, trainer });
-    const st1 = pool1 ? await runPhase(pool1, starterSpec(), seed, { T, now, trainer }) : null;
+    const st: PhaseResult = await runPhase(pool, defaultSpec(), seed, { T, now, trainer });
+    const st1 = pool1 ? await runPhase(pool1, defaultSpec(), seed, { T, now, trainer }) : null;
     const mn = await runPhase(pool, minimalSpec(), seed, { T, now, trainer });
     const G = st.gens.length;
     const g1 = st.gens[0], gm = st.gens[Math.floor((G - 1) / 2)], ge = st.gens[G - 1];
-    const r1 = race(st.spec, g1.champion, unseen, ps.raceNoise);
-    const rm = race(st.spec, gm.champion, unseen, ps.raceNoise);
-    const re = race(st.spec, ge.champion, unseen, ps.raceNoise);
-    const rmin = race(mn.spec, mn.final.w, unseen, ps.raceNoise);
+    const r1 = race(st.spec, g1.champion, unseen);
+    const rm = race(st.spec, gm.champion, unseen);
+    const re = race(st.spec, ge.champion, unseen);
+    const rmin = race(mn.spec, mn.final.w, unseen);
     // the drive-length look (60 s), for comparison with the 30 s criterion
     const D = CONFIG.drive.ticks;
-    const r1d = race(st.spec, g1.champion, unseen, ps.raceNoise, D), red = race(st.spec, ge.champion, unseen, ps.raceNoise, D), rmind = race(mn.spec, mn.final.w, unseen, ps.raceNoise, D);
+    const r1d = race(st.spec, g1.champion, unseen, D), red = race(st.spec, ge.champion, unseen, D), rmind = race(mn.spec, mn.final.w, unseen, D);
     for (const g of st.gens) csv.push(`${seed},${g.gen},${g.best.toFixed(3)},${g.mean.toFixed(3)},${g.ticksUsed}`);
     const pct = (p: number) => `${(100 * p / unseen.len).toFixed(0)}% lap`;
     writeFileSync(`${outDir}/seed-${String(seed).padStart(2, '0')}.svg`, trackSvg(unseen, [
       { label: `gen 1`, color: '#d9465b', ...r1, note: `${r1.prog.toFixed(0)} m (${pct(r1.prog)}), ${r1.wallTicks} wall ticks` },
       { label: `gen ${gm.gen}`, color: '#e09a1a', ...rm, note: `${rm.prog.toFixed(0)} m (${pct(rm.prog)}), ${rm.wallTicks} wall ticks` },
       { label: `gen ${ge.gen} (final)`, color: '#2f6fde', ...re, note: `${re.prog.toFixed(0)} m (${pct(re.prog)}), ${re.wallTicks} wall ticks` },
-    ], `Seed ${seed} · unseen track ${unseen.len.toFixed(0)} m · Starter champions, 30 s`));
+    ], `Seed ${seed} · unseen track ${unseen.len.toFixed(0)} m · default-brain champions, 30 s`));
     const row: Row = {
       seed, lap: unseen.len, gens: G, ticks: st.ticksUsed, trainMs: st.trainMs, trainMs1: st1?.trainMs,
       fit1: g1.best, fitEnd: ge.best, prog1: r1.prog, progMid: rm.prog, progEnd: re.prog, wallsEnd: re.wallTicks,
       minimalProg: rmin.prog, minimalGens: mn.gens.length, hash: st.hash, hash1: st1?.hash, champion: genomeHash(st.final),
-      prog1_60: r1d.prog, progEnd60: red.prog, minimal60: rmind.prog, teacher30: driveTeacher(unseen, CONFIG.race.ticks, minutePool(), ps.raceNoise).prog,
+      prog1_60: r1d.prog, progEnd60: red.prog, minimal60: rmind.prog, teacher30: driveTeacher(unseen, CONFIG.race.ticks).prog,
     };
     rows.push(row);
     console.log(`seed ${seed}: gens ${G}, fit ${row.fit1.toFixed(0)}→${row.fitEnd.toFixed(0)}, unseen ${row.prog1.toFixed(0)}/${row.progMid.toFixed(0)}/${row.progEnd.toFixed(0)} of ${row.lap.toFixed(0)} m, minimal ${row.minimalProg.toFixed(0)} m, ${(row.trainMs / 1000).toFixed(2)} s (${workers}w)${st1 ? `, ${(st1.trainMs / 1000).toFixed(2)} s (1w), hash ${st.hash} ${st.hash === st1.hash ? '=' : '≠'} ${st1.hash}` : ''}`);
   }
   // same seed twice → same hash (on the first seed, fresh pool)
-  const again = await runPhase(pool, starterSpec(), seeds[0], { T, now, trainer });
+  const again = await runPhase(pool, defaultSpec(), seeds[0], { T, now, trainer });
   rows[0].hashRepeat = again.hash;
   await pool.close();
   if (pool1) await pool1.close();
@@ -96,7 +98,8 @@ async function main() {
   const n = rows.length;
   const a = { medianEnd: median(rows.map((r) => r.progEnd)), median1: median(rows.map((r) => r.prog1)) };
   const crit = {
-    a: { ...a, ratio: a.medianEnd / a.median1, pass: a.medianEnd >= 3 * a.median1 },
+    // a ratio means nothing when gen 1 went nowhere or backwards (≤ 0 m): then (a) fails rather than passing on a sign
+    a: { ...a, ratio: a.medianEnd / a.median1, pass: a.median1 > 0 && a.medianEnd >= 3 * a.median1 },
     b: { count: rows.filter((r) => r.progEnd >= 0.8 * r.lap).length, need: 15, pass: false },
     c: { count: rows.filter((r) => r.fitEnd >= 2 * r.fit1).length, need: n, pass: false },
     /** The trainers' gate (brief 2026-11-04): end ≥ 1.5× start on ≥ 15/20 — and, since a gradient trainer starts from one
@@ -127,7 +130,7 @@ async function main() {
   writeFileSync(`${outDir}/fitness.csv`, csv.join('\n') + '\n');
 
   const md: string[] = [];
-  md.push(`# S1 bench (${trainer}) — seeds ${seeds[0]}–${seeds[seeds.length - 1]}, Starter brain, energy pool ${CONFIG.budget[0]}/tick × run length, T = ${T.toLocaleString('en')}`);
+  md.push(`# S1 bench (${trainer}) — seeds ${seeds[0]}–${seeds[seeds.length - 1]}, the default brain v2 (1 boundary vector + 1 head direction → 3 tanh → wheels), speed from firing, T = ${T.toLocaleString('en')}`);
   md.push('', `Node ${env.node}, ${env.cpus} cores (${env.cpu}), ${workers} workers. Not the reference desktop.`, '');
   md.push(`- (a) median unseen progress: final ${a.medianEnd.toFixed(0)} m vs gen 1 ${a.median1.toFixed(0)} m → ×${crit.a.ratio.toFixed(1)} (need ×3) — ${crit.a.pass ? 'PASS' : 'FAIL'}`);
   md.push(`- (b) final champion ≥ 80% of a lap on ${crit.b.count}/${n} (need 15) — ${crit.b.pass ? 'PASS' : 'FAIL'}`);

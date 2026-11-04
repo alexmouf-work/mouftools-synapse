@@ -1,8 +1,7 @@
-// Rate coding for the input cells (principal, 2026-10-31: "the eye cells spike faster when they're close to their
-// wall, and less when far away. the energy remaining cell spikes slower as energy drains."). One rule for every
-// input (review call): a cell fires at SPIKE_MAX_HZ × |reading| (reading clamped to 1), so an eye touching a wall
-// fires fastest, an eye seeing nothing in range never fires, Energy left slows as energy drains, bias fires steadily.
-// A spike is a short bright flash (FLASH_S). Driven by the real per-tick input values; display only.
+// Rate coding (principal 2026-10-31; brain v2 2026-11-04: "all neurons need a firing rate, shown with yellow flashes
+// like the input ones"). One rule for every cell: it fires at SPIKE_MAX_HZ × its firing rate (0..1, brain.nodeRate),
+// so a boundary cell near a wall fires fastest and a silent ReLU never fires. A spike is a short bright flash
+// (FLASH_S). Driven by the real per-tick values; display only.
 
 export const SPIKE_MAX_HZ = 14;
 export const FLASH_S = 0.08;

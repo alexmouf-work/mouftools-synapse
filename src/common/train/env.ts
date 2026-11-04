@@ -1,9 +1,9 @@
 // Metered environment: the only way a trainer reaches the sim. Counts every car-tick; a request whose worst case
 // would overrun the experience budget T throws before it runs (fail loudly, never silently trim).
-import { CONFIG } from '../config';
 import { compile, setWeights, type Net } from '../sim/brain';
 import { startCar, type CarState } from '../sim/car';
 import { fitnessOf, Runner } from '../sim/race';
+import { wireCount } from '../sim/spec';
 import { generateTrack, type Track } from '../sim/track';
 import { RESULT_STRIDE, type EpisodeSetup, type Executor } from './episodes';
 import type { LaneOut, RolloutJob } from './rollout';
@@ -43,7 +43,7 @@ export interface Env {
 export class MeteredEnv implements Env {
   private usedTicks = 0;
   private tracks: (Track | undefined)[] = [];
-  constructor(readonly setup: EpisodeSetup, private readonly exec: Executor, readonly budget: number = CONFIG.train.T) {}
+  constructor(readonly setup: EpisodeSetup, private readonly exec: Executor, readonly budget: number) {}
 
   get used(): number { return this.usedTicks; }
   remaining(): number { return this.budget - this.usedTicks; }
@@ -56,7 +56,7 @@ export class MeteredEnv implements Env {
   }
 
   async runEpisodes(ws: Float64Array[]): Promise<EpisodeOutcome[][]> {
-    const nW = this.setup.spec.conns.length, nT = this.setup.trackSeeds.length;
+    const nW = wireCount(this.setup.spec), nT = this.setup.trackSeeds.length;
     this.charge(this.worstCase(ws.length));
     const flat = new Float64Array(ws.length * nW);
     ws.forEach((w, p) => {
@@ -104,12 +104,11 @@ export class MeteredEnv implements Env {
     const net: Net = compile({ spec: this.setup.spec, w: Array.from(w) });
     setWeights(net, w);
     const state = startCar(t), runner = new Runner();
-    const noiseSeed = this.setup.noiseSeeds[trackIndex], pool = this.setup.pool;
     return {
       state,
       step: (actionNoise) => {
         this.charge(1);
-        const wall = runner.tick(net, t, state, pool, noiseSeed, actionNoise);
+        const wall = runner.tick(net, t, state, actionNoise);
         this.usedTicks += 1;
         return { wall, values: runner.lastValues() };
       },

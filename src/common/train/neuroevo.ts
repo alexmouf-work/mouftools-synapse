@@ -4,7 +4,7 @@
 // while the next one's worst case fits the budget; the generation count is a result, not a setting.
 import { CONFIG } from '../config';
 import { genomeHash, specHash } from '../sim/brain';
-import type { Genome } from '../sim/spec';
+import { wireCount, type Genome } from '../sim/spec';
 import { derive, Rng, TAG } from '../rng';
 import { meanFitness, type Env } from './env';
 import { firstTickSignal } from './probe';
@@ -32,7 +32,7 @@ export class Neuroevo implements Trainer {
     this.env = env;
     this.genome = genome;
     this.rng = new Rng(derive(seed, TAG.trainer));
-    const nW = genome.spec.conns.length;
+    const nW = wireCount(genome.spec);
     this.pop = [];
     if (this.opts.start === 'fresh') {
       for (let p = 0; p < P.population; p++) {
@@ -79,7 +79,7 @@ export class Neuroevo implements Trainer {
     let spent = 0;
     const worst = env.worstCase(P.population);
     while (!this.finished) {
-      if (worst > env.remaining()) {
+      if (worst > env.remaining() || (this.opts.generations !== undefined && this.gen >= this.opts.generations)) {
         this.finished = true;
         events.push({ type: 'done', ticksUsed: env.used, generations: this.gen });
         break;

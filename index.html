@@ -19,57 +19,31 @@
 <div class="app">
   <header class="top">
     <span class="word">Synapse</span>
-    <button class="name" id="name" type="button" title="Rename">Untitled brain</button>
-    <div class="meter" id="meter" aria-label="Energy use">
-      <div class="bar"><i id="eFill"></i></div>
-      <span id="eVal"></span>
+    <div class="tr" id="trainers" role="group" aria-label="Trainer"></div>
+    <div class="alloc" aria-label="Energy split: brain power against speed">
+      <span>Brain <b id="aBrain"></b></span>
+      <div class="split"><s id="aRange"></s><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
+      <span>Speed <b id="aSpeed"></b></span>
     </div>
-    <select class="trainer" id="trainer" aria-label="Trainer">
-      <option>Evolution</option>
-      <option disabled>Backprop (soon)</option>
-      <option disabled>Actor-critic (soon)</option>
-      <option disabled>A_RP (soon)</option>
-    </select>
-    <button class="btn" id="drive" type="button" hidden>Drive</button>
-    <button class="btn primary" id="train" type="button">Train</button>
+    <button class="btn" type="button" id="reset">Reset</button>
+    <button class="btn primary" type="button" id="train">Train</button>
     <button class="btn sound" id="soundWb" type="button" aria-label="Sound" aria-pressed="true"></button>
   </header>
-
+  <div class="rulebar"><div class="eq" id="eq" aria-label="Learning rule"></div><p class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a> · Music: DM DOKURO, Kevin MacLeod</p></div>
   <main class="work">
-    <div class="board">
-      <svg id="net" aria-label="Brain board, drawn over the car"></svg>
-      <div class="count" id="count"></div>
-      <div class="palette">
-        <button class="btn" id="addN" type="button">+ Neuron</button>
-        <button class="btn" id="addL" type="button">+ Layer</button>
-        <button class="btn" id="clear" type="button">Clear wires</button>
-      </div>
+    <div class="board" id="board">
+      <div class="tray" id="tray"></div>
+      <canvas id="gl"></canvas>
+      <svg id="net" aria-label="The brain"></svg>
     </div>
     <aside class="side">
-      <section id="sel"></section>
-      <section>
-        <h2>Energy budget · per minute (est.)</h2>
-        <dl class="kv" id="ledger"></dl>
-      </section>
-      <section>
-        <h2>Start from</h2>
-        <div class="presets" id="presets">
-          <button class="btn" type="button" data-preset="starter">Starter</button>
-          <button class="btn" type="button" data-preset="minimal">Minimal</button>
-          <button class="btn" type="button" data-preset="deep">Deep</button>
-        </div>
-      </section>
-      <p class="note help">Drag from a sensor or a neuron's dot to wire it. Click a wire to cut it. Signals run left to right: car, hidden layers, wheels.</p>
-      <p class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a> · Music: DM DOKURO, Kevin MacLeod</p>
+      <section id="insp"></section>
     </aside>
   </main>
 </div>
-<div id="rotate"><div class="rot">
-  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="14" width="30" height="20" rx="3"/><path d="M14 8 A18 18 0 0 1 38 10 M38 10 V4 M38 10 H32"/></svg>
-  <h1>Turn your phone sideways</h1>
-  <p class="note">The builder needs the width: the car on the left, your network reading across to the wheels on the right.</p>
-  <button class="btn" id="stay" type="button">Continue in portrait</button>
-</div></div>
+<div id="rotate"><div><h1>Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button">Continue in portrait</button></div></div>
+<dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
+<dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>
   <div id="trainOverlay" hidden>
@@ -123,9 +97,9 @@
       </div>
     </section>
     <section class="tv-panel dv-brain" aria-label="Live brain">
-      <h2>Brain · live <span class="dv-static" id="dvStatic" hidden></span></h2>
+      <h2>Brain · live</h2>
       <canvas id="dvBrain"></canvas>
-      <p class="note tv-legend">Wires: <span class="sw wneg"></span>−1 <span class="sw wzero"></span>0 <span class="sw wpos"></span>+1 · thicker, brighter = stronger. Inputs flash faster the stronger they read.</p>
+      <p class="note tv-legend">Wires: <span class="sw wneg"></span>−1 <span class="sw wzero"></span>0 <span class="sw wpos"></span>+1 · thicker, brighter = stronger. Every cell flashes faster the faster it fires.</p>
     </section>
   </div>
 </div>

@@ -1,9 +1,9 @@
 // Backprop: copy a teacher (solo-loop plan §3b; principal 2026-10-30). The brain drives lanes of cars; the scripted
 // pure-pursuit teacher (sim/teacher.ts) labels every state the brain sees (DAgger, imitate.ts), and the weights follow
 // the generalised delta rule (grad.ts): output δ = (t − y)·f′(z), hidden δ = f′(z)·Σ w·δ, Δw = η·δ·x, the δ·x terms
-// averaged over the round's samples. Step neurons are refused (no slope).
+// averaged over the round's samples. Every function on every layer has a slope, so nothing is refused.
 import { CONFIG } from '../config';
-import { GradTrainer, stepRefusal } from './gradTrainer';
+import { GradTrainer, slopeRefusal } from './gradTrainer';
 import { registerTrainer, type Channel } from './trainer';
 
 const B = CONFIG.train.backprop;
@@ -32,4 +32,4 @@ export class Backprop extends GradTrainer {
   }
 }
 
-registerTrainer('backprop', (o) => new Backprop(o), { label: 'Backprop', refusal: (spec) => stepRefusal('Backprop', spec) });
+registerTrainer('backprop', (o) => new Backprop(o), { label: 'Backprop', refusal: (spec) => slopeRefusal('Backprop', spec) });

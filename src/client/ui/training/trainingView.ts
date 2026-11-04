@@ -1,20 +1,19 @@
-// Training view: Train on the workbench → the worker pool spends one phase's experience budget T on the brain's
-// seeded tracks, while the swarm of the latest recorded generation drives training track 0 and a fitness graph
+// Training view: Train on the designer (asking how many generations) → the worker pool trains the brain with its
+// trainer for that many generations (budget: that many of evolution's worst-case generations) on its seeded tracks, while the swarm of the latest recorded generation drives training track 0 and a fitness graph
 // grows. When done the champion's weights are saved with the brain; Train again continues from them (carry).
 // Results never depend on speed: rendering, the worker count and the path recording only change how it looks.
 import { CONFIG } from '../../../common/config';
 import { compile, genomeHash } from '../../../common/sim/brain';
-import { poolFor } from '../../../common/sim/energy';
 import { newRecording, Runner } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { generateTrack, type Track } from '../../../common/sim/track';
 import { defaultWorkers } from '../../../common/train/episodes';
-import { phaseSeeds, runPhase, type GenStat, type PhaseResult } from '../../../common/train/phase';
+import { phaseBudget, phaseSeeds, runPhase, type GenStat, type PhaseResult } from '../../../common/train/phase';
 import type { Stage } from '../../render/stage';
 import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import { BrowserPool } from '../../workers/pool';
-import type { Saved } from '../workbench/store';
+import type { Saved } from '../designer/store';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -54,7 +53,7 @@ function params() {
   return {
     seed: num('seed'),
     workers: num('workers'),
-    // a smaller budget is for the browser checks only; the game always spends CONFIG.train.T
+    // a smaller budget is for the browser checks only; the game always spends the generations' budget
     T: import.meta.env.DEV ? num('T') : undefined,
   };
 }
@@ -76,17 +75,17 @@ let estGens = 0; // estimated generations in this run (exact once done)
 let doneGens = 0;
 
 /** Open the view and train the given brain; resolves when the run ends (done or stopped). */
-export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<void> {
+export async function openTraining(saved: Saved, generations: number, hooks: TrainingHooks): Promise<void> {
   if (running) return;
   running = true;
   stopAsked = false;
   const p = params();
   const seed = p.seed ?? saved.train.seed ?? newSeed();
   const phase = saved.train.phases;
-  const genome = saved.draft.genome;
+  const genome = saved.genome;
   const start: 'fresh' | 'carry' = genome.w.every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
-  const T = p.T ?? CONFIG.train.T;
+  const T = p.T ?? phaseBudget(generations);
   const seeds = phaseSeeds(seed, phase);
   estGens = 0; doneGens = 0;
 
@@ -121,7 +120,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
   let result: PhaseResult;
   try {
     result = await runPhase(pool, genome.spec, seed, {
-      T, phase, start, genome, now: () => performance.now(),
+      T, generations, trainer: saved.trainer, phase, start, genome, now: () => performance.now(),
       stepTicks: (env) => env.worstCase(pop),
       beforeStep: (env) => {
         // The story is chosen by generation count, not by time: gen 1, ~10%, 25%, 50% of the run, and the last one
@@ -130,8 +129,8 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
         // early generations are cheap (episodes stop on a stall); trained ones run ~80% of the worst case, so use
         // that as a floor or the estimate overshoots and the story's early picks come late
         const perGen = Math.max(doneGens ? env.used / doneGens : 0, 0.8 * env.worstCase(pop));
-        estGens = doneGens + Math.max(1, Math.floor(env.remaining() / perGen));
-        finalCandidate = env.remaining() < 2 * env.worstCase(pop);
+        estGens = Math.min(generations, doneGens + Math.max(1, Math.floor(env.remaining() / perGen)));
+        finalCandidate = g >= generations || env.remaining() < 2 * env.worstCase(pop);
         const due = STORY_AT.findIndex((f, k) => !taken.has(k) && g >= Math.max(2, Math.round(f * estGens)));
         if (due >= 0) STORY_AT.forEach((f, k) => { if (g >= Math.round(f * estGens)) taken.add(k); });
         if (stage && (g === 1 || due >= 0 || finalCandidate)) pool.record = true;
@@ -167,7 +166,7 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     $('tvNote').textContent = 'Stopped before the end: the brain keeps the weights it had.';
     setButtons('stopped');
   } else {
-    const next: Saved = { ...saved, draft: { ...saved.draft, genome: result.final }, train: { seed, phases: phase + 1 } };
+    const next: Saved = { ...saved, genome: result.final, train: { seed, phases: phase + 1 } };
     hooks.save(next);
     status.state = 'done';
     status.hash = result.hash;
@@ -175,21 +174,21 @@ export async function openTraining(saved: Saved, hooks: TrainingHooks): Promise<
     status.ms = result.trainMs;
     estGens = result.gens.length;
     status.story.push(estGens);
-    if (stage && track0) stage.swarm.setLap(championLap(result.final, track0, seeds.trainNoise[0], estGens));
+    if (stage && track0) stage.swarm.setLap(championLap(result.final, track0, estGens));
     $('tvState').textContent = 'Trained';
     $('tvNote').textContent = `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain of the last generation is saved; Train again continues from it on new tracks.`;
     setButtons('done');
-    $('tvAgain').onclick = () => { void openTraining(next, hooks); };
+    $('tvAgain').onclick = () => { void openTraining(next, generations, hooks); };
     $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); hooks.drive(next); };
   }
   $('tvBack').onclick = () => close(hooks);
 }
 
-/** The champion's 1-minute run on training track 0 (full pool, as trained), replayed for display only (no experience charged). */
-function championLap(g: Genome, t: Track, noiseSeed: number, gen: number) {
+/** The champion's 1-minute run on training track 0, replayed for display only (no experience charged). */
+function championLap(g: Genome, t: Track, gen: number) {
   const net = compile(g);
   const rec = newRecording(net, CONFIG.drive.ticks);
-  new Runner().run(net, t, { ticks: CONFIG.drive.ticks, pool: poolFor(CONFIG.drive.ticks), noiseSeed, earlyStop: false, record: rec });
+  new Runner().run(net, t, { ticks: CONFIG.drive.ticks, earlyStop: false, record: rec });
   return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, ticks: rec.ticks, gen };
 }
 

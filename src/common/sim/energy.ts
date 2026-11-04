@@ -1,105 +1,63 @@
-// THE energy cost function. The sim, the trainer and the workbench all call these; there is no second copy.
-// used per tick = Σ wired sensor cost + Σ neuron upkeep + Σ wires fire × |sender output × w| × (1 + skip × (span − 1)),
-// where span counts only hidden lines that hold neurons (wireSpan).
-// The budget is a pool for the run (ruling 2026-10-31: "the energy budget is a total that's assigned. the % use is
-// use over the total 1 minute period"): each tick's use is taken from it; once it is spent, every signal is mixed
-// with noise, a = clamp(used_total / pool − 1, 0, 1), from the total before this tick (all noise at 200%).
-import { CONFIG, type Act } from '../config';
-import { depthOf, INPUTS, inputIdx, type BrainSpec, type InputKind } from './spec';
+// THE energy rule (brain v2, docs/plans/2026-11-04-brain-designer-v2.md §3a, §3aa). One supply, shared each tick
+// between thinking and speed: every cell spends its cost × its firing rate (0..1), and every wire its cost × its
+// source's rate. What is left is that tick's top speed, never below the floor (10%), so every car can move.
+// Costs are % of the supply (halved 2026-11-04: "increase the max energy allowed for a brain by 2x").
+// The sandbox refuses nothing; vs CPU and Multiplayer ("match") refuse a design past 100% with everything flat out.
+// Retired with this: the per-minute pool, the noise rule and the energy-left input.
+import { CONFIG } from '../config';
+import { columns, type BrainSpec, type SenseId } from './spec';
 
-export const sensorCost = (k: InputKind): number => CONFIG.cost[k];
-export const upkeepCost = (a: Act): number => CONFIG.upkeep[a];
+const E = CONFIG.energy;
+export type Mode = 'sandbox' | 'match';
 
-/** Per-wire factor: fire cost per unit |signal| for a wire spanning `span` layers. */
-export function wireFactor(span: number): number {
-  if (!(span >= 1)) throw new Error(`energy: span ${span}`);
-  return CONFIG.cost.fire * (1 + CONFIG.cost.skip * (span - 1));
+/** Each node's cost at full rate, in compiled node order (inputs, hidden by layer, wheels). */
+export function nodeCosts(s: BrainSpec): number[] {
+  const out: number[] = [];
+  for (const id of columns(s)[0]) out.push(E.sense[id.split(':')[1] as SenseId]);
+  s.layers.forEach((l) => { for (let k = 0; k < l.n; k++) out.push(E.neuron[l.fn]); });
+  for (let k = 0; k < 4; k++) out.push(E.wheel);
+  return out;
 }
 
-/** Which inputs carry at least one wire. */
-export function wiredInputs(spec: BrainSpec): Uint8Array {
-  const used = new Uint8Array(INPUTS.length);
-  for (const c of spec.conns) { const i = inputIdx(c.from); if (i !== undefined) used[i] = 1; }
-  return used;
+/** Each node's whole cost per unit of its rate: its own cost plus the wires it drives (each wire costs per source spike). */
+export function nodeCoefs(s: BrainSpec): number[] {
+  const C = columns(s), costs = nodeCosts(s), out: number[] = [];
+  let i = 0;
+  C.forEach((col, c) => { const fan = c + 1 < C.length ? C[c + 1].length : 0; for (let k = 0; k < col.length; k++) out.push(costs[i++] + fan * E.wire); });
+  return out;
 }
 
-/** Cost that does not depend on signals: wired sensors and neuron upkeep. */
-export function staticCost(spec: BrainSpec): { sensors: number; upkeep: number; total: number } {
-  const used = wiredInputs(spec);
-  let sensors = 0;
-  for (let i = 0; i < INPUTS.length; i++) if (used[i]) sensors += sensorCost(INPUTS[i].kind);
-  let upkeep = 0;
-  for (const n of spec.nodes) upkeep += upkeepCost(n.act);
-  return { sensors, upkeep, total: sensors + upkeep };
+/** % of the supply the brain uses with every cell firing flat out: the design's maximum. */
+export const maxLoad = (s: BrainSpec): number => nodeCoefs(s).reduce((a, b) => a + b, 0);
+
+/** % used at rest: senses silent, each hidden layer at its function's resting rate, wheels at half rate (stopped). */
+export function restLoad(s: BrainSpec, restRate: (fn: BrainSpec['layers'][number]['fn']) => number): number {
+  const C = columns(s), co = nodeCoefs(s);
+  let i = C[0].length, e = 0;
+  s.layers.forEach((l) => { const r = restRate(l.fn); for (let k = 0; k < l.n; k++) e += co[i++] * r; });
+  for (let k = 0; k < 4; k++) e += co[i++] * 0.5;
+  return e;
 }
 
-/**
- * Layers a wire spans for the surcharge: only hidden lines that hold neurons count, so crossing an empty line is free
- * (review call 2026-10-30). Car = 0, each non-empty line up to and including a neuron's own adds 1, wheels = all
- * non-empty lines + 1.
- */
-export function wireSpan(spec: BrainSpec, from: string, to: string): number {
-  const filled = new Set(spec.nodes.map((n) => n.layer));
-  const eff = (id: string): number => {
-    const d = depthOf(spec, id); // throws on an unknown id
-    let k = 0;
-    for (const L of filled) if (L <= d) k++;
-    return d > spec.layers ? filled.size + 1 : d === 0 ? 0 : k;
-  };
-  return eff(to) - eff(from);
+/** The speed share for a tick's load (%): what is left of the supply, never below the floor. As a fraction 0..1. */
+export function speedCap(load: number): number {
+  const left = 100 - load;
+  return (left < E.speedFloor ? E.speedFloor : left) / 100;
 }
 
-/** Per-wire factors aligned to spec.conns. */
-export function wireFactors(spec: BrainSpec): Float64Array {
-  const f = new Float64Array(spec.conns.length);
-  spec.conns.forEach((c, k) => { f[k] = wireFactor(wireSpan(spec, c.from, c.to)); });
-  return f;
+/** Why a design can't be raced in this mode, or null. The sandbox refuses nothing. */
+export function energyRefusal(s: BrainSpec, mode: Mode): string | null {
+  if (mode === 'sandbox') return null;
+  const m = maxLoad(s);
+  return m > 100 ? `Flat out it would use ${Math.round(m)}% of the energy; races allow 100%.` : null;
 }
 
-/**
- * The workbench's estimate of a brain's use per tick, before it has run: exact static cost plus every wire at the
- * assumed activity CONFIG.cost.estimateActivity. Shown as "est." wherever wires are costed.
- */
-export function estimate(spec: BrainSpec): { sensors: number; upkeep: number; wires: number; total: number } {
-  const s = staticCost(spec);
-  let wires = 0;
-  for (const f of wireFactors(spec)) wires += f * CONFIG.cost.estimateActivity;
-  return { sensors: s.sensors, upkeep: s.upkeep, wires, total: s.total + wires };
+/** "At maximum firing rate, uses x% energy" for one cell: its cost plus the wires it drives. */
+export function cellMax(s: BrainSpec, column: number): number {
+  const C = columns(s), fan = column + 1 < C.length ? C[column + 1].length : 0;
+  const own = column === 0 ? 0 : column === C.length - 1 ? E.wheel : E.neuron[s.layers[column - 1].fn];
+  return own + fan * E.wire;
 }
-
-/** Signal-dependent cost of one tick: Σ factor × |sender output × weight|. Arrays are in compiled wire order. */
-export function fireCost(factor: Float64Array, from: Int32Array, w: Float64Array, vals: Float64Array): number {
-  let s = 0;
-  for (let c = 0; c < w.length; c++) {
-    const x = vals[from[c]] * w[c];
-    s += factor[c] * (x < 0 ? -x : x);
-  }
-  return s;
-}
-
-/** The energy pool for a run of `ticks` ticks: the per-tick anchor × ticks (the minute: × 1200; shorter runs prorated). */
-export const poolFor = (ticks: number, round = 0): number => CONFIG.budget[round] * ticks;
-/** The 1-minute period's pool. */
-export const minutePool = (round = 0): number => poolFor(CONFIG.energy.periodTicks, round);
-
-/** Noise level from the energy used so far (before this tick) against the run's pool. */
-export function noiseLevel(usedTotal: number, pool: number): number {
-  const a = usedTotal / pool - 1;
-  return a < 0 ? 0 : a > 1 ? 1 : a;
-}
-
-/** The "Energy left" input: 1 − used so far / pool, clamped to 0..1; it drains over the run. */
-export function energyLeft(usedTotal: number, pool: number): number {
-  const e = 1 - usedTotal / pool;
-  return e < 0 ? 0 : e > 1 ? 1 : e;
-}
-
-/** Energy as the player sees it: % of the energy budget (used so far / the pool). */
-export const percentOfBudget = (used: number, pool: number): number => (used / pool) * 100;
-
-/** The workbench's figure: a per-tick cost run for the whole minute, as % of the minute's pool ("est. per minute"). */
-export const minutePercent = (perTick: number, round = 0): number => percentOfBudget(perTick * CONFIG.energy.periodTicks, minutePool(round));
-
-/** Seconds into the minute at which a steady per-tick cost spends the pool (Infinity if it never does). */
-export const runsOutAt = (perTick: number, round = 0): number =>
-  perTick * CONFIG.energy.periodTicks > minutePool(round) ? minutePool(round) / perTick / CONFIG.tick.hz : Infinity;
+export const senseMax = (s: BrainSpec, id: SenseId): number => E.sense[id] + columns(s)[1].length * E.wire;
+/** The same for a whole hidden layer. */
+export const layerMax = (s: BrainSpec, L: number): number => s.layers[L].n * cellMax(s, L + 1);

@@ -1,0 +1,111 @@
+/* The brain designer (B3): ported from reference/brain-v2-mockup.html (the UI spec). A nervous system read left to
+   right, built by touch: a tray of senses | the field (sense cells as symbol circles, lines of identical neurons, the
+   car whose wheels are motor neurons) | a narrow panel for whatever you tapped. One layout, phone-landscape sized
+   (860 × 400), scaled whole to fit any screen. Additions beyond the mock-up are marked. */
+:root {
+  --bg: #eef0f3; --canvas: #f7f8fa; --dot: #d3d8e0; --panel: #ffffff; --line: #dde1e8;
+  --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; --accent-soft: #e3ecfc;
+  --band: rgba(47,111,222,.045); --spike: #ffc21a; --speed: #3fb3a3; --node: #ffffff; --car: #5b6b88; --minus: #d9465b;
+  --wire-halo: rgba(120, 130, 150, .12);
+  --shadow: 0 1px 2px rgba(20,30,50,.08), 0 2px 8px rgba(20,30,50,.06);
+  --sans: Arial, Helvetica, sans-serif; /* one font across the site (principal 2026-11-04), weights 400 and 700 */
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-soft: #24304a; --band: rgba(107,156,255,.06); --node: #232933; --car: #9fb0d0; --minus: #ff7085;
+  --wire-halo: rgba(170, 180, 200, .32);
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-soft: #24304a; --band: rgba(107,156,255,.06); --node: #232933; --car: #9fb0d0; --minus: #ff7085;
+  --wire-halo: rgba(170, 180, 200, .32);
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 14px; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; touch-action: manipulation; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+html, body { overflow: hidden; }
+.app { position: fixed; left: 0; top: 0; width: 860px; height: 400px; transform-origin: 0 0; display: grid;
+  grid-template-rows: 36px 30px 1fr; gap: 6px; padding: 6px 10px; font-size: 12px; }
+.app[hidden] { display: none; }
+.top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.word { font-weight: 700; font-size: 15px; }
+.alloc { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 11.5px; min-width: 0; }
+.alloc b { font-weight: 400; font-variant-numeric: tabular-nums; }
+.split { position: relative; width: 140px; height: 10px; border-radius: 0; background: var(--speed); overflow: hidden; flex: none; }
+.split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .12s linear; }
+.split s { position: absolute; inset: 0 auto 0 0; background: var(--spike); opacity: .35; }
+.split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
+.btn { min-height: 30px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px; border-radius: 0; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; font-size: 12px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.btn:disabled { opacity: .55; cursor: default; }
+.rulebar { display: flex; align-items: center; justify-content: center; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 0; }
+.tr { display: flex; gap: 2px; flex: none; }
+.tr button { height: 22px; border: 1px solid transparent; background: transparent; border-radius: 0; cursor: pointer; font-size: 11px; padding: 0 7px; }
+.tr button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.tr button:disabled { opacity: .45; cursor: default; }
+.eq { font-size: 12.5px; white-space: nowrap; color: var(--text); }
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 6px; min-height: 0; }
+.board { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 0; overflow: hidden;
+  background: radial-gradient(var(--dot) 1px, transparent 1.1px) 0 0 / 16px 16px, var(--canvas); }
+.tray { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 6px; z-index: 1; background: var(--panel); border-right: 1px solid var(--line); }
+.tray .sense { height: 40px; flex: none; }
+.sense { position: relative; border: 1px solid var(--line); border-radius: 0; background: transparent; cursor: pointer; padding: 0; }
+.sense:active { transform: scale(.96); }
+.sense.full { cursor: default; opacity: .55; }
+.sense.full:active { transform: none; }
+.sense .plus { position: absolute; right: 2px; top: 0; color: var(--accent); font-weight: 700; font-size: 10px; }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+#net { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+#net .hit { pointer-events: auto; cursor: pointer; }
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
+.side h2 { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 4px; }
+.fx { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.fx button { min-height: 40px; min-width: 0; border: 1px solid var(--line); background: transparent; border-radius: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 2px; font-size: 11px; }
+.fx button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.fx svg { width: 20px; height: 13px; flex: none; }
+.use { margin: 0; font-size: 11px; line-height: 1.35; color: var(--muted); }
+.use b { color: var(--text); font-variant-numeric: tabular-nums; }
+.count { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; margin-top: 12px; font-size: 11.5px; color: var(--muted); }
+.count b { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; }
+.count input { grid-column: 1 / -1; width: 100%; height: 28px; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+.count input::-webkit-slider-runnable-track { height: 4px; background: var(--line); }
+.count input::-moz-range-track { height: 4px; background: var(--line); }
+.count input::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; background: var(--accent); border: 0; border-radius: 0; }
+.count input::-moz-range-thumb { width: 18px; height: 18px; background: var(--accent); border: 0; border-radius: 0; }
+.count input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.desc { margin: 0 0 4px; font-size: 10.5px; line-height: 1.3; color: var(--muted); }
+.bin { margin-top: auto; align-self: flex-end; height: 36px; width: 36px; border: 0; border-radius: 50%; background: #d9465b; color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
+.bin:active { transform: scale(.97); }
+#graph { display: block; width: 100%; aspect-ratio: 1; margin: 2px 0 6px; }
+#insp { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.4; }
+#toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 0; z-index: 9; max-width: calc(100% - 32px); }
+#rotate { display: none; }
+#rotate h1 { margin: 0 0 8px; font-size: 20px; }
+#rotate .btn { margin-top: 12px; }
+dialog { border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); padding: 14px; box-shadow: var(--shadow); font-size: 12.5px; line-height: 1.4; }
+dialog::backdrop { background: rgba(10, 14, 22, .45); }
+dialog p { margin: 0 0 12px; }
+dialog#trainDlg { width: 300px; }
+dialog#confirm { width: 260px; }
+.gens { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 12px; }
+.gens button { min-height: 34px; border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 0; font: inherit; font-size: 12.5px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.gens button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.cf { display: flex; justify-content: flex-end; gap: 6px; }
+.btn.red { background: #d9465b; border-color: #d9465b; color: #fff; font-weight: 700; }
+@media (orientation: portrait) and (max-width: 700px) {
+  body:not(.portrait-ok) #rotate { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg); padding: 24px; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) { .split i { transition: none; } }
+
+/* additions beyond the mock-up: the speaker button in the top bar, the legal and credits line at the right end of
+   the rule strip (small, so the rule stays centred) */
+.app .btn.sound { min-height: 30px; width: 30px; padding: 0; display: inline-grid; place-items: center; border-radius: 0; }
+.btn.sound svg { width: 16px; height: 16px; }
+.btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }
+.btn.sound[aria-pressed="false"] { color: var(--muted); }
+.rulebar { position: relative; }
+.rulebar .legal-links { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); margin: 0; font-size: 9px; line-height: 1; color: var(--muted); white-space: nowrap; }
+.rulebar .legal-links a { color: var(--muted); }

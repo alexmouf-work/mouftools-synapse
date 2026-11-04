@@ -7,7 +7,7 @@
 import { CONFIG } from '../config';
 import { derive, Rng, TAG } from '../rng';
 import { specHash } from '../sim/brain';
-import type { BrainSpec, Genome } from '../sim/spec';
+import { columns, wireCount, type BrainSpec, type Genome } from '../sim/spec';
 import { meanFitness, type Env } from './env';
 import { firstTickSignal } from './probe';
 import { fresh, type KernelId, type Lane, type LaneOut } from './rollout';
@@ -16,13 +16,11 @@ import type { Channel, ProbeFrame, Trainer, TrainerEvent, TrainerOptions } from 
 const G = CONFIG.train.grad;
 const CAP = CONFIG.brain.weightCap;
 
-/** The refusal every gradient trainer gives a brain with step neurons (they have no slope to follow). */
-export function stepRefusal(label: string, spec: BrainSpec): string | null {
-  const steps = spec.nodes.filter((n) => n.act === 'step').map((n) => n.id);
-  if (!steps.length) return null;
-  return `${label} follows the slope of every neuron, and step neurons have none (${steps.join(', ')}). `
-    + 'Switch them to ReLU, sigmoid or tanh, or train with Evolution.';
-}
+/**
+ * Why a gradient trainer can't train this brain, or null. Every function offered (linear, ReLU, sigmoid, tanh) has a
+ * slope, on every layer, so nothing is refused now; step, which had none, is gone (2026-11-04).
+ */
+export const slopeRefusal = (_label: string, _spec: BrainSpec): string | null => null;
 
 export abstract class GradTrainer implements Trainer {
   abstract readonly id: string;
@@ -52,13 +50,13 @@ export abstract class GradTrainer implements Trainer {
 
   init(genome: Genome, seed: number, env: Env): void {
     if (specHash(genome.spec) !== specHash(env.setup.spec)) throw new Error(`${this.id}: genome spec differs from the env spec`);
-    const why = stepRefusal(this.label, genome.spec);
+    const why = slopeRefusal(this.label, genome.spec);
     if (why) throw new Error(why);
     this.env = env;
     this.genome = genome;
     this.seed = derive(seed, TAG.trainer);
     this.rng = new Rng(this.seed);
-    const nW = genome.spec.conns.length;
+    const nW = wireCount(genome.spec);
     this.w = this.opts.start === 'fresh' ? freshWeights(genome.spec, this.rng) : Float64Array.from(genome.w);
     this.lastDw = new Float64Array(nW);
     this.lanes = fresh(G.lanes);
@@ -86,9 +84,11 @@ export abstract class GradTrainer implements Trainer {
     const env = this.need();
     const events: TrainerEvent[] = [];
     const roundCost = G.lanes * G.roundTicks, evalCost = env.worstCase(1);
+    // with a generations count (sandbox Train), one fitness check per generation's share of the budget
+    const every = this.opts.generations ? Math.max(roundCost, Math.floor(env.budget / this.opts.generations)) : G.evalEvery;
     let spent = 0;
     while (!this.finished) {
-      const due = this.gen === 0 || (!this.scored && env.used - this.lastEvalAt >= G.evalEvery);
+      const due = this.gen === 0 || (!this.scored && env.used - this.lastEvalAt >= every);
       const ending = env.remaining() < roundCost + evalCost;
       if (due || (ending && !this.scored)) {
         if (evalCost > env.remaining()) { this.finish(events); break; } // T too small to score anything
@@ -157,14 +157,19 @@ export abstract class GradTrainer implements Trainer {
 const clampW = (x: number): number => (x > CAP ? CAP : x < -CAP ? -CAP : x);
 
 /**
- * A fresh start: w ~ N(0, initSd), except that wires into a ReLU start positive (|N|). A ReLU that is silent on every
- * input has slope 0 everywhere, so gradient descent can never wake it (a dead unit, measured: half the seeds lost
- * Starter's cruise neuron that way); the inputs are ≥ 0 but for road ahead, so positive weights start it firing.
+ * A fresh start: w ~ N(0, initSd), except that wires into a ReLU layer start positive (|N|). A ReLU that is silent on
+ * every input has slope 0 everywhere, so gradient descent can never wake it (a dead unit; measured in T1: half the
+ * seeds lost the old Starter's cruise neuron that way); positive weights from mostly positive rates start it firing.
  */
 function freshWeights(spec: BrainSpec, rng: Rng): Float64Array {
-  const relu = new Set(spec.nodes.filter((n) => n.act === 'relu').map((n) => n.id));
-  return Float64Array.from(spec.conns, (c) => {
-    const x = rng.normal() * G.initSd;
-    return clampW(relu.has(c.to) && x < 0 ? -x : x);
-  });
+  const C = columns(spec), out = new Float64Array(wireCount(spec));
+  let k = 0;
+  for (let i = 0; i + 1 < C.length; i++) {
+    const relu = i < spec.layers.length && spec.layers[i].fn === 'relu';
+    for (let a = 0; a < C[i].length; a++) for (let b = 0; b < C[i + 1].length; b++) {
+      const x = rng.normal() * G.initSd;
+      out[k++] = clampW(relu && x < 0 ? -x : x);
+    }
+  }
+  return out;
 }

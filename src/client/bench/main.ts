@@ -1,7 +1,7 @@
-// Dev-only /bench page: one Starter training phase in this browser, timed (?trainer= picks the trainer). Exposes the result on window.__bench for
+// Dev-only /bench page: one training phase of the default brain in this browser, timed (?trainer= picks the trainer). Exposes the result on window.__bench for
 // scripts/checks/bench-browser.ts.
 import { CONFIG } from '../../common/config';
-import { starterSpec } from '../../common/sim/brain';
+import { defaultSpec } from '../../common/sim/spec';
 import { defaultWorkers } from '../../common/train/episodes';
 import { runPhase } from '../../common/train/phase';
 import { BrowserPool } from '../workers/pool';
@@ -25,9 +25,9 @@ async function main() {
   const pool = new BrowserPool(workers);
   for (let k = 0; k < runs; k++) {
     const s0 = performance.now();
-    await pool.setup({ spec: starterSpec(), trackSeeds: [], noiseSeeds: [], pool: CONFIG.budget[0], episodeTicks: 1 }); // warm workers
+    await pool.setup({ spec: defaultSpec(), trackSeeds: [], episodeTicks: 1 }); // warm workers
     const setupMs = performance.now() - s0;
-    const r = await runPhase(pool, starterSpec(), seed, { T, trainer, now: () => performance.now() });
+    const r = await runPhase(pool, defaultSpec(), seed, { T, trainer, now: () => performance.now() });
     res.runs.push({ ms: r.trainMs, setupMs, hash: r.hash, gens: r.gens.length, ticks: r.ticksUsed });
     lines.push(`run ${k + 1}: ${(r.trainMs / 1000).toFixed(2)} s · ${r.gens.length} generations · ${r.ticksUsed.toLocaleString('en')} car-ticks · hash ${r.hash}`);
     out.textContent = lines.join('\n');

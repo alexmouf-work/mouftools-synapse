@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
-import { starterSpec } from '../../src/common/sim/brain';
+import { defaultSpec, wireCount } from '../../src/common/sim/spec';
 import { EpisodeCore, InlineExecutor, PATH_STRIDE, pathSamples } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { Rng } from '../../src/common/rng';
@@ -9,9 +9,9 @@ const T = 700_000; // a few generations of 60 s episodes
 
 describe('training view plumbing', () => {
   it('recording track-0 paths changes no result', () => {
-    const s = phaseSeeds(3), spec = starterSpec();
-    const core = new EpisodeCore({ spec, trackSeeds: s.trainTracks, noiseSeeds: s.trainNoise, pool: CONFIG.budget[0] * CONFIG.train.episodeTicks, episodeTicks: CONFIG.train.episodeTicks });
-    const r = new Rng(1), n = 6, w = new Float64Array(n * spec.conns.length).map(() => r.normal());
+    const s = phaseSeeds(3), spec = defaultSpec();
+    const core = new EpisodeCore({ spec, trackSeeds: s.trainTracks, episodeTicks: CONFIG.train.episodeTicks });
+    const r = new Rng(1), n = 6, w = new Float64Array(n * wireCount(spec)).map(() => r.normal());
     const a = core.run(w, n, false), b = core.run(w, n, true), c = core.run(w, n, false);
     expect(Array.from(b.out)).toEqual(Array.from(a.out));
     expect(Array.from(c.out)).toEqual(Array.from(a.out));
@@ -26,10 +26,10 @@ describe('training view plumbing', () => {
     }
   });
   it('stepping one generation at a time (with paths recorded) gives the same hash as one big step', async () => {
-    const a = await runPhase(new InlineExecutor(), starterSpec(), 9, { T });
+    const a = await runPhase(new InlineExecutor(), defaultSpec(), 9, { T });
     const ex = new InlineExecutor();
     let events = 0;
-    const b = await runPhase(ex, starterSpec(), 9, {
+    const b = await runPhase(ex, defaultSpec(), 9, {
       T, stepTicks: (env) => env.worstCase(CONFIG.train.population), beforeStep: () => { ex.record = true; }, onEvent: () => { events++; },
     });
     expect(b.hash).toBe(a.hash);
@@ -44,7 +44,7 @@ describe('training view plumbing', () => {
   });
   it('stop() ends a phase early and says so', async () => {
     let n = 0;
-    const r = await runPhase(new InlineExecutor(), starterSpec(), 2, { T, stop: () => ++n > 3, stepTicks: (env) => env.worstCase(CONFIG.train.population) });
+    const r = await runPhase(new InlineExecutor(), defaultSpec(), 2, { T, stop: () => ++n > 3, stepTicks: (env) => env.worstCase(CONFIG.train.population) });
     expect(r.stopped).toBe(true);
     expect(r.gens.length).toBe(3);
   });

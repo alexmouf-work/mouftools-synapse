@@ -1,89 +1,73 @@
-// Workbench browser check (S2): serve the app with Vite, drive it in headless Chromium.
-// Drag a wire; a backward wire is refused; the % shown equals energy.ts for the saved brain; reload keeps the
-// brain; a corrupt save gives Starter and says so; 844×390 has no horizontal scroll; portrait phones get the
-// "turn sideways" card; full lines (3 × 10) and an empty brain lay out without overlaps. Screenshots → out/s2/.
+// Designer browser check (brain v2, B3): serve the app with Vite, drive the designer in headless Chromium.
+// - The starting brain, the energy split (resting–flat out) as energy.ts computes it, the Learning Rule strip and the
+//   trainer picker (actor-critic and A_RP not built yet), the legal line and the sound button.
+// - Tap a sense in the tray to add a cell (it is selected: graph, one-line description, "At maximum firing rate"
+//   energy from energy.ts, bin); the bin removes it. A full sense dims and loses its "+".
+// - A layer header opens the layer panel: functions, the Neurons slider (live), the layer's energy line, bin.
+// - "+"/"−" add and remove neurons and layers; at 8 neurons and 8 layers the "+"s go.
+// - Reset asks first; Train asks how many generations (100 by default) and Cancel leaves the brain alone.
+// - Saved after every change; reload keeps it; a corrupt save gives the starting brain and says so; a save from before
+//   brain v2 is reset with a note.
+// - Overlap audit across brain sizes up to 8 × 8 (and every sense full), light and dark, desktop and 844×390: no cell,
+//   button or layer header overlaps another, all on the board; no horizontal scroll. Portrait phones get the card.
+// Screenshots → out/s2/.
 //   npx tsx scripts/checks/workbench.ts
 import { mkdirSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
 import { CONFIG } from '../../src/common/config';
-import {
-  addLayer, addNeuron, addWire, deepSpec, draftOf, genomeHash, minimalSpec, starterSpec, zeroGenome, type Draft, type EditResult,
-} from '../../src/common/sim/brain';
-import { estimate, minutePercent, runsOutAt } from '../../src/common/sim/energy';
-import { INPUTS, OUTPUTS } from '../../src/common/sim/spec';
-import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/workbench/store';
-import { weightStyle } from '../../src/client/ui/weights';
-import { InlineExecutor } from '../../src/common/train/episodes';
-import { runPhase } from '../../src/common/train/phase';
+import { defaultGenome, genomeHash, restRate, zeroGenome } from '../../src/common/sim/brain';
+import { layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
+import type { BrainSpec, Genome } from '../../src/common/sim/spec';
+import { parse, SAVE_KEY } from '../../src/client/ui/designer/store';
 
 const OUT = 'out/s2';
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
-const ok = (r: EditResult): Draft => { if (!r.ok) throw new Error(`refused: ${r.reason}`); return r.draft; };
+const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 
-// ---- brains to inject ----
-function threeLayer(): Draft {
-  let d = draftOf(zeroGenome(starterSpec()));
-  d = ok(addLayer(d)); d = ok(addNeuron(d, 2)); d = ok(addLayer(d));
-  for (const [a, b] of [['n1', 'n4'], ['n3', 'n5'], ['n2', 'n4'], ['n4', 'n6'], ['n5', 'n6'], ['n6', 'o:fl'], ['n6', 'o:fr'], ['i:b', 'n6']]) d = ok(addWire(d, a, b));
-  return d;
+const fmtE = (v: number) => `${Math.round(v * 10) / 10}%`;
+function allocText(s: BrainSpec): { brain: string; speed: string } {
+  const top = maxLoad(s), lo = restLoad(s, restRate), f = (v: number) => Math.round(Math.max(0, v)), sp = (l: number) => Math.round(speedCap(l) * 100);
+  return { brain: f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`, speed: sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%` };
 }
-function full(): Draft { // 3 lines × 10, every line wired forward: the caps
-  let d = draftOf(zeroGenome({ v: 1, layers: 1, nodes: [], conns: [] }));
-  d = ok(addNeuron(d, 1)); d = ok(addLayer(d)); d = ok(addLayer(d));
-  for (let L = 1; L <= 3; L++) while (d.genome.spec.nodes.filter((n) => n.layer === L).length < CONFIG.brain.maxPerLayer) d = ok(addNeuron(d, L));
-  const by = (L: number) => d.genome.spec.nodes.filter((n) => n.layer === L).map((n) => n.id);
-  for (const i of ['i:fl', 'i:f', 'i:fr']) for (const n of by(1).slice(0, 4)) d = ok(addWire(d, i, n));
-  for (let k = 0; k < 10; k++) { d = ok(addWire(d, by(1)[k], by(2)[k])); d = ok(addWire(d, by(2)[k], by(3)[k])); d = ok(addWire(d, by(3)[k], OUTPUTS[k % 4].id)); }
-  return d;
-}
-function overBudget(): Draft { // Deep plus the back eye, bias and two more tanh neurons per line, wired in
-  let d = draftOf(zeroGenome(deepSpec()));
-  for (const L of [1, 1, 2, 2]) { const r = addNeuron(d, L); d = ok(r); }
-  for (const [a, b] of [['i:b', 'n8'], ['i:bias', 'n9'], ['i:energy', 'n8'], ['n8', 'n10'], ['n9', 'n11'], ['n10', 'o:fl'], ['n11', 'o:rr'], ['n10', 'o:fr'], ['n11', 'o:rl']]) d = ok(addWire(d, a, b));
-  return d;
-}
-const empty = (): Draft => draftOf(zeroGenome(minimalSpec()));
+const sizes: [string, BrainSpec][] = [
+  ['default', defaultGenome().spec],
+  ['3 layers × 4, three senses', { v: 2, senses: { boundary: 3, landmark: 1, hd: 2, grid: 0, speed: 1 }, layers: [{ n: 4, fn: 'relu' }, { n: 4, fn: 'tanh' }, { n: 4, fn: 'sigmoid' }] }],
+  ['8 × 8, every sense full', { v: 2, senses: { boundary: 7, landmark: 5, hd: 8, grid: 6, speed: 1 }, layers: Array.from({ length: 8 }, (_, L) => ({ n: 8, fn: (['linear', 'relu', 'sigmoid', 'tanh'] as const)[L % 4] })) }],
+  ['8 layers × 1', { v: 2, senses: { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: Array.from({ length: 8 }, () => ({ n: 1, fn: 'tanh' as const })) }],
+  ['1 × 8, no senses', { v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 8, fn: 'linear' }] }],
+];
 
-// ---- page helpers ----
-const pctOf = (d: Draft) => `${Math.round(minutePercent(estimate(d.genome.spec).total))}%`; // per-minute estimate
-async function savedDraft(page: Page): Promise<Draft> {
-  const text = await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY);
-  const r = parse(text);
-  if (r.status !== 'ok') throw new Error(`saved brain is ${r.status}: ${r.why}`);
-  return r.saved.draft;
-}
-const shownPct = (page: Page) => page.locator('#eVal b').innerText();
-async function center(page: Page, sel: string) {
-  const b = await page.locator(sel).first().boundingBox();
-  if (!b) throw new Error(`no box for ${sel}`);
-  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-}
-async function dragWire(page: Page, fromSel: string, toSel: string) {
-  const a = await center(page, fromSel), b = await center(page, toSel);
-  await page.mouse.move(a.x, a.y); await page.mouse.down();
-  await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 5 });
-  await page.mouse.move(b.x, b.y, { steps: 5 }); await page.mouse.up();
+async function saved(page: Page) {
+  const r = parse(await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY));
+  if (r.status === 'corrupt') throw new Error(`saved brain corrupt: ${r.why}`);
+  return r.saved;
 }
 const toastText = (page: Page) => page.locator('#toast').innerText();
+
+/** Every visible cell, "+"/"−" and layer header on the board: no two overlap, none off the board. */
 async function noOverlap(page: Page, what: string) {
   const r = await page.evaluate(() => {
-    const svg = document.getElementById('net')!.getBoundingClientRect();
-    const cs = [...document.querySelectorAll<SVGCircleElement>('#net circle[data-pick]')].map((c) => c.getBoundingClientRect());
+    const board = document.getElementById('board')!.getBoundingClientRect();
+    const boxes: { kind: string; r: DOMRect }[] = [];
+    document.querySelectorAll('#net g.cell').forEach((g) => boxes.push({ kind: 'cell', r: (g.firstElementChild as Element).getBoundingClientRect() }));
+    document.querySelectorAll('#net g.btnc').forEach((g) => boxes.push({ kind: 'button', r: (g.firstElementChild as Element).getBoundingClientRect() }));
+    document.querySelectorAll('#net g[data-layer]').forEach((g) => boxes.push({ kind: 'header', r: (g.firstElementChild as Element).getBoundingClientRect() }));
     let overlaps = 0, outside = 0;
-    for (let i = 0; i < cs.length; i++) {
-      const a = cs[i];
-      if (a.top < svg.top || a.bottom > svg.bottom || a.left < svg.left || a.right > svg.right) outside++;
-      for (let j = i + 1; j < cs.length; j++) {
-        const b = cs[j];
-        if (a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5) overlaps++;
+    const bad: string[] = [];
+    for (let i = 0; i < boxes.length; i++) {
+      const a = boxes[i].r;
+      if (a.left < board.left - 0.5 || a.right > board.right + 0.5 || a.top < board.top - 0.5 || a.bottom > board.bottom + 0.5) outside++;
+      for (let j = i + 1; j < boxes.length; j++) {
+        const b = boxes[j].r;
+        if (a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5) { overlaps++; if (bad.length < 3) bad.push(`${boxes[i].kind}/${boxes[j].kind}`); }
       }
     }
-    return { n: cs.length, overlaps, outside };
+    return { n: boxes.length, overlaps, outside, bad, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth };
   });
-  check(r.overlaps === 0 && r.outside === 0, `${what}: ${r.n} neurons, none overlapping or off the board (${r.overlaps} overlaps, ${r.outside} outside)`);
+  check(r.overlaps === 0 && r.outside === 0 && r.sw <= r.cw, `${what}: ${r.n} cells, buttons and headers, none overlapping or off the board, no sideways scroll (${r.overlaps} overlaps${r.bad.length ? ': ' + r.bad.join(', ') : ''}, ${r.outside} outside)`);
 }
 
 async function main() {
@@ -92,173 +76,136 @@ async function main() {
   await server.listen();
   const addr = server.httpServer?.address();
   if (!addr || typeof addr === 'string') throw new Error('no server address');
-  const url = `http://127.0.0.1:${addr.port}/`;
+  const base = `http://127.0.0.1:${addr.port}/`;
   let browser: Browser;
-  try { browser = await chromium.launch(); } catch { browser = await chromium.launch({ executablePath: CHROMIUM }); }
+  try { browser = await chromium.launch({ args: ARGS }); } catch { browser = await chromium.launch({ executablePath: CHROMIUM, args: ARGS }); }
   const errors: string[] = [];
-  async function open(o: { w: number; h: number; dark?: boolean; save?: Draft | string; mobile?: boolean }): Promise<Page> {
-    const ctx = await browser.newContext({ viewport: { width: o.w, height: o.h }, colorScheme: o.dark ? 'dark' : 'light', hasTouch: o.mobile, isMobile: o.mobile, deviceScaleFactor: o.mobile ? 2 : 1 });
+  async function open(o: { w: number; h: number; dark?: boolean; save?: string; mobile?: boolean }): Promise<Page> {
+    const ctx = await browser.newContext({ viewport: { width: o.w, height: o.h }, colorScheme: o.dark ? 'dark' : 'light', isMobile: o.mobile, hasTouch: o.mobile });
     const page = await ctx.newPage();
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
-    await page.goto(url);
-    if (o.save !== undefined) {
-      const text = typeof o.save === 'string' ? o.save : serialize({ name: 'Untitled brain', draft: o.save, train: NO_TRAINING });
-      await page.evaluate(([k, v]) => localStorage.setItem(k, v), [SAVE_KEY, text]);
-      await page.reload();
-    }
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(400); // pop animation settles
+    await page.goto(base);
+    await page.evaluate(([k, v]) => { localStorage.setItem('synapse.notice', '2'); if (v !== null) localStorage.setItem(k, v); }, [SAVE_KEY, o.save ?? null] as const);
+    await page.goto(base);
+    await page.waitForSelector('#net g.cell');
     return page;
   }
+  const spec = (page: Page) => page.evaluate(() => window.__designer!.spec());
+
   try {
-    // fresh start, desktop light
+    // 1. the starting brain
     let page = await open({ w: 1440, h: 900 });
-    const starter = draftOf(zeroGenome(starterSpec()));
-    check(await shownPct(page) === pctOf(starter), `fresh start shows Starter at ${pctOf(starter)} (energy.ts) — shown ${await shownPct(page)}`);
-    await page.screenshot({ path: `${OUT}/desktop-light.png` });
+    let s = await spec(page);
+    check(genomeHash(zeroGenome(s)) === genomeHash(defaultGenome()), 'a fresh start is the starting brain (1 boundary + 1 head direction → 3 tanh → wheels)');
+    check(await page.locator('#net g.cell').count() === 2 + 3 + 4, '9 cells on the board');
+    const al = allocText(s);
+    check(await page.locator('#aBrain').innerText() === al.brain && await page.locator('#aSpeed').innerText() === al.speed, `energy split: brain ${al.brain}, speed ${al.speed} (resting–flat out, energy.ts)`);
+    check(await page.locator('#eq').innerText() === 'Learning Rule : w′ = w + σ·ε', `Learning Rule strip: "${await page.locator('#eq').innerText()}"`);
+    const trs = await page.locator('#trainers button').evaluateAll((bs) => bs.map((b) => [b.textContent, (b as HTMLButtonElement).disabled, b.getAttribute('aria-pressed')]));
+    check(JSON.stringify(trs) === JSON.stringify([['Evolution', false, 'true'], ['Backprop', false, 'false'], ['Actor-critic', true, 'false'], ['ARP', true, 'false']]), `trainer picker: ${JSON.stringify(trs)}`);
+    check(await page.locator('.legal-links a').count() === 3 && /DM DOKURO, Kevin MacLeod/.test(await page.locator('.legal-links').innerText()), 'legal links and music credits on the page');
+    check(await page.locator('#soundWb').getAttribute('aria-label') === 'Sound', 'the sound button is in the top bar');
+    check(await page.locator('#drive').count() === 0, 'no Drive button on the designer (drive comes after training)');
+    await page.screenshot({ path: `${OUT}/designer.png` });
 
-    // drag a wire: back eye → n1
-    await dragWire(page, '[data-id="i:b"] [data-wire]', '[data-id="n1"] [data-pick]');
-    let d = await savedDraft(page);
-    const k = d.genome.spec.conns.findIndex((c) => c.from === 'i:b' && c.to === 'n1');
-    check(k >= 0 && d.genome.w[k] === 0, 'drag back eye → n1 adds one wire at weight 0, saved');
-    check((await toastText(page)).includes('Back now in use'), `toast: "${await toastText(page)}"`);
-    check(await shownPct(page) === pctOf(d), `% shown ${await shownPct(page)} = energy.ts ${pctOf(d)} after the wire`);
+    // 2. trainer picker → the rule strip follows
+    await page.click('#trainers [data-tr="backprop"]');
+    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = η·δ·x' && (await saved(page)).trainer === 'backprop', 'Backprop picked: the strip shows Δw = η·δ·x, and it is saved');
+    await page.click('#trainers [data-tr="evolution"]');
 
-    // backward wires are refused
-    const before = genomeHash(d.genome);
-    await dragWire(page, '[data-id="n1"] [data-wire]', '[data-id="i:f"]');
-    check(genomeHash((await savedDraft(page)).genome) === before, 'neuron → car wire refused (brain unchanged)');
-    check((await toastText(page)) === 'The car only sends signals.', `toast: "${await toastText(page)}"`);
-    await page.click('#addL');
-    d = await savedDraft(page);
-    const n4 = d.genome.spec.nodes.find((n) => n.layer === 2)!.id;
-    const before2 = genomeHash(d.genome);
-    await dragWire(page, `[data-id="${n4}"] [data-wire]`, '[data-id="n1"] [data-pick]');
-    check(genomeHash((await savedDraft(page)).genome) === before2, 'layer 2 → layer 1 wire refused (brain unchanged)');
-    check((await toastText(page)) === 'Signals run left to right, to a later layer.', `toast: "${await toastText(page)}"`);
-    check(await shownPct(page) === pctOf(d), `% shown ${await shownPct(page)} = energy.ts ${pctOf(d)} after + Layer (wheel wires now span 2)`);
+    // 3. tray: add a boundary cell → selected, graph, description, energy; the bin removes it
+    await page.click('#tray [data-s="boundary"]');
+    s = await spec(page);
+    check(s.senses.boundary === 2 && (await saved(page)).genome.spec.senses.boundary === 2, 'tap the boundary tile: a second boundary vector cell, saved');
+    check(await page.locator('#insp #graph').count() === 1 && (await page.locator('#insp .desc').innerText()) === 'Fires faster when approaching a wall.', 'the new cell is selected: its graph and one-line description');
+    check((await page.locator('#insp .use b').innerText()) === fmtE(senseMax(s, 'boundary')), `"At maximum firing rate, uses ${fmtE(senseMax(s, 'boundary'))} energy" (energy.ts)`);
+    await page.click('#insp .bin');
+    check((await spec(page)).senses.boundary === 1, 'the bin removes the cell');
+    for (let k = 0; k < 2; k++) await page.click('#tray [data-s="speed"]', { force: true });
+    check((await spec(page)).senses.speed === 1 && await page.locator('#tray [data-s="speed"]').isDisabled() && await page.locator('#tray [data-s="speed"] .plus').count() === 0, 'speed cells: one at most; the full tile dims and loses its "+"');
 
-    // a transfer-function change and a cut wire also track energy.ts
-    await page.click(`[data-id="n2"] [data-pick]`);
-    await page.click('#fx-sigmoid');
-    d = await savedDraft(page);
-    check(d.genome.spec.nodes.find((n) => n.id === 'n2')?.act === 'sigmoid', 'set sigmoid on n2 from the side panel');
-    // click the wire on its stroke, at a point along it where no other wire lies on top
-    const mid = await page.evaluate(() => {
-      const p = document.querySelector<SVGPathElement>('#net path[data-hit][data-from="i:f"][data-to="n1"]')!;
-      const m = p.getScreenCTM()!, len = p.getTotalLength();
-      for (let f = 0.5; f < 0.95; f += 0.05) {
-        for (const g of [f, 1 - f]) {
-          const q = p.getPointAtLength(len * g);
-          const x = q.x * m.a + q.y * m.c + m.e, y = q.x * m.b + q.y * m.d + m.f;
-          if (document.elementFromPoint(x, y) === p) return { x, y };
-        }
+    // 4. layer panel: function, the Neurons slider (live), energy line
+    await page.click('#net g[data-layer="0"]');
+    await page.click('#insp [data-fx="relu"]');
+    check((await spec(page)).layers[0].fn === 'relu', 'layer panel: ReLU set for layer 1');
+    await page.locator('#nSlide').fill('6');
+    s = await spec(page);
+    check(s.layers[0].n === 6 && await page.locator('#net g.cell[data-id^="h0:"]').count() === 6, 'the Neurons slider resizes the layer live (6 neurons on the board)');
+    check((await page.locator('#lUse b').innerText()) === fmtE(layerMax(s, 0)), `layer energy line: ${fmtE(layerMax(s, 0))} (energy.ts)`);
+
+    // 5. "+"/"−" for neurons and layers, and the limits
+    await page.click('#net g[data-add-n="0"]'); await page.click('#net g[data-add-n="0"]');
+    check((await spec(page)).layers[0].n === 8 && await page.locator('#net g[data-add-n="0"]').count() === 0, 'a "+" under the layer adds neurons; at 8 it goes');
+    await page.click('#net g[data-rm-n="0"]');
+    check((await spec(page)).layers[0].n === 7, 'the "−" above the layer removes one');
+    await page.click('#net g[data-add-l="1"]');
+    s = await spec(page);
+    check(s.layers.length === 2 && s.layers[1].n === CONFIG.brain.newLayerNeurons && s.layers[1].fn === 'tanh', 'a "+" on a column boundary inserts a layer of two tanh neurons there');
+    await page.click('#net g[data-rm-l="1"]');
+    check((await spec(page)).layers.length === 1, 'the "−" at the foot of a column removes the layer');
+    while ((await spec(page)).layers.length < 8) await page.click('#net g[data-add-l="1"]');
+    check(await page.locator('#net g[data-add-l]').count() === 0, 'at 8 layers the boundary "+"s go');
+    check((await saved(page)).genome.w.every((w) => w === 0), 'every edit leaves an untrained brain (grey wires, weights 0)');
+
+    // 6. Reset asks first
+    await page.click('#reset');
+    await page.click('#cfNo');
+    check((await spec(page)).layers.length === 8, 'Reset → Cancel keeps the brain');
+    await page.click('#reset');
+    await page.click('#cfYes');
+    check(genomeHash((await saved(page)).genome) === genomeHash(defaultGenome()), 'Reset → Reset goes back to the starting brain');
+
+    // 7. Train asks how many generations
+    await page.click('#train');
+    const gens = await page.locator('#gens button').evaluateAll((bs) => bs.map((b) => [Number(b.textContent), b.getAttribute('aria-pressed')]));
+    check(JSON.stringify(gens.map((g) => g[0])) === JSON.stringify(CONFIG.train.generations) && gens.find((g) => g[1] === 'true')?.[0] === 100, `Train asks: ${gens.map((g) => g[0]).join(', ')} generations (100 picked)`);
+    await page.screenshot({ path: `${OUT}/train-dialog.png` });
+    await page.click('#tdNo');
+    check(!(await page.locator('#trainDlg').isVisible()) && !(await page.locator('#arena').isVisible()), 'Cancel closes it without training');
+
+    // 8. reload keeps the brain
+    await page.click('#tray [data-s="grid"]');
+    const h = genomeHash((await saved(page)).genome);
+    await page.reload();
+    await page.waitForSelector('#net g.cell');
+    check(genomeHash((await saved(page)).genome) === h && (await spec(page)).senses.grid === 1, 'reload keeps the brain');
+    await page.context().close();
+
+    // 9. a corrupt save, and a save from before brain v2
+    page = await open({ w: 1440, h: 900, save: '{"v":3,' });
+    check(genomeHash((await saved(page)).genome) === genomeHash(defaultGenome()) && (await toastText(page)).includes('couldn’t be read'), `corrupt save → the starting brain, toast "${await toastText(page)}"`);
+    await page.context().close();
+    const v1: Genome = { spec: { v: 1, layers: 1, nodes: [], conns: [] } as unknown as BrainSpec, w: [] };
+    page = await open({ w: 1440, h: 900, save: JSON.stringify({ v: 2, name: 'Old', nextId: 1, train: { seed: 3, phases: 2 }, genome: v1 }) });
+    check(genomeHash((await saved(page)).genome) === genomeHash(defaultGenome()) && (await toastText(page)).includes('changed how brains work'), `a save from before brain v2 is reset, with a note: "${await toastText(page)}"`);
+    await page.reload();
+    await page.waitForSelector('#net g.cell');
+    check((await page.locator('#toast').isHidden()), 'the note shows once');
+    await page.context().close();
+
+    // 10. overlap audit: brain sizes, light and dark, desktop and landscape phone
+    for (const [w, hgt, dark, mobile] of [[1440, 900, false, false], [1440, 900, true, false], [844, 390, false, true], [844, 390, true, true]] as const) {
+      page = await open({ w, h: hgt, dark, mobile });
+      for (const [name, sp] of sizes) {
+        await page.evaluate((g) => window.__designer!.load(g), zeroGenome(sp));
+        await page.waitForTimeout(60);
+        await noOverlap(page, `${name} at ${w}×${hgt}${dark ? ' dark' : ''}`);
+        if (name.startsWith('8 × 8')) await page.screenshot({ path: `${OUT}/8x8-${w}${dark ? '-dark' : ''}.png` });
       }
-      throw new Error('wire i:f → n1 is covered along its whole length');
-    });
-    await page.mouse.click(mid.x, mid.y);
-    d = await savedDraft(page);
-    check(!d.genome.spec.conns.some((c) => c.from === 'i:f' && c.to === 'n1'), 'clicking wire i:f → n1 cuts it');
-    check(await shownPct(page) === pctOf(d), `% shown ${await shownPct(page)} = energy.ts ${pctOf(d)}`);
+      const fit = await page.evaluate(() => { const a = document.querySelector('.app')!.getBoundingClientRect(); return a.right <= innerWidth + 0.5 && a.bottom <= innerHeight + 0.5 && a.left >= -0.5 && a.top >= -0.5; });
+      check(fit, `${w}×${hgt}${dark ? ' dark' : ''}: the 860 × 400 layout scaled to fit the screen`);
+      await page.context().close();
+    }
 
-    // reload keeps the brain
-    const h = genomeHash(d.genome);
-    await page.reload(); await page.waitForTimeout(300);
-    check(genomeHash((await savedDraft(page)).genome) === h && await shownPct(page) === pctOf(d), 'reload keeps the brain and its %');
-    await page.context().close();
-
-    // dark
-    page = await open({ w: 1440, h: 900, dark: true });
-    await page.screenshot({ path: `${OUT}/desktop-dark.png` });
-    await page.context().close();
-
-    // landscape phone: no horizontal scroll, no rotate card
-    page = await open({ w: 844, h: 390, mobile: true });
-    let m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, rot: getComputedStyle(document.getElementById('rotate')!).display }));
-    check(m.sw <= m.cw && m.rot === 'none', `844×390: scrollWidth ${m.sw} ≤ ${m.cw}, rotate card hidden`);
-    await page.screenshot({ path: `${OUT}/phone-landscape-844x390.png` });
-    await page.context().close();
-
-    // portrait phone: the turn-sideways card, and "Continue in portrait" dismisses it
+    // 11. portrait phones get the card
     page = await open({ w: 390, h: 844, mobile: true });
-    m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, rot: getComputedStyle(document.getElementById('rotate')!).display }));
-    check(m.rot !== 'none', '390×844 portrait shows "Turn your phone sideways"');
-    await page.screenshot({ path: `${OUT}/phone-portrait-390x844.png` });
+    check(await page.evaluate(() => getComputedStyle(document.getElementById('rotate')!).display) !== 'none', '390×844 portrait shows "Turn your phone sideways"');
     await page.click('#stay');
     check(await page.evaluate(() => getComputedStyle(document.getElementById('rotate')!).display) === 'none', '"Continue in portrait" dismisses the card');
     await page.context().close();
 
-    // 3-layer brain, desktop and landscape phone
-    const three = threeLayer();
-    page = await open({ w: 1440, h: 900, save: three });
-    check(await shownPct(page) === pctOf(three), `3-layer brain: % shown ${await shownPct(page)} = energy.ts ${pctOf(three)}`);
-    check(await page.locator('#addL').isDisabled(), '3 layers: + Layer disabled');
-    await noOverlap(page, '3-layer brain, desktop');
-    await page.screenshot({ path: `${OUT}/three-layers.png` });
-    await page.context().close();
-    page = await open({ w: 844, h: 390, mobile: true, save: three });
-    await noOverlap(page, '3-layer brain, 844×390');
-    await page.screenshot({ path: `${OUT}/three-layers-844x390.png` });
-    await page.context().close();
-
-    // over budget: red meter with the noise figure
-    const over = overBudget();
-    page = await open({ w: 1440, h: 900, save: over });
-    const ev = await page.locator('#eVal').innerText();
-    const out = runsOutAt(estimate(over.genome.spec).total);
-    const outTxt = `${Math.floor(out / 60)}:${String(Math.floor(out % 60)).padStart(2, '0')}`;
-    check(await shownPct(page) === pctOf(over) && ev.includes(`runs out at ${outTxt}`) && /est\. per minute/.test(ev) && await page.locator('#meter.over').count() === 1,
-      `over budget: "${ev}" (energy.ts ${pctOf(over)}, pool spent at ${outTxt})`);
-    await page.screenshot({ path: `${OUT}/over-budget.png` });
-    await page.context().close();
-
-    // the caps: 3 lines × 10
-    const caps = full();
-    for (const [w, hgt, mobile, name] of [[1440, 900, false, 'caps-3x10.png'], [844, 390, true, 'caps-3x10-844x390.png']] as const) {
-      page = await open({ w, h: hgt, mobile, save: caps });
-      await noOverlap(page, `3 × 10 at ${w}×${hgt}`);
-      const sw = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-      check(sw, `3 × 10 at ${w}×${hgt}: no horizontal scroll`);
-      await page.screenshot({ path: `${OUT}/${name}` });
-      await page.context().close();
-    }
-
-    // empty: no hidden neurons, car wired straight to the wheels
-    const e = empty();
-    page = await open({ w: 1440, h: 900, save: e });
-    const wires = await page.locator('#net path[data-hit]').count();
-    check(wires === 16 && await shownPct(page) === pctOf(e), `empty brain (Minimal): ${wires} car → wheel wires drawn, % ${await shownPct(page)} = ${pctOf(e)}`);
-    await page.screenshot({ path: `${OUT}/empty-minimal.png` });
-    await page.context().close();
-
-    // corrupt save → Starter + a toast saying so
-    page = await open({ w: 1440, h: 900, save: '{"v":1,"name":"x","genome":' });
-    check(genomeHash((await savedDraft(page)).genome) === genomeHash(starter.genome), 'corrupt save → Starter (and the Starter is saved over it)');
-    check((await toastText(page)).includes('couldn’t be read'), `toast: "${await toastText(page)}"`);
-    await page.context().close();
-
-    // weights as colours (principal, 2026-10-31): a trained brain, light and dark
-    mkdirSync('out/s6', { recursive: true });
-    const trained = draftOf((await runPhase(new InlineExecutor(), starterSpec(), 7, { T: 300_000 })).final);
-    for (const dark of [false, true]) {
-      page = await open({ w: 1440, h: 900, dark, save: trained });
-      const wires = await page.evaluate(() => [...document.querySelectorAll<SVGPathElement>('#net path.wire')].map((p) => ({
-        stroke: getComputedStyle(p).stroke, width: Number(p.getAttribute('stroke-width')) }))); // document order = wire order
-      const hits = await page.evaluate(() => [...document.querySelectorAll<SVGPathElement>('#net path[data-hit]')].map((p) => Number(p.dataset.w)));
-      const ok = wires.length === hits.length && wires.every((wi, k) => { const st = weightStyle(hits[k]); return wi.stroke.replace(/\s/g, '') === st.css && Math.abs(wi.width - st.width) < 1e-9; });
-      check(ok, `${dark ? 'dark' : 'light'}: every wire coloured and sized by its weight (${wires.length} wires, red −1 · black 0 · green +1)`);
-      await page.screenshot({ path: `out/s6/workbench-trained${dark ? '-dark' : ''}.png` });
-      await page.context().close();
-    }
-    page = await open({ w: 1440, h: 900, dark: true });
-    const halo = await page.evaluate(() => getComputedStyle(document.querySelector('#net path.wire')!.previousElementSibling!).stroke);
-    check(halo !== 'none' && !/rgba\(\d+, \d+, \d+, 0\)/.test(halo) && halo !== 'transparent', `dark: a zero-weight wire keeps a visible neutral halo (${halo})`);
-    await page.context().close();
-
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);
-    check(INPUTS.length === 10 && OUTPUTS.length === 4, 'pins: 10 inputs, 4 wheels');
   } finally {
     await browser.close();
     await server.close();

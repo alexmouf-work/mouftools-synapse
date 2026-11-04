@@ -24,11 +24,10 @@ export interface CarState {
   prog: number;
   maxProg: number;
   wallTicks: number;
-  /** Energy used on the previous tick. */
-  energyPrev: number;
-  /** Energy used so far this run, taken from the pool (drives "Energy left" and the noise level). */
-  energyUsed: number;
-  noiseA: number;
+  /** The brain's energy load on the last tick (% of the supply). */
+  load: number;
+  /** This tick's top speed as a fraction of the wheels' (energy.speedCap of the load). */
+  cap: number;
   tick: number;
   /** Per pad: the lap on which it last boosted this car. */
   padLap: number[];
@@ -38,7 +37,7 @@ export interface CarState {
 export function startCar(t: Track, i: number = t.startIdx): CarState {
   return {
     x: t.px[i], y: t.py[i], hdg: t.th[i], v: 0, idx: i, s: i * t.ds, off: 0, prog: 0, maxProg: 0, wallTicks: 0,
-    energyPrev: 0, energyUsed: 0, noiseA: 0, tick: 0, padLap: t.pads.map(() => NO_LAP),
+    load: 0, cap: 1, tick: 0, padLap: t.pads.map(() => NO_LAP),
   };
 }
 
@@ -60,11 +59,11 @@ function track(c: CarState, t: Track): void {
 }
 
 /**
- * Advance one brain tick (CONFIG.tick.substeps physics substeps) with wheel outputs fl, fr, rl, rr in −1..1.
- * Returns true if the car touched a wall this tick.
+ * Advance one brain tick (CONFIG.tick.substeps physics substeps) with wheel outputs fl, fr, rl, rr in −1..1 and the
+ * tick's speed cap (0..1: what the brain's energy leaves for speed). Returns true if the car touched a wall this tick.
  */
-export function stepPhysics(c: CarState, t: Track, fl: number, fr: number, rl: number, rr: number): boolean {
-  const W = K.wheelSpeed;
+export function stepPhysics(c: CarState, t: Track, fl: number, fr: number, rl: number, rr: number, cap = 1): boolean {
+  const W = K.wheelSpeed * cap;
   const vL = (fl + rl) * 0.5 * W, vR = (fr + rr) * 0.5 * W;
   const vT = (vL + vR) * 0.5;
   const mis = ((fl > rl ? fl - rl : rl - fl) + (fr > rr ? fr - rr : rr - fr)) * 0.5;

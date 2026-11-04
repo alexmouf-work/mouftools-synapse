@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { cos, sin } from '../../src/common/fmath';
-import { eyeDirection, readSensors } from '../../src/common/sim/sensors';
+import { bearingDir, boundaryValue } from '../../src/common/sim/sensors';
+import { fieldAct, fieldWidthDeg, spreadDeg } from '../../src/common/sim/senses';
 import { startCar } from '../../src/common/sim/car';
 import { castRay, generateTrack } from '../../src/common/sim/track';
 import { CONFIG } from '../../src/common/config';
-import { INPUTS } from '../../src/common/sim/spec';
 import { weightStyle } from '../../src/client/ui/weights';
 import { FLASH_S, SPIKE_MAX_HZ, SpikeTrains, spikeRate } from '../../src/client/ui/drive/spikes';
 
@@ -27,8 +27,8 @@ describe('weight colours (principal 2026-10-31: red −1, black 0, green +1; thi
   });
 });
 
-describe('spikes (rate coding, one rule for every input)', () => {
-  it('fires at SPIKE_MAX_HZ × |reading|: near wall fast, nothing in range never, unwired never', () => {
+describe('spikes (rate coding, one rule for every cell)', () => {
+  it('fires at SPIKE_MAX_HZ × rate: fast near 1, never at 0, never when switched off', () => {
     const t = new SpikeTrains(4);
     const readings = [0.9, 0.2, 0, 0.9], used = [1, 1, 1, 0];
     for (let k = 0; k < 600; k++) t.update(readings, used, 1 / 60, k / 60); // 10 s
@@ -37,7 +37,6 @@ describe('spikes (rate coding, one rule for every input)', () => {
     expect(Math.abs(t.counts[1] - SPIKE_MAX_HZ * 0.2 * 10)).toBeLessThanOrEqual(1);
     expect(t.counts[2]).toBe(0);
     expect(t.counts[3]).toBe(0);
-    expect(spikeRate(-0.5)).toBe(spikeRate(0.5)); // road ahead by magnitude
     expect(spikeRate(3)).toBe(SPIKE_MAX_HZ); // clamped
   });
   it('a spike is a short flash; slow frames still count every spike', () => {
@@ -49,22 +48,22 @@ describe('spikes (rate coding, one rule for every input)', () => {
   });
 });
 
-describe('eye directions: one rule for the sensors and the beams', () => {
-  it('eyeDirection is the heading turned by each eye angle, and it is what the sensors cast along', () => {
-    const tr = generateTrack(6), c = startCar(tr);
+describe('boundary vector cells: one rule for the sensors and the beams', () => {
+  it('bearingDir turns the heading clockwise by the field angle; a cell reads the best of three rays across its field', () => {
+    const tr = generateTrack(6), c = startCar(tr), R = CONFIG.senses.boundary.rangeM;
     for (const hdg of [0, 0.7, -2.1, 3.0]) {
       c.hdg = hdg;
-      const out = new Float64Array(10);
-      readSensors(c, tr, Uint8Array.from([1, 1, 1, 1, 1, 1, 0, 0, 0, 0]), CONFIG.budget[0] * 1200, out);
-      for (let e = 0; e < 6; e++) {
-        const { dx, dy } = eyeDirection(hdg, e);
-        const a = hdg - (INPUTS[e].deg as number) * Math.PI / 180; // clockwise eye angle from the nose
+      for (const n of [1, 3, 7]) for (let k = 0; k < n; k++) {
+        const deg = spreadDeg(k, n), w = fieldWidthDeg('boundary', n);
+        const { dx, dy } = bearingDir(hdg, deg), a = hdg - deg * Math.PI / 180;
         expect(dx).toBeCloseTo(cos(a), 12); expect(dy).toBeCloseTo(sin(a), 12);
-        expect(out[e]).toBeCloseTo(1 - castRay(tr.grid, c.x, c.y, dx, dy, CONFIG.sensors.eyeRange) / CONFIG.sensors.eyeRange, 12);
+        let best = 0;
+        for (const off of [-w / 2, 0, w / 2]) { const d = bearingDir(hdg, deg + off); best = Math.max(best, fieldAct(off, castRay(tr.grid, c.x, c.y, d.dx, d.dy, R), R, w)); }
+        expect(boundaryValue(c, tr, k, n)).toBeCloseTo(best, 12);
       }
     }
-    // the left eye looks left of the heading (counter-clockwise), the right eye right, the back eye behind
-    const L = eyeDirection(0, 0), R = eyeDirection(0, 4), B = eyeDirection(0, 5);
-    expect(L.dy).toBeCloseTo(1, 12); expect(R.dy).toBeCloseTo(-1, 12); expect(B.dx).toBeCloseTo(-1, 12);
+    // three cells spread left, ahead, right: the left one looks counter-clockwise of the heading
+    expect(spreadDeg(0, 3)).toBe(-90); expect(spreadDeg(1, 3)).toBe(0); expect(spreadDeg(2, 3)).toBe(90);
+    expect(bearingDir(0, -90).dy).toBeCloseTo(1, 12); expect(bearingDir(0, 90).dy).toBeCloseTo(-1, 12);
   });
 });

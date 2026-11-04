@@ -3,7 +3,7 @@
 import { CONFIG } from '../config';
 import { Hasher } from '../hash';
 import { derive, TAG } from '../rng';
-import { genomeHash } from '../sim/brain';
+import { genomeHash, zeroGenome } from '../sim/brain';
 import type { BrainSpec, Genome } from '../sim/spec';
 import type { Executor } from './episodes';
 import { MeteredEnv, type Env } from './env';
@@ -13,9 +13,7 @@ import './backprop';
 
 export interface PhaseSeeds {
   trainTracks: number[];
-  trainNoise: number[];
   unseenTrack: number;
-  raceNoise: number;
   /** Seed handed to the trainer. Phase 0 keeps the S1 benchmark's stream; a retrain draws a fresh one. */
   trainer: number;
 }
@@ -25,12 +23,14 @@ export function phaseSeeds(seed: number, phase = 0): PhaseSeeds {
   const k = Array.from({ length: CONFIG.train.trainTracks }, (_, i) => i);
   return {
     trainTracks: k.map((i) => derive(seed, TAG.trainTrack, phase, i)),
-    trainNoise: k.map((i) => derive(seed, TAG.trainNoise, phase, i)),
     unseenTrack: derive(seed, TAG.unseenTrack, phase),
-    raceNoise: derive(seed, TAG.raceNoise, phase),
     trainer: phase === 0 ? seed : derive(seed, TAG.trainer, phase),
   };
 }
+
+/** The budget for a sandbox Train of `generations` generations: that many of evolution's worst case (else T). */
+export const phaseBudget = (generations?: number): number =>
+  generations ? generations * CONFIG.train.population * CONFIG.train.trainTracks * CONFIG.train.episodeTicks : CONFIG.train.T;
 
 export interface GenStat { gen: number; best: number; mean: number; ticksUsed: number; champion: Float64Array }
 
@@ -51,9 +51,10 @@ export interface PhaseOptions {
   start?: TrainerOptions['start'];
   /** Starting genome (weights used only when start = carry). */
   genome?: Genome;
+  /** Experience budget (car-ticks). Default: `generations` × evolution's worst-case generation, else CONFIG.train.T. */
   T?: number;
-  /** Per-tick energy anchor (default round 1's); each episode's pool is anchor × episode ticks. */
-  budget?: number;
+  /** Sandbox Train (2026-11-04): train this many generations (see TrainerOptions.generations). */
+  generations?: number;
   phase?: number;
   /** A clock for timing only (sim code never reads time); defaults to no timing. */
   now?: () => number;
@@ -69,14 +70,11 @@ export interface PhaseOptions {
 
 export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o: PhaseOptions = {}): Promise<PhaseResult> {
   const seeds = phaseSeeds(seed, o.phase ?? 0);
-  const setup = {
-    spec, trackSeeds: seeds.trainTracks, noiseSeeds: seeds.trainNoise,
-    pool: (o.budget ?? CONFIG.budget[0]) * CONFIG.train.episodeTicks, episodeTicks: CONFIG.train.episodeTicks,
-  };
+  const setup = { spec, trackSeeds: seeds.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
   await exec.setup(setup);
-  const env = new MeteredEnv(setup, exec, o.T ?? CONFIG.train.T);
-  const trainer = createTrainer(o.trainer ?? 'evolution', { start: o.start ?? 'fresh' });
-  const genome = o.genome ?? { spec, w: spec.conns.map(() => 0) };
+  const env = new MeteredEnv(setup, exec, o.T ?? phaseBudget(o.generations));
+  const trainer = createTrainer(o.trainer ?? 'evolution', { start: o.start ?? 'fresh', generations: o.generations });
+  const genome = o.genome ?? zeroGenome(spec);
   const now = o.now ?? (() => 0);
   const t0 = now();
   trainer.init(genome, seeds.trainer, env);

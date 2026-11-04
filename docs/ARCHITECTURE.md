@@ -19,16 +19,17 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 
 | File | What it is |
 |---|---|
-| `config.ts` | Every tunable: tick rate, budgets, costs, upkeep, caps, sensors, car, track generator, trainer, T. |
+| `config.ts` | Every tunable: tick rate, energy costs, brain caps, senses, car, track generator, trainers, T, teacher. |
 | `fmath.ts` | sin, cos, atan, atan2, exp, tanh, sigmoid, log from + − × ÷, sqrt, floor, round only. |
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
-| `sim/spec.ts` | Fixed pins (10 inputs, 4 wheel outputs), `BrainSpec`, `Genome`, validation. |
-| `sim/energy.ts` | THE energy cost function (static cost, wire factors, fire cost), the pool (`poolFor`, noise level, Energy left) and the workbench `estimate` / `minutePercent`. |
-| `sim/brain.ts` | Spec → compiled net, evaluation, presets (Starter, Minimal, Deep), pure edit ops, canonical genome JSON and hash. |
+| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the default brain, column ids, the canonical wire order (`wireList`), `Genome`, validation. |
+| `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs. |
+| `sim/energy.ts` | THE energy rule: per-node coefficients, the flat-out and resting loads, the speed cap (floor 10%), the match refusal, the designer's "at maximum firing rate" figures. |
+| `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
-| `sim/sensors.ts` | The 10 input readings (only wired inputs are computed); `eyeDirection`, the one eye-angle rule the drive view's beams also use. |
+| `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts); `bearingDir`, the one field-direction rule the drive view's beams also use. |
 | `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
 | `sim/teacher.ts` | The scripted pure-pursuit teacher backprop copies (`teacherWheels`), and `driveTeacher` (the teacher alone, a reference for tests and the bench). |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry with each trainer's label and refusal (`trainerRefusal`). |
@@ -38,53 +39,38 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `train/grad.ts` | The generalised delta rule on a compiled net (pre-activations, backward pass); the gradient trainers' one implementation. |
 | `train/rollout.ts` | Lanes for gradient trainers: `RolloutCore` runs a round of lanes with a kernel; lane state travels with the job. |
 | `train/kernels.ts`, `train/imitate.ts` | The kernels by id; `imitate` is backprop's (DAgger with the teacher). |
-| `train/gradTrainer.ts` | What every gradient trainer shares: rounds, fitness checks, the update, the `delta` channel, the step refusal. |
+| `train/gradTrainer.ts` | What every gradient trainer shares: rounds, fitness checks, the update, the `delta` channel. |
 | `train/backprop.ts` | Backprop (copy a teacher). |
 | `train/probe.ts` | The `signal` probe all trainers share. |
 | `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop). |
 | `train/contract.test.ts` | The suite every trainer must pass. |
 
-### Brain
-Pins are always on the board; an input is computed and charged only while wired. Node order in the compiled net:
-10 inputs (`i:l, i:fl, i:f, i:fr, i:r, i:b, i:road, i:energy, i:spd, i:bias`), hidden neurons by (layer, spec
-order), then the wheels (`o:fl, o:fr, o:rl, o:rr`). Each node sums its incoming wires in spec order, so a new wire
-with w = 0 adds an exact +0. Hidden transfer functions offered: linear (z kept to −1..1, step's old upkeep 0.2), ReLU
-(cap 4), sigmoid, tanh (principal 2026-11-04: no step). Step still runs, only so an old save can load: the workbench
-turns step neurons Linear on load, weights kept, with a one-time note naming them. Wheels have no transfer
-function: output = clamp(sum, −1, 1), and no upkeep (as the workbench shows them). Layers are 1..3. A wire's span for the skip
-surcharge counts only hidden lines that hold neurons (`wireSpan`; review call 2026-10-30), so the empty line the
-board always shows is free to cross.
+### Brain (v2, 2026-11-04; plan `docs/plans/2026-11-04-brain-designer-v2.md`)
+A brain is its sense counts and its hidden layers; every column is fully wired to the next, always (no wiring by
+hand). Senses, each up to its maximum: boundary vector (≤ 7; a wall within a 20 m field facing one way, read by
+three short rays across the field; fields spread across the front), landmark (≤ 5; the finish line within 40 m, in
+the field's direction), head direction (≤ 8; cos(heading − preferred), preferred angles spread evenly, two = cos and
+sin), grid (≤ 6; three plane waves 60° apart; the first two at two scales, more at spread phases), speed (≤ 1). Adding
+a cell re-tunes the set (cells are numbered by count). Hidden layers: 1–8, each 1–8 neurons of one function
+(Linear = z kept to −1..1, ReLU capped at 4, Sigmoid, Tanh); a new layer starts with two tanh neurons. The wheels are
+tanh. Node order: sense cells (by sense, then cell), hidden layer by layer, wheels; the genome's weights follow
+`wireList` (column by column, source by source, then target). The default brain: one boundary vector cell, one
+head-direction cell, three tanh neurons. Every node has a firing rate 0..1 (`rateOf`: tanh and linear (y + 1)/2,
+ReLU min(y, 1), sigmoid y; head direction (cos + 1)/2; the other senses their value).
 
-Energy is a pool (ruling 2026-10-31): a run of N ticks gets `energy.poolFor(N)` = per-tick anchor (`CONFIG.budget`,
-10 in round 1) × N, so the 1-minute period (`CONFIG.energy.periodTicks` = 1200) gets 12 000. Training episodes and
-the drive both run that whole period with the whole pool (review call, measured best); the S1 bench's 30 s look at
-the unseen track is the first half of such a run. Each tick's cost (sensors in use + upkeep + firing
-with the skip surcharge, unchanged) is taken from it (`CarState.energyUsed`). Energy left = clamp(1 − used / pool,
-0, 1), draining over the run. Once the pool is spent, every signal (inputs, neurons, wheels) is mixed after its
-transfer function: `(1 − a)·clean + a·U(−1, 1)`, with `a = clamp(used / pool − 1, 0, 1)` from the total before the
-tick (all noise at 200%). The noise value is a pure
-function of (car noise seed, node key, tick) — `hashU` — so it does not depend on how many other nodes there are,
-and every policy in a generation sees the same noise (common random numbers).
-
-Upgrade invariance (tested for every transfer function over 600 ticks): adding w = 0 wires or neurons, even a
-whole new layer, leaves every wheel output and car position identical **while the brain is under budget and Energy
-left is unwired**. A new neuron's upkeep changes the energy used, and those two read energy by design.
+Energy (speed follows firing, §3a, §3aa): one supply each tick. Each node spends its cost × its rate, each wire its
+cost × its source's rate (costs halved 2026-11-04: senses 1–1.5%, neurons 0.75–1.5%, wheels 0.75%, wires 0.075%);
+`evalNet` returns that load, and the tick's top speed is what is left, `speedCap` = max(10%, 100% − load), applied to
+the wheels before physics. The sandbox refuses nothing (a brain past 100% just runs at the floor); vs CPU and
+Multiplayer will pass mode `match`, which refuses a design past 100% with every cell flat out (`energyRefusal`). The
+designer shows the range from resting (senses silent, layers at their resting rate, wheels at half) to flat out.
+Retired: the per-minute pool, the over-budget noise, the energy-left input, the eyes, road ahead and bias.
 
 ### Edit ops
-Every change the workbench makes is a pure function in `brain.ts` on a `Draft = {genome, nextId}`: `addWire`,
-`removeWire`, `unplug`, `clearWires`, `addNeuron`, `addLayer`, `removeNeuron`, `setAct`, with `wireCheck` naming why a
-wire is refused (`into-car`, `backward`, `duplicate`, …). Neuron ids are never reused (`nextId`). Kept wires keep
-their weights; new wires start at 0. Removing the last neuron of a line removes the line (unless it is the only one)
-and later lines move down; wires whose ends are gone are dropped. Caps: 3 lines × 10 neurons.
-
-### Energy as the workbench shows it
-`energy.estimate(spec)` = exact static cost (wired sensors + upkeep) + every wire at `wireFactor(span) ×
-CONFIG.cost.estimateActivity` (0.5, so a span-1 wire shows 0.05 per tick, the mock-up's figure). The meter, the
-ledger ("Wires (est.)"), the per-function and per-sensor costs all come from `energy.ts`, shown as the estimate of a
-full minute's use against the minute's pool (`minutePercent`: "63% of energy budget · est. per minute"); over 100%
-the meter says when the pool runs out (`runsOutAt`, "runs out at 0:48, then static"). The client has no cost table
-of its own. The drive view's meter starts at 0 and climbs to the minute's actual use (used and left shown); static
-appears only once the pool is spent.
+Every change the designer makes is a pure function in `brain.ts` on a `Genome`: `addSense`, `removeSense`,
+`insertLayer`, `removeLayer`, `setLayerSize`, `setLayerFn`, each refusing at a cap (`full`, `empty`, `last-layer`) or,
+in match mode, on energy. Any edit leaves an untrained brain: every weight goes back to 0 (ruling 2026-11-04: wires
+are grey until trained, and any edit returns them to grey).
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws
@@ -100,15 +86,18 @@ smoothed radius ≥ 25 m, parts > 60 m apart along the track ≥ 31 m apart in s
 sub-seed; 200 failures throw. About 1 attempt in 16 is valid; the 1000-seed test passes with room to spare.
 
 ### Training
-`runPhase(executor, spec, seed)` derives the phase's two training tracks, their noise seeds, the unseen track and
-the race noise from the seed; builds a `MeteredEnv` over an `Executor`; runs the trainer until it is done; hashes
+`runPhase(executor, spec, seed)` derives the phase's two training tracks and the unseen track from the seed; builds a `MeteredEnv` over an `Executor`; runs the trainer until it is done; hashes
 every generation's stats and champion. Executors: `InlineExecutor` (this thread), `NodePool`
 (`scripts/sim/nodePool.ts`, worker_threads) and `BrowserPool` (`src/client/workers/pool.ts`). All three run the same
 `EpisodeCore` on contiguous slices from `splitEven` and return results in policy order, so the worker count can never
 change a result (checked: 1 vs 4 workers, Node vs Chrome, identical hashes).
 
-Neuroevolution: population 64, both training tracks × 1200-tick (1-minute) episodes with the minute's pool (early
-stop on stall or going backwards; about 58 generations in T = 6M),
+Sandbox training asks how many generations (10, 25, 50, 100, 250, 500 or 1000; 100 first): the budget is that many
+of evolution's worst-case generations (`phaseBudget`), evolution stops after that many, and a gradient trainer spreads
+that many fitness checks over the budget. The S1 bench still uses T = 6M.
+
+Neuroevolution: population 64, both training tracks × 1200-tick (1-minute) episodes (early stop on stall or going
+backwards),
 elitism 4, tournament 3, no crossover, Gaussian mutation p 0.2 with σ falling 0.4 → 0.08 over the phase, reset
 p 0.01, weights clamped ±4. `fresh` start draws N(0, 0.5); `carry` puts the given genome in slot 0 exactly and its
 mutants after it. It runs whole generations while the next one's worst case fits T. Probe channel: `signal`.
@@ -132,15 +121,15 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   (60 s each): that is a `generation` event (gen 1 = the starting weights), the fitness graph's point, and the last
   one is the score of `weights()`. Rounds, checks and all are charged to T; the final check's worst case is reserved.
   `fresh` draws N(0, 0.1) (all-zero weights have no gradient; small, so no tanh starts saturated), with wires into a
-  ReLU drawn positive: a ReLU silent on every input has slope 0 and can never wake (measured: half the seeds lost
-  Starter's cruise neuron that way). `carry` starts from the given weights. Step neurons
-  are refused (no slope). Channels: `signal`, and `delta` = the last round's Δw per wire.
+  ReLU layer drawn positive: a ReLU silent on every input has slope 0 and can never wake. `carry` starts from the
+  given weights. Every function on every layer has a slope, so nothing is refused. Channels: `signal`, and `delta` =
+  the last round's Δw per wire.
 - **Backprop** (`backprop.ts`, kernel `imitate.ts`): copy the teacher, DAgger-style. The brain drives (an episode is
   teacher-driven with probability β, 0.5 falling to 0 by 25% of T: classic DAgger mixing), the teacher labels every
   state the brain saw, and each tick adds the generalised delta rule's terms (`grad.ts`): output δ = (t − y)·f′(z),
-  hidden δ = f′(z)·Σ w·δ, term δ·x; the round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant). Over budget
-  every f′ carries (1 − a). The wheels' clamp passes the error only when it points back into range (a wheel pinned at
-  ±1 could otherwise never let go).
+  hidden δ = f′(z)·Σ w·δ, term δ·x; the round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant).
+  The wheels are tanh like any neuron. The teacher's targets account for the tick's speed cap. On the default v2
+  brain it does not learn (no bias input, see the trainers plan); it does on brains with a steady input.
 - **The teacher** (`sim/teacher.ts`): pure pursuit on the centreline (privileged: the brain never sees the centreline).
   Look-ahead L = 10 m + 0.4 s × v (≤ 30 m); yaw wanted ω = gain × κ × max(v, 40 m/s), κ = 2·left / d² of the arc
   through the target (gain 3; the grip caps the yaw anyway, and a firm label is what a brain can copy: with gain 1 the
@@ -157,19 +146,24 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   drive's track);
   `?seed=` and `?workers=` override; `?T=` (dev server only) shrinks the budget for the browser checks;
   `?quality=low|high` overrides the renderer's choice.
-- `ui/workbench/` — a TypeScript port of `reference/builder-mockup.html`: `workbench.css` (the mock-up's styles,
-  plus the rename field and presets), `pins.ts` (where each pin sits on the car, icons, panel text; pin ids and
-  labels come from `spec.ts`), `store.ts` (save/load), `workbench.ts` (board layout and drawing, wiring by drag,
-  side panel, meter, toasts). Same look in light and dark; phones use it in landscape, portrait shows the "turn
-  sideways" card. Additions to the mock-up: a "Start from" section (Starter / Minimal / Deep; a second click within
-  3 s confirms, since it replaces the brain), a real rename, and three narrow-board rules that leave the desktop
-  layout untouched: several lines too close for "HIDDEN n" share one "HIDDEN LAYERS" heading with a number per line;
-  a full line has no ⊕ and a ⊕ that would sit under the palette is kept above it; a front-diagonal eye label that
-  runs into another label moves above its pin. Neurons shrink (17 → down to 6 px) only when a full line needs it.
-- Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 2, name, nextId, train:
-  {seed, phases}, genome}` (canonical genome JSON; v1 saves load with no training history). Reads and writes are in try/catch: a missing save starts from Starter; an unreadable one
-  starts from Starter with a toast saying so; a browser that refuses storage gets a toast that changes last until the
-  tab closes. A preset resets the training history (new seed, trains from scratch).
+- `ui/designer/` — the brain designer (the workbench; B3), a port of `reference/brain-v2-mockup.html` (the UI spec)
+  onto the engine: `designer.css` (the mock-up's styles), `designer.ts` (layout in equal column regions, the tray of
+  senses, sense cells as 3-D symbol circles, lines of identical neurons with a function header, the car whose wheels
+  are motor neurons, wires grey until trained then in their weight colours; tap to inspect; "+"/"−" for neurons and
+  layers that vanish at a limit; the panel: the activation graph from the engine's own rules (polar fields with
+  distance rings, the head-direction wave, the grid heatmap with a 50 m bar, transfer and speed curves, axis titles,
+  axes through 0), the one-line description, "At maximum firing rate, uses x% energy" from energy.ts, the Neurons
+  slider, the bin; the energy split resting–flat out; Reset with a confirmation; the trainer picker and the centred
+  "Learning Rule : …" strip; Train asks how many generations), `symbols.ts` (three.js symbols, loaded after first
+  paint, one viewport per tray tile and sense cell; build mode is still, so only a gentle idle motion), `store.ts`.
+  One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows); portrait phones get the
+  "turn sideways" card. Additions to the mock-up: the sound button in the top bar, the legal and credits line at the
+  right end of the rule strip. No Drive button: the drive view is reached after training.
+- Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
+  {seed, phases}, genome}` (canonical genome JSON). Reads and writes are in try/catch: a missing save starts from the
+  starting brain; an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
+  the starting brain with a one-time note; a browser that refuses storage gets a toast that changes last until the
+  tab closes. Any edit, and Reset, clear the training history (new seed, trains from scratch).
 - `ui/training/` — the training view. Train hands the saved brain over; the seed is the brain's own (picked on its
   first Train), the phase is its count of finished runs, so every run is reproducible and a retrain sees new tracks.
   All-zero weights train from scratch (fresh), anything else continues from them (carry: slot 0 is the saved genome
@@ -188,9 +182,9 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `render/` — the 3-D port of `reference/look-mockup.html`'s core: `stage.ts` (renderer, ACES, bloom, sky dome, fog,
   sun and shadows, the training camera: a chase angle ~44 m up, following the pack's median progress along the
   track, or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `drive.ts`
-  (the drive rig: the yellow car with each wheel spinning at 18 rad/s × its output, so it reverses visibly; the six
-  eye rays from the sensor directions via `sensors.eyeDistance`, brighter as a wall nears, unwired eyes faint,
-  flickering over budget; chase, broadcast and showroom cameras), `stadium.ts` (grandstand with crowd and SYNAPSE
+  (the drive rig: the yellow car with each wheel spinning at 18 rad/s × its output, so it reverses visibly; one ray
+  per boundary vector cell along its field's centre via `sensors.bearingDir`, up to 20 m, brighter as a wall nears;
+  chase, broadcast and showroom cameras), `stadium.ts` (grandstand with crowd and SYNAPSE
   banner, start and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards on tight corners, broadcast
   camera spots; trees keep clear of them), `trackMesh.ts` (road, kerbs red/white in corners,
   run-off, walls with light strip, boost pads, start line, from the sim Track; flat for now), `scenery.ts` (terrain,
@@ -203,24 +197,25 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   under it and only glow-tagged things (wall strips, boost pads, lamps, gate bands, sun disc) bloom; `bloomAudit`
   renders the scene without them to a float target and counts pixels over. The checks audit fixed frames
   (`auditTrainAt` / the drive view's `auditAt`: seek, snap the camera, draw, audit), so a pass means pass. The car's
-  coats are satin (roughness ≥ 0.45, half clearcoat): mirror-sharp coats threw sun glints up to 3.6 at some poses.
+  coats are satin (roughness ≥ 0.45; the paint near matte, 0.7): mirror-sharp coats threw sun glints up to 3.6 at some poses,
+  and driving into a low sun the glossier paint (1.8) and kerbs (1.38) still went over, so kerbs, run-off and walls are
+  rough (0.8) too (found by the bloom audit after brain v2).
   Bloom radius 0.32 (mock-up 0.45), and `glow.ts` fades strips and gate bands near the camera (25% at ≤ 6 m, full
   from 60 m), so near glows read as lines, not haze, while mid-distance glow keeps the mock-up's look.
 - `ui/weights.ts` — how a wire's weight looks everywhere (principal, 2026-10-31): red at −1, black at 0, green at +1
   (clamped beyond ±1); width 1→4 px and opacity 0.3→1 grow with √(|w| / 4). The workbench draws each wire in its
   weight colour over a faint neutral halo (`--wire-halo`, stronger in dark mode, so a w = 0 wire stays visible and
   clickable); a selected pin's or neuron's wires get an accent halo and the flow dashes, never a recolour.
-- `ui/drive/` — the drive view. `runDrive(genome, trackSeed)` computes the whole 60 s run first (noise seed derived
-  from the track seed), then it plays back in real time and loops. First track: the unseen track of the brain's
-  last training run; New track draws a fresh seed. Overlay (plain): time, distance and laps, best lap, energy % (and
-  static %), track seed, cameras (Chase / Broadcast / Showroom, keys 1–3), New track, Back to workbench. A stall
+- `ui/drive/` — the drive view. `runDrive(genome, trackSeed)` computes the whole 60 s run first, then it plays back
+  in real time and loops. First track: the unseen track of the brain's
+  last training run; New track draws a fresh seed. Overlay (plain): time, distance and laps, best lap, the energy split
+  this tick (brain % · speed %), track seed, cameras (Chase / Broadcast / Showroom, keys 1–3), New track, Back to workbench. A stall
   (the training rule: < 5 m of new progress in 3 s) shows "Stuck against the wall since m:ss" (or "Not moving"), and
   the chase camera swings slowly round the car, whose wheels keep turning at their outputs. `brainPanel.ts` draws
-  the workbench board scaled down on a canvas: wires in their weight colours (`weights.ts`), input cells spiking at
-  14 Hz × |reading| from the recorded per-tick inputs (`spikes.ts`; a short amber flash; steady glow under reduced
-  motion), hidden and wheel cells filled with their outputs, static over budget. The drive rig's six beams take
-  their directions from `sensors.eyeDirection` (checked against the sim at several poses). The workbench shows Drive
-  once the brain has trained weights; the finished training view has Drive too.
+  the brain's columns small on a canvas: wires in their weight colours (`weights.ts`), every cell flashing at
+  14 Hz × its firing rate from the recording (`spikes.ts`; a short yellow flash; steady glow under reduced motion),
+  wheels with their speed. The beams take their directions from `sensors.bearingDir` (checked against the sim at
+  several poses). Drive is offered by the finished training view.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
 - `audio/` — sound (plan: `docs/plans/2026-11-04-sound.md`); client only, src/common has none. `audio.ts`: one
@@ -243,20 +238,23 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
 - `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`), `bench.ts`
   (+ `bench-baseline.json`, Node time ≤ baseline × 1.3), `bench-browser.ts` (headless Chrome time + hash = Node).
-- `scripts/checks/workbench.ts` — the workbench in headless Chromium: drag a wire, backward wires refused, % shown =
-  `energy.estimate`, reload keeps the brain, corrupt save → Starter + toast, 844×390 without horizontal scroll,
-  portrait card, 3 × 10 and empty brains without overlaps; screenshots to `out/s2/`.
-- `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the workbench,
+- `scripts/checks/workbench.ts` — the designer in headless Chromium: the starting brain, the energy split = energy.ts,
+  the rule strip and trainer picker, tray → cell selected with graph, description and energy line, bin, full sense,
+  layer panel (function, live slider, energy), "+"/"−" and their limits, every edit untrained, Reset and Train
+  dialogs, reload, corrupt and pre-v2 saves, and an overlap audit of cells, buttons and headers for brains up to
+  8 × 8 with every sense full, light and dark, 1440×900 and 844×390; portrait card; screenshots to `out/s2/`.
+- `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the designer (the
+  generations popup),
   phase hash = Node's, genome saved and changed, Train again = Node's carry run, the same saved brain on 1 and 4
   workers → the same hash, Stop keeps the brain, ghost capacity, render smoke (mean luminance and spread of a real
   frame), the story (gen 1 first, in order, ending on the final generation, then the finale), bloom audit = 0,
   844×390 layout, console clean; screenshots to `out/s3/`.
 - `scripts/checks/drive.ts` — train a tiny T, Drive: distance increases, drive hash = Node `runDrive` replay (also
-  after New track), render smoke, bloom audit = 0, cameras, Drive on the workbench only when trained, a pinned brain
-  shows the stuck note while the camera keeps moving, an over-budget brain shows static, 844×390; screenshots to
-  `out/s4/`.
+  after New track), render smoke, bloom audit = 0, the energy line = the recorded load and its speed share, one beam
+  per boundary cell along the sim's direction, every cell's spikes at 14 Hz × its rate, cameras, an untrained brain
+  shows "Not moving" while the camera keeps moving, 844×390; screenshots to `out/s4/`.
 - `scripts/checks/preview.ts` — the production build: `vite build`, then `vite preview` (static with SPA fallback,
-  as on Vercel) at the real budget: workbench loads, training phase hash = Node, drive hash = Node, render smoke on
+  as on Vercel): the designer loads, Train from the popup (25 generations; `?T=` ignored), phase hash = Node, drive hash = Node, render smoke on
   both views, bloom audit, `?T=` ignored, deep links fall back to the app, no `/bench` in the build, console clean.
 - `scripts/checks/audio.ts` — sound in headless Chromium (autoplay allowed): locked until the first click, then the
   lounge; Drive → race mode, the countdown 5…1, Go on the music, the car held at tick 0 until Go and moving after,

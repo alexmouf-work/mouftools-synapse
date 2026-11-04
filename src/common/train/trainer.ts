@@ -39,6 +39,11 @@ export interface Trainer {
 export interface TrainerOptions {
   /** fresh: weights drawn from scratch · carry: slot 0 is the given genome exactly, the rest its mutants. */
   start: 'fresh' | 'carry';
+  /**
+   * Sandbox Train (2026-11-04): train this many generations. Evolution stops after that many; a gradient trainer
+   * spreads that many fitness checks over the budget. The budget is that many of evolution's worst-case generations.
+   */
+  generations?: number;
 }
 
 export type TrainerFactory = (o: TrainerOptions) => Trainer;

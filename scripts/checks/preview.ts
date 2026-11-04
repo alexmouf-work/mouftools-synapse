@@ -1,19 +1,19 @@
 // Production check (S5): build with `vite build`, serve dist/ with `vite preview` (static, SPA fallback, like
 // Vercel) and run the real app at the real budget in headless Chromium (SwiftShader):
-// workbench loads; Train (seed 7, T = CONFIG.train.T) finishes with the same phase hash as Node; render smoke on the
+// the designer loads; Train (seed 7, 25 generations from the popup; ?T= ignored) finishes with the same phase hash as
+// Node; render smoke on the
 // training view; Drive: distance increases, drive hash = Node runDrive, render smoke, bloom audit on fixed frames;
 // an unknown path falls back to the app; the dev-only /bench page is not in the build; console clean.
 //   npx tsx scripts/checks/preview.ts
 import { existsSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright';
 import { build, preview } from 'vite';
-import { CONFIG } from '../../src/common/config';
-import { starterSpec } from '../../src/common/sim/brain';
+import { defaultSpec } from '../../src/common/sim/spec';
 import { runDrive } from '../../src/common/sim/race';
-import { phaseSeeds, runPhase } from '../../src/common/train/phase';
+import { phaseBudget, phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
 
-const SEED = 7;
+const SEED = 7, GENS = 25;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 let fails = 0;
@@ -23,7 +23,7 @@ async function main() {
   await build({ logLevel: 'warn' });
   check(existsSync('dist/index.html') && !existsSync('dist/bench'), 'vite build: dist/index.html, no dev-only bench page');
   const pool = new NodePool(4);
-  const node = await runPhase(pool, starterSpec(), SEED, {});
+  const node = await runPhase(pool, defaultSpec(), SEED, { generations: GENS });
   await pool.close();
   const nodeDrive = runDrive(node.final, phaseSeeds(SEED, 0).unseenTrack);
 
@@ -39,14 +39,16 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`${base}?seed=${SEED}&T=500000`);
-    check(await page.locator('#net').isVisible(), 'workbench loads from the production build');
+    check(await page.locator('#net').isVisible(), 'the designer loads from the production build');
     await page.click('#train');
+    await page.click(`#gens [data-g="${GENS}"]`);
+    await page.click('#tdGo');
     await page.waitForFunction(() => (window.__training?.frames ?? 0) > 2, null, { timeout: 120_000 });
     const pr = await page.evaluate(() => window.__training!.probe!());
     check(pr.mean > 30 && pr.sd > 5, `render smoke (training): mean luminance ${pr.mean.toFixed(1)}, spread ${pr.sd.toFixed(1)}`);
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 900_000 });
     const st = await page.evaluate(() => ({ hash: window.__training!.hash, T: window.__training!.T, ms: window.__training!.ms }));
-    check(st.T === CONFIG.train.T, `?T= is ignored in production (T = ${st.T})`);
+    check(st.T === phaseBudget(GENS), `?T= is ignored in production (T = ${st.T}: ${GENS} generations' budget)`);
     check(st.hash === node.hash, `phase hash ${st.hash} = Node ${node.hash} (${((st.ms ?? 0) / 1000).toFixed(1)} s with the view open)`);
     await page.click('#tvDrive');
     await page.waitForFunction(() => (window.__drive?.frames ?? 0) > 3, null, { timeout: 120_000 });
