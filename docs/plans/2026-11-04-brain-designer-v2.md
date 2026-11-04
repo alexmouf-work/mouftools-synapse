@@ -97,6 +97,7 @@ Tapping a cell shows a graph of what makes it fire, in the right-hand panel (no 
 - Speed: activation against m/s. Neurons and wheels: their layer's transfer curve.
 
 ## 7. Look
+One font across the whole site: Arial, regular or bold (2026-11-04).
 The symbols are low-poly 3-D models in the workbench's plain style (soft, matte, flat colours on the light/dark
 board), not the race's glossy stadium look. One shared 3-D layer sits under the diagram; the wires and cells stay crisp.
 

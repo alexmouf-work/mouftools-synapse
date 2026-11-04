@@ -1,7 +1,4 @@
 <title>Synapse Brain Designer</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: a nervous system read left to right, built by touch. A tray of senses (tap to add a cell) | the field:
    input cells as symbol circles, lines of neurons (one function per line), the car whose wheels are motor neurons |
@@ -11,8 +8,8 @@
   --text: #1d2330; --muted: #6a7385; --accent: #2f6fde; --accent-soft: #e3ecfc;
   --band: rgba(47,111,222,.045); --spike: #ffc21a; --speed: #3fb3a3; --node: #ffffff; --car: #5b6b88; --minus: #d9465b;
   --shadow: 0 1px 2px rgba(20,30,50,.08), 0 2px 8px rgba(20,30,50,.06);
-  --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sans: Arial, Helvetica, sans-serif;
+  --mono: Arial, Helvetica, sans-serif; /* one font across the site (principal 2026-11-04) */
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #15181e; --canvas: #1a1e25; --dot: #2c323d; --panel: #20252e; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
@@ -24,7 +21,7 @@
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
-body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: 14px; -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; touch-action: manipulation; }
 button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* One layout, phone-landscape sized (860 × 400), scaled whole to fit any screen: a laptop is the phone app, larger. */
@@ -34,7 +31,7 @@ html, body { overflow: hidden; }
 .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .word { font-weight: 700; font-size: 15px; }
 .alloc { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 11.5px; min-width: 0; }
-.alloc b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.alloc b { font-family: var(--mono); font-weight: 400; font-variant-numeric: tabular-nums; }
 .split { position: relative; width: 140px; height: 10px; border-radius: 5px; background: var(--speed); overflow: hidden; flex: none; }
 .split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .2s ease; }
 .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
@@ -47,7 +44,7 @@ html, body { overflow: hidden; }
 .eq { font-size: 12.5px; white-space: nowrap; color: var(--text); }
 .eq span { font-family: var(--mono); }
 .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
-.nums b { color: var(--text); font-weight: 500; }
+.nums b { color: var(--text); font-weight: 400; }
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 6px; min-height: 0; }
 .board { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
   background: radial-gradient(var(--dot) 1px, transparent 1.1px) 0 0 / 16px 16px, var(--canvas); }
@@ -73,7 +70,8 @@ html, body { overflow: hidden; }
 .acts .btn { box-shadow: none; text-align: left; white-space: normal; padding: 5px 9px; line-height: 1.25; font-size: 11.5px; }
 .acts .danger { color: var(--minus); }
 #graph { display: block; width: 100%; aspect-ratio: 1; margin: 2px 0 6px; }
-.empty { margin: 0; color: var(--muted); font-size: 12px; text-align: center; padding-top: 40%; }
+#insp { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.4; }
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 10px; z-index: 9; max-width: calc(100% - 32px); }
 #rotate { display: none; }
 @media (orientation: portrait) and (max-width: 700px) {
@@ -213,7 +211,7 @@ function render() {
   const bg = el('rect', { x: trayW, y: 0, width: box.w - trayW, height: box.h, fill: 'transparent', class: 'hit' }, svg);
   regions.forEach((r, i) => { if (i % 2 === 0) el('rect', { x: r.x0, y: 0, width: r.x1 - r.x0, height: box.h, style: 'fill:var(--band)', 'pointer-events': 'none' }, svg); });
   bg.addEventListener('click', () => { S.sel = null; render(); });
-  const t = (x, y, s, a = {}) => { const e = el('text', { x, y, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, 'letter-spacing': '1.2', style: 'fill:var(--muted)', 'font-family': 'Atkinson Hyperlegible, sans-serif', ...a }, svg); e.textContent = s; return e; };
+  const t = (x, y, s, a = {}) => { const e = el('text', { x, y, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, 'letter-spacing': '1.2', style: 'fill:var(--muted)', 'font-family': 'Arial, Helvetica, sans-serif', ...a }, svg); e.textContent = s; return e; };
   const ins = [...P.values()].filter((p) => p.kind === 'in');
   if (!ins.length) t(trayW + 60, box.h / 2, '+ a sense', { 'font-weight': 400, 'letter-spacing': '0' });
   // layer headers: the function for that line, tappable
@@ -279,7 +277,7 @@ function tap(id) { S.sel = S.sel === id ? null : id; render(); }
 // ---- side panel ----
 function inspect() {
   const box2 = $('insp'), id = S.sel;
-  if (!id) { box2.innerHTML = '<p class="empty">Tap a neuron to inspect it</p>'; return; }
+  if (!id) { box2.innerHTML = '<p class="empty">Tap a neuron<br>to inspect it</p>'; return; }
   if (id.startsWith('layer:')) {
     const L = +id.slice(6), l = S.layers[L];
     box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${Object.entries(FX).map(([k, v]) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${v.g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${v.n}</button>`).join('')}</div><dl class="kv" style="margin-top:8px"><dt>Energy per neuron</dt><dd>${FX[l.fn].cost}%</dd></dl><div class="acts" style="margin-top:8px">${S.layers.length > 1 ? '<button class="btn danger" id="rmL" type="button">Remove layer</button>' : ''}</div>`;

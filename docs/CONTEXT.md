@@ -139,3 +139,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   it at the mid-bottom on the edges between layers." → equal regions per column, everything centred; a "+" at the foot
   of each boundary inserts a hidden layer there (replaces the separate "+ Layer" button; up to 3).
 - "the container on the right should say \"tap a neuron to inspect it\""
+- "make sure that the tap neuron text is justified to the middle horizontally and vertically, and is split across two
+  lines." · "use only one font across the entire site, Arial. you can use bold or standard type."
