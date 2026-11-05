@@ -289,3 +289,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   coming out of the car." → `docs/plans/2026-11-05-match-flow-v2.md` (replaces weights carrying over between rounds).
 - "only run tests of affected systems rather than all systems" (2026-11-05) → CLAUDE.md: before a commit, the checks
   covering what changed, not the full suite.
+- "only show 10 racers at a time, not all of them. same rules as before where we always show podium then also show the
+  nearest ones to the player." (2026-11-05) → every standings/results table: places 1–3, then the nearest to you, 10 rows.
