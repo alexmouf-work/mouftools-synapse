@@ -274,3 +274,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
   "energy budget starts really small, allowing for maybe 8-10 neurons total including inputs." → asked: round 1 build
   "60s build for first round, followed by 10s train and 30s race, then 20s build, 10s train with 30s race for each round
   following that."; scoring "Total distance". → `docs/plans/2026-11-05-rounds.md`.
+- 2026-11-05: "add a main menu button." · "when in racing mode, keep the sidebar." · "let's swap the position of the map and
+  the brain during training, and keep it the same layout when in racing mode. The only difference will be that the
+  training graph will swap places with the race competitor list (showing the top 3 then the nearest racers to the user,
+  total of 10 racers shown). Make the sidebar take up 1/4 of the width rather than 1/5." → `docs/plans/2026-11-05-sidebar-and-main-menu.md`.
