@@ -35,7 +35,7 @@ function cpu(w: 'cpu' | 'room' = 'cpu') { where = w; setDesignerMode('match'); s
 /** The room's lobby (or, if the host removed you meanwhile, Multiplayer's code screen saying so). */
 function lobby() { where = 'room'; showLobby(true); setMode('build'); }
 const back = () => (where === 'room' ? lobby() : where === 'cpu' ? cpu() : sandbox());
-function title() { showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('build'); }
+function title() { showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('lounge'); }
 
 function train(s: Saved, generations: number, temperature = 0) {
   setMode('race');

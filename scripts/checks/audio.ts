@@ -117,15 +117,15 @@ async function main() {
     const stored = () => page.evaluate(() => localStorage.getItem('synapse.sound'));
     check(await pressed() === 'true,true', 'both start on');
 
-    // 1. the first tap on the title unlocks it: the race track's quiet pool
+    // 1. the first tap on the title unlocks it: the lounge (the sandbox workshop's music)
     await page.click('#title h1');
     await page.waitForFunction(() => window.__audio?.playing === true, null, { timeout: 30_000 });
     let a = await au(page);
-    check(a.state === 'running' && a.mode === 'build' && (a.phrase === 'intro' || a.phrase === 'breakdown'), `first tap on the title: ${a.state}, ${a.mode} mode, playing ${a.phrase}`);
+    check(a.state === 'running' && a.mode === 'lounge' && a.phrase === 'lounge', `first tap on the title: ${a.state}, ${a.mode} mode, playing ${a.phrase}`);
     // the music must never fall silent from here on (sampled every 50 ms through title → sandbox → train → drive → back)
     await page.evaluate('window.__lv = []; window.__lvT = setInterval(() => window.__lv.push([performance.now(), window.__audio.level, window.__audio.phrase, window.__audio.mode]), 50)');
 
-    // 2. Sandbox → the lounge
+    // 2. Sandbox → the lounge carries straight on
     await page.click('#toSandbox');
     await page.waitForFunction(() => window.__audio?.phrase === 'lounge', null, { timeout: 15_000 }).catch(() => {});
     a = await au(page);

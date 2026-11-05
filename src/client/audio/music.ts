@@ -44,7 +44,7 @@ const NEXT: Record<'build' | 'race', Record<string, string>> = {
 };
 const NATURAL = new Set(['breakdown>intro', 'intro>drive-a', 'drive-a>drive-b', 'drive-b>lift-a', 'lift-a>lift-b', 'lift-b>push-a', 'push-a>push-b', 'push-b>soar-a', 'soar-a>soar-b']);
 
-let mode: Mode = 'build';
+let mode: Mode = 'lounge'; // the page opens on the title, which plays the lounge
 /** The phrase engine: current and queued phrase (null while the lounge or the winner has the floor). */
 let cur: Playing | null = null, nxt: Playing | null = null;
 /** The lounge loop: current copy and when it ends (null when not playing). */
@@ -89,10 +89,14 @@ async function begin(b: Buses): Promise<void> {
   bus = { race: g(meta.tracks.race.gainDb), lounge: g(L.gainDb), winner: g(meta.tracks.winner.gainDb) };
   setInterval(tick, 50);
   // each track starts as soon as the screen's own music is decoded; the rest follows
+  if (mode === 'lounge') {
+    await decode(b, 'lounge');
+    if (mode === 'lounge' && !lounge && !winner && !cur) startLounge(b.ctx.currentTime + 0.3, 0.02);
+  }
   await Promise.all(BUILD.map((n) => decode(b, n)));
   buildReady = true;
   if (mode === 'build' && !cur) cur = play('intro', b.ctx.currentTime + 0.3, 0, 'butt');
-  await decode(b, 'lounge');
+  if (!buffers.has('lounge')) await decode(b, 'lounge');
   // the sandbox may have been opened while the lounge was still decoding: the build pool played on until now
   if (mode === 'lounge' && !lounge && !winner) { if (cur) toLounge(); else startLounge(b.ctx.currentTime + 0.3, 0.02); }
   await Promise.all(meta.phrases.filter((p) => !BUILD.includes(p.name)).map((p) => decode(b, p.name)));
@@ -267,7 +271,7 @@ function resume(fade: number): void {
 }
 
 /**
- * Title = build (the race track's quiet pool); sandbox designer = lounge; training and drive = race. Before the music
+ * Title and sandbox designer = lounge; the vs CPU / Multiplayer designer and lobby = build (the race track's quiet pool); training and drive = race. Before the music
  * has started, it only records the mode to start in.
  */
 export function setMode(m: Mode): void {

@@ -264,3 +264,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   database besides this one). The idea therefore is that we can reuse the same table multiple times." → one shared
   project; each product prefixes its objects (Synapse: `synapse_*`); supabase/schema.sql is idempotent and removes the
   earlier unprefixed Synapse objects only if they are recognisably Synapse's.
+- "use the sandbox workshop music on the title screenn." (2026-11-05) → the title plays the lounge; title → Sandbox
+  carries straight on.
