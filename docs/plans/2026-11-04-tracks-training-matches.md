@@ -163,6 +163,21 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
 ## 4. Matches ("Multiplayer"), and VS Computer
 - **vs CPU**: you against nine computer brains, 10 cars on one track, offline. The computer brains come from
   trained presets of varied skill.
+- **vs CPU calls (coordinator, 2026-11-05, to keep B7 moving; the principal can change any of them):**
+  - Flow: title → vs CPU → the designer in match mode (the energy limit applies: no design over 100% at flat out;
+    Train spends the fixed budget T, no generations popup) → when training ends, **Race** → grid and countdown →
+    race → results (place, time, distance) with Race again / Back.
+  - The nine CPU brains are trained offline by a script with evolution, at budgets spread from about 5% to 100% of T,
+    on a mix of random starters and sighted designs. They are stored as JSON in src/assets. Each race draws a random
+    track from any family.
+  - Names: You, plus nine fixed CPU names on the brain theme (Axon, Dendrite, Soma, Myelin, Glia, Cortex,
+    Ganglion, Thalamus, Hippo).
+  - Grid: two by two behind the line, about 8 m between rows and ±2.5 m across. Slot order is drawn from the race
+    seed. No boost pad on the grid or in the first 50 m.
+  - Cars pass through each other (no car-to-car contact): each car's sim runs independently, so it stays
+    deterministic and fair.
+  - Race: 2 laps, capped at 120 s. Ranked by finish time, then by progress at the cap. First place plays the winner
+    music.
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.
