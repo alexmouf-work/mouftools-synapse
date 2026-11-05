@@ -266,3 +266,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   earlier unprefixed Synapse objects only if they are recognisably Synapse's.
 - "use the sandbox workshop music on the title screenn." (2026-11-05) → the title plays the lounge; title → Sandbox
   carries straight on.
+- "add a small minus symbol in a bubble on the top right corner of the neuron that's currently selected, without showing any
+  if no neurons are selected." · "I don't see the timer for the build phase anywhere (I'm playing vs CPU on the latest dev
+  build). please make that extremely obvious, and count down from 30." (2026-11-05) → `docs/plans/2026-11-05-build-timer-and-cell-minus.md`.
