@@ -60,3 +60,14 @@ and map."
 - **Checks (affected only):** check:workbench (picker), check:race (settings screen, name required, map modes),
   check:multiplayer (host tag, settings, max players enforced, host handover), check:legal (cookie table and
   notice version), types and unit.
+
+## No building before the match (2026-11-05, part of T2)
+Principal: "don't offer building of a brain before the match starts. building is only available when the match has
+started."
+- **Multiplayer lobby:** remove "Build your brain" and its note. Remove the brain-in / still-building legend and the
+  filled or hollow ready squares, since nobody has a brain before the match; chips show the colour as a plain square.
+  The header shows "n / max players" and no ready count. Start match needs at least 2 players in the room.
+- **vs CPU:** the settings screen has no designer and no Build. The designer opens only when round 1's build begins.
+- **Between matches:** the final standings offer Play again and Main menu, and nothing else. Play again goes back to
+  the lobby (Multiplayer) or the settings screen (vs CPU), not to a designer.
+- The server stops reporting `ready` in the lobby state before a match; brains exist only per round.

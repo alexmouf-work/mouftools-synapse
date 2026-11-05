@@ -300,3 +300,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   CPU / multiplayer stuff. Make sure that the player has to choose a name before the game starts in CPU mode too. make
   sure that one player is a host for the multiplayer game, and that they can choose settings like max players and map."
   → `docs/plans/2026-11-05-tracks-v2-and-match-settings.md` (T1 tracks, T2 choice/settings/names/host).
+- "don't offer building of a brain before the match starts. building is only available when the match has started."
+  (2026-11-05) → tracks-v2 plan, "No building before the match" (T2).
