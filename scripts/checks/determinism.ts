@@ -1,5 +1,6 @@
 // Determinism golden hashes (3 seeds): track geometry, recorded 600-tick races (the default brain, and a heavy brain
-// with every sense and two layers, whose energy load caps its speed), and a short training phase per trainer
+// with every sense and two layers, whose energy load caps its speed, and the heavy brain on a figure eight, where rays
+// skip the other deck), and a short training phase per trainer
 // (evolution, backprop, actor-critic, A_RP, and evolution at temperature ×2) of the default brain run inline and on 4
 // worker_threads (must match each other and the golden; ×2 must differ from ×1). golden.json is written only by this script:
 //   npx tsx scripts/checks/determinism.ts            check
@@ -21,14 +22,15 @@ const SEEDS = [1, 2, 3];
 const PHASE_T = 600_000; // a few generations of 60 s episodes
 const goldenPath = fileURLToPath(new URL('./golden.json', import.meta.url));
 
+const EIGHT_TRACK = 13; // a figure eight (track families, B5)
 const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 6, fn: 'relu' }, { n: 4, fn: 'sigmoid' }] };
 
-/** A recorded 30 s race of `spec` with seeded random weights on the seed's unseen track. */
-function raceHash(seed: number, spec: BrainSpec): string {
-  const ps = phaseSeeds(seed), r = new Rng(seed);
+/** A recorded 30 s race of `spec` with seeded random weights on the seed's unseen track (or the given one). */
+function raceHash(seed: number, spec: BrainSpec, track = phaseSeeds(seed).unseenTrack): string {
+  const r = new Rng(seed);
   const net = compile({ spec, w: Array.from({ length: paramCount(spec) }, () => Math.max(-4, Math.min(4, r.normal() * 1.5))) });
   const rec = newRecording(net, CONFIG.race.ticks);
-  new Runner().run(net, generateTrack(ps.unseenTrack), { ticks: CONFIG.race.ticks, earlyStop: false, record: rec });
+  new Runner().run(net, generateTrack(track), { ticks: CONFIG.race.ticks, earlyStop: false, record: rec });
   return recordingHash(rec);
 }
 
@@ -39,7 +41,7 @@ async function main() {
   let bad = 0;
   for (const seed of SEEDS) {
     const t = generateTrack(phaseSeeds(seed).unseenTrack);
-    const track = new Hasher().u32(t.sub).f64s(t.px).f64s(t.py).f64s(t.curv).u32(t.startIdx).f64s(t.pads.map((p) => p.i0)).hex();
+    const track = new Hasher().u32(t.sub).f64s(t.px).f64s(t.py).f64s(t.curv).u32(t.startIdx).f64s(t.pads.map((p) => p.i0)).f64s(t.layer).hex();
     const inline = await runPhase(new InlineExecutor(), defaultSpec(), seed, { T: PHASE_T });
     const pooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T });
     if (inline.hash !== pooled.hash) { bad++; console.error(`seed ${seed}: inline ${inline.hash} ≠ 4 workers ${pooled.hash}`); }
@@ -57,7 +59,7 @@ async function main() {
     const hotPooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T, temperature: 1 });
     if (hotInline.hash !== hotPooled.hash) { bad++; console.error(`seed ${seed} ×2: inline ${hotInline.hash} ≠ 4 workers ${hotPooled.hash}`); }
     if (hotInline.hash === inline.hash) { bad++; console.error(`seed ${seed}: temperature ×2 gave the ×1 hash ${inline.hash}`); }
-    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), phase: inline.hash, phaseBackprop: bpInline.hash, ...rl, phaseTemp2: hotInline.hash };
+    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), raceEight: raceHash(seed, HEAVY, EIGHT_TRACK), phase: inline.hash, phaseBackprop: bpInline.hash, ...rl, phaseTemp2: hotInline.hash };
   }
   await pool.close();
   if (update) {
@@ -71,7 +73,7 @@ async function main() {
     if (golden[seed]?.[k] !== got[seed][k]) { bad++; console.error(`seed ${seed} ${k}: got ${got[seed][k]}, golden ${golden[seed]?.[k]}`); }
   }
   if (bad) { console.error(`determinism: ${bad} mismatch(es)`); process.exit(1); }
-  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, evolution, backprop, actor-critic, A_RP and ×2 phases inline = 4 workers)`);
+  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, the heavy brain on a figure eight, evolution, backprop, actor-critic, A_RP and ×2 phases inline = 4 workers)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

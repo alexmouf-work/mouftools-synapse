@@ -22,6 +22,7 @@ import { defaultSpec } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseBudget, runPhase } from '../../src/common/train/phase';
 import { parse, SAVE_KEY } from '../../src/client/ui/designer/store';
+import { fixtureBrain } from './fixture';
 
 const OUT = 'out/s3';
 const T = 1_000_000; // checks use a smaller budget (dev-only ?T=); the screenshots use the real one
@@ -50,6 +51,7 @@ async function main() {
   const errors: string[] = [];
   async function open(query: string, w = 1440, h = 900, mobile = false): Promise<Page> {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile, hasTouch: mobile });
+    await fixtureBrain(ctx);
     const page = await ctx.newPage();
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -201,6 +203,7 @@ async function main() {
     for (const [w, h, dark] of [[1440, 900, false], [1440, 900, true], [844, 390, false], [844, 390, true]] as const) {
       const tag = `${w}x${h}${dark ? '-dark' : ''}`;
       const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? 'dark' : 'light', isMobile: w < 900, hasTouch: w < 900 });
+      await fixtureBrain(ctx);
       page = await ctx.newPage();
       page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
       page.on('pageerror', (e) => errors.push(String(e)));

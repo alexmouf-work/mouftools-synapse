@@ -6,7 +6,7 @@
 // common/sim/brain.ts and is saved; energy figures come from common/sim/energy.ts.
 import { ACTS, CONFIG, type Act } from '../../../common/config';
 import {
-  addSense, ACT_CODE, defaultGenome, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer, weightCount,
+  addSense, ACT_CODE, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer, weightCount,
   type EditResult,
 } from '../../../common/sim/brain';
 import { cellMax, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
@@ -14,7 +14,7 @@ import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, SENSE_INFO, speedGainO
 import { biasIndex, columns, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
-import { load, NO_TRAINING, save, type Saved, type TrainerId } from './store';
+import { load, NO_TRAINING, save, starterGenome, type Saved, type TrainerId } from './store';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -509,13 +509,13 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
   $('reset').onclick = () => ($('confirm') as HTMLDialogElement).showModal();
   $('cfNo').onclick = () => ($('confirm') as HTMLDialogElement).close();
   $('cfYes').onclick = () => {
-    W.saved = { ...W.saved, genome: defaultGenome(), train: NO_TRAINING };
+    W.saved = { ...W.saved, genome: starterGenome(), train: NO_TRAINING }; // a new random starter (plan §3c)
     W.sel = null; persist(); ($('confirm') as HTMLDialogElement).close(); buildTray(); render();
   };
   $('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
   addEventListener('resize', () => { fit(); render(); });
   fit(); buildTray(); buildTrainers(); render();
-  if (loaded.status === 'corrupt') { console.warn(`designer: saved brain unreadable (${loaded.why}); starting from the default brain`); toast('Your saved brain couldn’t be read, so this is the starting brain.'); persist(); }
+  if (loaded.status === 'corrupt') { console.warn(`designer: saved brain unreadable (${loaded.why}); starting from a new brain`); toast('Your saved brain couldn’t be read, so this is the starting brain.'); persist(); }
   else if (loaded.status === 'reset') { toast('Synapse has changed how brains work, so your brain was reset to the starting brain.', 6000); persist(); }
   else if (loaded.status === 'unavailable') { saveWarned = true; toast('This browser won’t keep your brain, so changes last until you close the tab.'); }
   raf = requestAnimationFrame(frame);

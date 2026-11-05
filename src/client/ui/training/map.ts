@@ -1,6 +1,8 @@
 // The training view's map (B6, mock-up reference/training-view-mockup.html): the whole of training track 0 in the
 // camera's bottom-right corner, the chequered finish across the road, every shown car as a dot and the highlighted
-// one ringed. A 2-D canvas, redrawn a few times a second.
+// one ringed. A 2-D canvas, redrawn a few times a second. On the figure eight the bridge is drawn last (tracks plan §2):
+// the road, the cars on the ground (those under the bridge hidden by it), the deck with a white edge and a soft
+// shadow, then the cars on it.
 import type { Track } from '../../../common/sim/track';
 import type { Dot } from '../../render/ghosts';
 
@@ -48,6 +50,7 @@ export class TrackMap {
     g.beginPath();
     for (let i = 0; i <= t.n; i++) { const k = i % t.n; if (i) g.lineTo(this.X(t.px[k]), this.Y(t.py[k])); else g.moveTo(this.X(t.px[k]), this.Y(t.py[k])); }
     g.stroke();
+    const roadW = g.lineWidth;
     // the chequered finish: a short band across the road at the start line
     {
       const i = t.startIdx, cx = this.X(t.px[i]), cy = this.Y(t.py[i]);
@@ -60,16 +63,36 @@ export class TrackMap {
       }
       g.restore();
     }
-    const hl = col('--spike', '#ffc21a');
+    this.cars(g, dots, 0, col);
+    if (t.crossing) {
+      // the deck: its samples in order from where it leaves the ground
+      let i0 = -1;
+      for (let i = 0; i < t.n; i++) if (t.deck[i] && !t.deck[(i - 1 + t.n) % t.n]) i0 = i;
+      const deck = () => {
+        g.beginPath();
+        for (let k = 0, i = i0; k < t.n && t.deck[i]; k++, i = (i + 1) % t.n) { if (k) g.lineTo(this.X(t.px[i]), this.Y(t.py[i])); else g.moveTo(this.X(t.px[i]), this.Y(t.py[i])); }
+      };
+      g.lineCap = 'butt';
+      g.save(); g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = 6 * pr; g.strokeStyle = col('--deck', '#8f9aae'); g.lineWidth = roadW + 3 * pr; deck(); g.stroke(); g.restore();
+      g.strokeStyle = '#ffffff'; g.lineWidth = roadW + 3 * pr; deck(); g.stroke();
+      g.strokeStyle = col('--deck', '#8f9aae'); g.lineWidth = roadW; deck(); g.stroke();
+      g.lineCap = 'round';
+      this.cars(g, dots, 1, col);
+    }
+  }
+
+  /** The cars on one deck (0: the ground, 1: the bridge), the highlighted one ringed and on top. */
+  private cars(g: CanvasRenderingContext2D, dots: readonly Dot[], deck: number, col: (v: string, d: string) => string): void {
+    const pr = this.pr, hl = col('--spike', '#ffc21a');
     for (const d of dots) {
-      if (d.hl) continue;
+      if (d.hl || (d.deck ?? 0) !== deck) continue;
       g.globalAlpha = Math.max(0.25, d.alpha);
       g.fillStyle = col('--accent', '#2f6fde');
       g.beginPath(); g.arc(this.X(d.x), this.Y(d.y), 2.6 * pr, 0, Math.PI * 2); g.fill();
     }
     g.globalAlpha = 1;
     for (const d of dots) {
-      if (!d.hl) continue;
+      if (!d.hl || (d.deck ?? 0) !== deck) continue;
       g.fillStyle = hl;
       g.beginPath(); g.arc(this.X(d.x), this.Y(d.y), 3.2 * pr, 0, Math.PI * 2); g.fill();
       g.strokeStyle = hl; g.lineWidth = 1.6 * pr;

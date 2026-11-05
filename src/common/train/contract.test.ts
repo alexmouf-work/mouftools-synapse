@@ -13,7 +13,7 @@ const nW = paramCount(defaultSpec());
 contractSuite(['evolution', 'backprop']);
 
 describe('the contract covers every registered trainer', () => {
-  it('evolution and backprop here, actor-critic and A_RP in contract-rl.test.ts', () => {
+  it('evolution and backprop here, actor-critic and A_RP in contract-ac.test.ts and contract-arp.test.ts', () => {
     expect([...trainerIds()].sort((a, b) => (a < b ? -1 : 1))).toEqual(['ac', 'arp', 'backprop', 'evolution']);
   });
 });

@@ -8,15 +8,17 @@
 // starts further into its episode than the one before (the offset grows with the generation's share of the run,
 // never shrinks, and leaves a few seconds to watch). A generation is shown at most once, in order; if training falls
 // behind, the last frame holds. When training ends, the champion's lap loops as the solid race car (never generation
-// 1 again). A ghost touching a wall flashes red; one whose episode ended early stays where it stopped, fading.
+// 1 again). A ghost touching a wall flashes red; one whose episode ended early stays where it stopped, fading. Each car's
+// place on the track comes from its recorded progress, never a nearest-sample search, so at the figure eight's crossing
+// it stays on its own road: up on the bridge (pitched on the ramps) or underneath, and drawn so on the map.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../../common/config';
-import { locate, type Track } from '../../common/sim/track';
+import type { Track } from '../../common/sim/track';
 import { PATH_EVERY, PATH_STRIDE, type Paths } from '../../common/train/episodes';
 import type { CarModel } from './car';
 import { assertCapacity, assertFiniteArray, setInstance } from './guard';
-import { toWorld, yawOf } from './trackMesh';
+import { liftAt, pitchOf, sampleOf, toWorld, yawOf } from './trackMesh';
 
 export const PLAY_SPEED = 12; // sim seconds per real second (principal 2026-11-04: "12x speed")
 export const MIN_SHOW_S = 2; // real seconds a generation stays before a newer one takes over
@@ -38,10 +40,10 @@ const GHOST_SCALE = 1.15;
 export const offsetFor = (f: number): number => Math.round(Math.max(0, Math.min(1, f)) * MAX_OFFSET);
 
 /** The champion's lap, replayed for display (per tick). */
-export interface Lap { x: Float64Array; y: Float64Array; hdg: Float64Array; v: Float64Array; ticks: number; gen: number }
+export interface Lap { x: Float64Array; y: Float64Array; hdg: Float64Array; v: Float64Array; prog: Float64Array; ticks: number; gen: number }
 interface Shown { paths: Paths; gen: number; offset: number; end: number; hl: number; order: Int32Array; revealed: number }
-/** One car on the map. */
-export interface Dot { x: number; y: number; hl: boolean; alpha: number }
+/** One car on the map (deck 1: on the figure eight's bridge, drawn over it). */
+export interface Dot { x: number; y: number; hl: boolean; alpha: number; deck: number }
 
 export class Swarm {
   readonly mesh: THREE.InstancedMesh;
@@ -62,9 +64,6 @@ export class Swarm {
   /** Sim tick on screen now (of the generation's episode, or of the champion's lap). */
   tick = 0;
   private lastHdg: number | null = null;
-  private readonly guess: Int32Array;
-  private carGuess = 0;
-  private fullSearch = false;
   /** Set when the view jumps to another generation (the camera snaps instead of flying across the track). */
   jumped = false;
   /** Track sample the camera follows: the highlighted car (story) or the champion (finale). */
@@ -72,10 +71,11 @@ export class Swarm {
   readonly dots: Dot[] = [];
   private readonly m4 = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
+  private readonly e = new THREE.Euler(0, 0, 0, 'YXZ');
+  private readonly lift = { h: 0, slope: 0 };
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
   private readonly c = new THREE.Color();
-  private readonly up = new THREE.Vector3(0, 1, 0);
   private readonly geo: THREE.BufferGeometry;
   private readonly mat: THREE.MeshBasicMaterial;
 
@@ -91,8 +91,8 @@ export class Swarm {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
-    this.guess = new Int32Array(capacity);
     car.car.visible = false;
+    car.car.rotation.order = 'YXZ';
   }
 
   get capacity(): number { return this.mesh.instanceMatrix.count; }
@@ -140,7 +140,7 @@ export class Swarm {
   finish(lap: Lap | null): void { this.ended = true; this.lap = lap; }
 
   /** Jump to t real seconds into what is on screen (deterministic: the result does not depend on earlier frames). */
-  seek(t: number): void { this.t = t; this.fullSearch = true; if (this.cur) this.cur.revealed = this.cur.paths.count; }
+  seek(t: number): void { this.t = t; if (this.cur) this.cur.revealed = this.cur.paths.count; }
   /** Real seconds into what is on screen (an audit puts it back after seeking, so the playback's timing is unchanged). */
   get at(): number { return this.t; }
 
@@ -151,13 +151,13 @@ export class Swarm {
     // the offset grows with the run, never shrinks; a car whose episode ended before it is already faded
     n.offset = Math.max(this.lastOffset, offsetFor(this.pendingF));
     this.lastOffset = n.offset;
-    this.cur = n; this.t = 0; this.fullSearch = true; this.jumped = true; this.lastHdg = null;
+    this.cur = n; this.t = 0; this.jumped = true; this.lastHdg = null;
     this.log.push({ gen: n.gen, offset: n.offset, at: this.clock });
   }
 
   private startFinale(): void {
     if (!this.track || !this.lap) return;
-    this.finaleOn = true; this.t = 0; this.carGuess = this.track.startIdx; this.jumped = true; this.lastHdg = null;
+    this.finaleOn = true; this.t = 0; this.jumped = true; this.lastHdg = null;
     this.log.push({ gen: this.lap.gen, offset: -1, at: this.clock });
   }
 
@@ -172,7 +172,7 @@ export class Swarm {
     if (this.finaleOn && this.lap) {
       let tau = this.t * TICK_HZ * FINALE_SPEED;
       const period = this.lap.ticks + 2 * TICK_HZ; // a short pause on the line between laps
-      if (tau >= period) { this.t = 0; tau = 0; this.carGuess = this.track.startIdx; }
+      if (tau >= period) { this.t = 0; tau = 0; }
       this.mesh.count = 0;
       this.tick = Math.min(Math.floor(tau), this.lap.ticks - 1);
       this.drawLap(tau, dt * FINALE_SPEED * TICK_HZ);
@@ -184,7 +184,6 @@ export class Swarm {
       this.car.car.visible = false;
       this.drawGhosts(tau, time, dt);
     }
-    this.fullSearch = false;
   }
 
   private drawGhosts(tau: number, time: number, dt: number): void {
@@ -198,8 +197,9 @@ export class Swarm {
       const pose = samplePath(d, S, i, ticks, tau);
       const ended = tau >= ticks;
       const fade = ended ? Math.max(FLOOR, 1 - (tau - ticks) / (TICK_HZ * PLAY_SPEED) / FADE_S) : 1;
-      toWorld(pose.x, pose.y, 0, this.p);
-      this.q.setFromAxisAngle(this.up, yawOf(pose.hdg));
+      const f = sampleOf(t, pose.prog), lift = liftAt(t, f, this.lift);
+      toWorld(pose.x, pose.y, lift.h, this.p);
+      this.q.setFromEuler(this.e.set(pitchOf(t, f, pose.hdg, lift.slope), yawOf(pose.hdg), 0));
       this.m4.compose(this.p, this.q, this.s.set(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE));
       setInstance(this.mesh, k, this.m4);
       const early = ticks < EP;
@@ -208,11 +208,9 @@ export class Swarm {
       else if (i === hl) this.c.setRGB(2.3, 1.7, 0.25).multiplyScalar(0.6 * fade); // the highlighted car: warm yellow
       else this.c.setRGB(0.45, 1.5, 2.2).multiplyScalar(0.55 * fade);
       this.mesh.setColorAt(k, this.c);
-      this.dots.push({ x: pose.x, y: pose.y, hl: i === hl, alpha: fade });
+      this.dots.push({ x: pose.x, y: pose.y, hl: i === hl, alpha: fade, deck: t.deck[Math.round(f) % t.n] });
       if (i === hl) {
-        const idx = locate(t, pose.x, pose.y, this.fullSearch ? t.startIdx : this.guess[i], this.fullSearch ? t.n >> 1 : 40);
-        this.guess[i] = idx;
-        this.focusIdx = idx;
+        this.focusIdx = Math.round(f) % t.n;
         this.sound(pose.hdg, ended ? 0 : pose.v, dt * PLAY_SPEED * TICK_HZ);
       }
     }
@@ -226,14 +224,13 @@ export class Swarm {
     const x = L.x[j] + (L.x[j1] - L.x[j]) * u, y = L.y[j] + (L.y[j1] - L.y[j]) * u;
     let dh = L.hdg[j1] - L.hdg[j]; dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
     const hdg = L.hdg[j] + dh * u, v = tau >= L.ticks ? 0 : L.v[j];
-    const idx = locate(t, x, y, this.carGuess, this.fullSearch ? t.n >> 1 : 40);
-    this.carGuess = idx;
-    this.focusIdx = idx;
+    const f = sampleOf(t, L.prog[j] + (L.prog[j1] - L.prog[j]) * u), lift = liftAt(t, f, this.lift);
+    this.focusIdx = Math.round(f) % t.n;
     this.dots.length = 0;
-    this.dots.push({ x, y, hl: true, alpha: 1 });
+    this.dots.push({ x, y, hl: true, alpha: 1, deck: t.deck[this.focusIdx] });
     car.car.visible = true;
-    toWorld(x, y, 0, car.car.position);
-    car.car.rotation.set(0, yawOf(hdg), 0);
+    toWorld(x, y, lift.h, car.car.position);
+    car.car.rotation.set(pitchOf(t, f, hdg, lift.slope), yawOf(hdg), 0);
     car.car.updateMatrix();
     assertFiniteArray(car.car.matrix.elements, 'champion car');
     const dist = (v * dTicks) / TICK_HZ;
@@ -266,6 +263,6 @@ function samplePath(d: Float64Array, S: number, i: number, ticks: number, tau: n
   dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
   return {
     x: d[a] + (d[b] - d[a]) * u, y: d[a + 1] + (d[b + 1] - d[a + 1]) * u, hdg: d[a + 2] + dh * u,
-    v: d[a + 3] + (d[b + 3] - d[a + 3]) * u, wall: d[a + 4] > 0,
+    v: d[a + 3] + (d[b + 3] - d[a + 3]) * u, wall: d[a + 4] > 0, prog: d[a + 5] + (d[b + 5] - d[a + 5]) * u,
   };
 }

@@ -32,14 +32,17 @@ describe('car', () => {
   });
   it('accelerates at the limit to wheel speed and turns toward the slower side', () => {
     const t = generateTrack(4);
-    const c = startCar(t);
+    // off any boost pad (the new families' straight starts often have one on the line)
+    let i0 = t.startIdx;
+    while (t.padAt[i0] >= 0 || t.padAt[(i0 + 1) % t.n] >= 0) i0 = (i0 + 1) % t.n;
+    const c = startCar(t, i0);
     stepPhysics(c, t, 1, 1, 1, 1);
     expect(c.v).toBeCloseTo(CONFIG.car.accel / CONFIG.tick.hz, 12);
-    const d = startCar(t), h0 = d.hdg;
+    const d = startCar(t, i0), h0 = d.hdg;
     for (let k = 0; k < 10; k++) stepPhysics(d, t, 1, 0.6, 1, 0.6); // left side faster → turns right (clockwise)
     const dh = Math.atan2(Math.sin(d.hdg - h0), Math.cos(d.hdg - h0));
     expect(dh).toBeLessThan(0);
-    const e = startCar(t);
+    const e = startCar(t, i0);
     for (let k = 0; k < 20; k++) stepPhysics(e, t, 0, 0, 0, 0);
     expect(e.v).toBe(0);
     expect(e.prog).toBe(0);

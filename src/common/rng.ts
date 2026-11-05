@@ -31,6 +31,8 @@ export const TAG = {
   trainNoise: 4,
   raceNoise: 5,
   trainer: 6,
+  family: 7,
+  starter: 8,
 } as const;
 
 export class Rng {

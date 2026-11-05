@@ -12,6 +12,7 @@ import { defaultSpec } from '../../src/common/sim/spec';
 import { runDrive } from '../../src/common/sim/race';
 import { phaseBudget, phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
+import { fixtureBrain } from './fixture';
 
 const SEED = 7, GENS = 25;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -36,6 +37,7 @@ async function main() {
   const errors: string[] = [];
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await fixtureBrain(page.context());
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`${base}?seed=${SEED}&T=500000`);

@@ -6,7 +6,7 @@
 import { atan2, cos, PI, sin, wrapAngle } from '../fmath';
 import { SENSE_CODE, type Net } from './brain';
 import { fieldAct, gridAct, hdAct, speedAct } from './senses';
-import { castRay, type Track } from './track';
+import { castRay, hiddenLayer, type Track } from './track';
 import type { CarState } from './car';
 
 const DEG = PI / 180;
@@ -23,9 +23,10 @@ export function bearingDir(hdg: number, deg: number): { dx: number; dy: number }
  */
 export function boundaryValue(c: CarState, t: Track, dir: number, w: number, R: number, keep?: Float64Array, at = 0): number {
   let best = 0, bd = R, be = 0;
+  const skip = hiddenLayer(t, c.idx); // at the figure eight's crossing, the other pass's walls are not seen
   for (let j = -1; j <= 1; j++) {
     const off = (j * w) / 2, { dx, dy } = bearingDir(c.hdg, dir + off);
-    const d = castRay(t.grid, c.x, c.y, dx, dy, R), a = fieldAct(off, d, R, w);
+    const d = castRay(t.grid, c.x, c.y, dx, dy, R, skip), a = fieldAct(off, d, R, w);
     if (a > best) { best = a; bd = d; be = fieldAct(off, 0, R, w); }
   }
   if (keep) { keep[at] = bd; keep[at + 1] = be; }

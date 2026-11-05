@@ -136,7 +136,7 @@ export class Stage {
     const strip = fadeNear(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.9, 2.5), side: THREE.DoubleSide }));
     this.mats = {
       road: new THREE.MeshStandardMaterial({ map: this.tex.road, roughness: 0.78, metalness: 0, side: THREE.DoubleSide }),
-      kerb: vc, runoff: vc, wall: vc, wallTop: vc, skirt: vc, strip,
+      kerb: vc, runoff: vc, wall: vc, wallTop: vc, skirt: vc, soffit: vc, pillar: vc, strip,
       pad: new THREE.MeshBasicMaterial({ map: this.tex.boost, color: new THREE.Color(1.7, 1.5, 1.4), transparent: true, opacity: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
       start: new THREE.MeshStandardMaterial({ map: this.tex.checker, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 }),
     };
@@ -161,7 +161,7 @@ export class Stage {
     for (const p of trackParts(t)) {
       const m = new THREE.Mesh(p.geometry, this.mats[p.key]);
       m.receiveShadow = p.key !== 'strip' && p.key !== 'pad';
-      m.castShadow = p.key === 'wall' || p.key === 'skirt';
+      m.castShadow = p.key === 'wall' || p.key === 'skirt' || p.key === 'soffit' || p.key === 'pillar';
       if (p.key === 'strip' || p.key === 'pad') m.userData.glow = true;
       this.world.add(m);
     }

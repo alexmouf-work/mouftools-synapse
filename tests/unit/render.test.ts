@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { defaultSpec, paramCount } from '../../src/common/sim/spec';
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
-import { generateTrack } from '../../src/common/sim/track';
+import { generateTrack, trackOfFamily } from '../../src/common/sim/track';
 import { PATH_STRIDE, type Paths } from '../../src/common/train/episodes';
 import { makeCar } from '../../src/client/render/car';
 import { MAX_GHOSTS, MAX_OFFSET, MIN_SHOW_S, offsetFor, Swarm } from '../../src/client/render/ghosts';
@@ -13,7 +13,7 @@ import { assertFiniteGeometry, setInstance } from '../../src/client/render/guard
 import { buildScenery } from '../../src/client/render/scenery';
 import { buildStadium } from '../../src/client/render/stadium';
 import { runDrive } from '../../src/common/sim/race';
-import { trackParts } from '../../src/client/render/trackMesh';
+import { BRIDGE_H, liftOf, trackParts, WALL_OUT } from '../../src/client/render/trackMesh';
 
 /** Cars driving along a real track's centreline, some stopping early. */
 function paths(t: ReturnType<typeof generateTrack>, count: number, samples = 200): Paths {
@@ -22,7 +22,7 @@ function paths(t: ReturnType<typeof generateTrack>, count: number, samples = 200
     ticks[i] = i % 3 === 0 ? 120 + i : 400;
     for (let j = 0; j < samples; j++) {
       const k = (t.startIdx + j * 2 + (i % 5)) % t.n, q = (i * samples + j) * PATH_STRIDE;
-      data[q] = t.px[k]; data[q + 1] = t.py[k]; data[q + 2] = t.th[k]; data[q + 3] = 40; data[q + 4] = j % 7 === 0 ? 1 : 0;
+      data[q] = t.px[k]; data[q + 1] = t.py[k]; data[q + 2] = t.th[k]; data[q + 3] = 40; data[q + 4] = j % 7 === 0 ? 1 : 0; data[q + 5] = (j * 2 + (i % 5)) * t.ds;
     }
   }
   return { count, ids: Int32Array.from({ length: count }, (_, i) => i), w: new Float64Array(count * nW), nW, hl: count > 1 ? 1 : 0, hlProg: 0, act: new Float64Array(0), nN: 0, samples, data, ticks };
@@ -80,8 +80,8 @@ describe('render guards', () => {
     const offs = sw.log.map((l) => l.offset);
     expect(offs).toEqual([0, offsetFor(0.2), offsetFor(0.2)]);
     expect(offsetFor(1)).toBe(MAX_OFFSET);
-    const n = 600, lap = { x: new Float64Array(n), y: new Float64Array(n), hdg: new Float64Array(n), v: new Float64Array(n).fill(40), ticks: n, gen: 7 };
-    for (let k = 0; k < n; k++) { const i = (t.startIdx + k) % t.n; lap.x[k] = t.px[i]; lap.y[k] = t.py[i]; lap.hdg[k] = t.th[i]; }
+    const n = 600, lap = { x: new Float64Array(n), y: new Float64Array(n), hdg: new Float64Array(n), v: new Float64Array(n).fill(40), prog: new Float64Array(n), ticks: n, gen: 7 };
+    for (let k = 0; k < n; k++) { const i = (t.startIdx + k) % t.n; lap.x[k] = t.px[i]; lap.y[k] = t.py[i]; lap.hdg[k] = t.th[i]; lap.prog[k] = k * t.ds; }
     sw.finish(lap);
     step(0.2);
     expect(sw.finale).toBe(true);
@@ -90,6 +90,22 @@ describe('render guards', () => {
     expect(sw.finale).toBe(true);
     expect(sw.log.map((l) => l.gen)).toEqual([1, 3, 7, 7]); // the champion's lap last, never generation 1 again
     expect(sw.log[3].offset).toBe(-1);
+  });
+  it('the figure eight\'s bridge: lifted only on its deck, an underside, pillars off the road below, all finite', () => {
+    for (let s = 1; s <= 8; s++) {
+      const t = trackOfFamily(s, 'eight'), h = liftOf(t), parts = trackParts(t); // every part is checked finite inside
+      for (let i = 0; i < t.n; i++) { expect(h[i] > 0).toBe(t.deck[i] === 1 && h[i] > 0); if (!t.deck[i]) expect(h[i]).toBe(0); }
+      expect(h[t.crossing!.upper]).toBe(BRIDGE_H);
+      expect(h[t.crossing!.lower]).toBe(0);
+      expect(parts.some((p) => p.key === 'soffit')).toBe(true);
+      const pil = parts.find((p) => p.key === 'pillar')!.geometry.attributes.position;
+      const low = t.crossing!.lower;
+      for (let k = 0; k < pil.count; k++) for (let j = low - 40; j <= low + 40; j++) {
+        const q = ((j % t.n) + t.n) % t.n, dx = pil.getX(k) - t.px[q], dz = pil.getZ(k) + t.py[q];
+        expect(dx * dx + dz * dz).toBeGreaterThan((WALL_OUT + 0.5) * (WALL_OUT + 0.5));
+      }
+    }
+    for (const f of ['loop', 'kidney', 'clover'] as const) expect(trackParts(trackOfFamily(3, f)).some((p) => p.key === 'soffit' || p.key === 'pillar')).toBe(false);
   });
   it('the finish flags: two, finite, clear of the road, for 50 seeds', () => {
     for (let s = 1; s <= 50; s++) {

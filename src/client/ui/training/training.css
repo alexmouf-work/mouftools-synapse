@@ -5,9 +5,9 @@
 [hidden] { display: none !important; }
 body.training { overflow: hidden; }
 body.training #rotate { display: none !important; }
-:root { --tv-w: min(20vw, 280px); --road: #c9d0dc; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --road: #3a4250; } }
-:root[data-theme="dark"] { --road: #3a4250; }
+:root { --tv-w: min(20vw, 280px); --road: #c9d0dc; --deck: #8f9aae; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --road: #3a4250; --deck: #7c889e; } }
+:root[data-theme="dark"] { --road: #3a4250; --deck: #7c889e; }
 .tv { position: fixed; inset: 0; background: #0b1226; }
 #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #arena.train #scene { left: var(--tv-w); width: calc(100% - var(--tv-w)); }

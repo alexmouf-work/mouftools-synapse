@@ -25,7 +25,7 @@ export const RESULT_STRIDE = 3;
  * without it gives the same numbers (tested).
  */
 export const PATH_EVERY = 2; // ticks between samples
-export const PATH_STRIDE = 5; // x, y, hdg, v, wall (1 if touching a wall)
+export const PATH_STRIDE = 6; // x, y, hdg, v, wall (1 if touching a wall), progress (m: which road it is on, for the view)
 export interface Paths {
   /** Policies recorded. */
   count: number;
@@ -88,7 +88,7 @@ export class EpisodeCore {
   private rec: Recording | null = null;
   private lanes: RolloutCore | null = null;
   constructor(readonly s: EpisodeSetup) {
-    this.tracks = s.trackSeeds.map(generateTrack);
+    this.tracks = s.trackSeeds.map((seed) => generateTrack(seed));
     this.net = compile(zeroGenome(s.spec));
   }
   rollout(job: RolloutJob): LaneOut[] {
@@ -129,7 +129,7 @@ export class EpisodeCore {
             let wall = 0;
             for (let u = t; u < Math.min(t + PATH_EVERY, r.ticks); u++) wall |= rec.wall[u];
             paths.data[q] = rec.x[t]; paths.data[q + 1] = rec.y[t]; paths.data[q + 2] = rec.hdg[t];
-            paths.data[q + 3] = rec.v[t]; paths.data[q + 4] = wall;
+            paths.data[q + 3] = rec.v[t]; paths.data[q + 4] = wall; paths.data[q + 5] = rec.prog[t];
           }
         }
       }

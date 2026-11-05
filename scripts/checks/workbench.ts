@@ -21,6 +21,7 @@ import { defaultGenome, genomeHash, restRate, weightCount, zeroGenome } from '..
 import { layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
 import { biasIndex, defaultSpec, fieldIndex, paramCount, type BrainSpec, type Genome } from '../../src/common/sim/spec';
 import { parse, SAVE_KEY, serialize, startSaved } from '../../src/client/ui/designer/store';
+import { fixtureBrain, isStarter } from './fixture';
 
 const OUT = 'out/s2';
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -83,6 +84,7 @@ async function main() {
   const errors: string[] = [];
   async function open(o: { w: number; h: number; dark?: boolean; save?: string; mobile?: boolean }): Promise<Page> {
     const ctx = await browser.newContext({ viewport: { width: o.w, height: o.h }, colorScheme: o.dark ? 'dark' : 'light', isMobile: o.mobile, hasTouch: o.mobile });
+    await fixtureBrain(ctx);
     const page = await ctx.newPage();
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -170,7 +172,11 @@ async function main() {
     check((await spec(page)).layers.length === 8, 'Reset → Cancel keeps the brain');
     await page.click('#reset');
     await page.click('#cfYes');
-    check(genomeHash((await saved(page)).genome) === genomeHash(defaultGenome()), 'Reset → Reset goes back to the starting brain');
+    const r1 = (await saved(page)).genome;
+    await page.click('#reset');
+    await page.click('#cfYes');
+    const r2 = (await saved(page)).genome;
+    check(isStarter(r1) && isStarter(r2) && (await page.locator('#net g.cell').count()) > 0, `Reset → Reset gives a new random starter, valid both times (${JSON.stringify(r1.spec.senses)}, ${JSON.stringify(r2.spec.senses)})`);
 
     // 7. Train asks how many generations
     await page.click('#train');
@@ -181,20 +187,21 @@ async function main() {
     check(!(await page.locator('#trainDlg').isVisible()) && !(await page.locator('#arena').isVisible()), 'Cancel closes it without training');
 
     // 8. reload keeps the brain
+    const grids = (await spec(page)).senses.grid;
     await page.click('#tray [data-s="grid"]');
     const h = genomeHash((await saved(page)).genome);
     await page.reload();
     await page.waitForSelector('#net g.cell');
-    check(genomeHash((await saved(page)).genome) === h && (await spec(page)).senses.grid === 1, 'reload keeps the brain');
+    check(genomeHash((await saved(page)).genome) === h && (await spec(page)).senses.grid === grids + 1, 'reload keeps the brain');
     await page.context().close();
 
     // 9. a corrupt save, and a save from before brain v2
     page = await open({ w: 1440, h: 900, save: '{"v":3,' });
-    check(genomeHash((await saved(page)).genome) === genomeHash(defaultGenome()) && (await toastText(page)).includes('couldn’t be read'), `corrupt save → the starting brain, toast "${await toastText(page)}"`);
+    check(isStarter((await saved(page)).genome) && (await toastText(page)).includes('couldn’t be read'), `corrupt save → a new starting brain, toast "${await toastText(page)}"`);
     await page.context().close();
     const v1: Genome = { spec: { v: 1, layers: 1, nodes: [], conns: [] } as unknown as BrainSpec, w: [] };
     page = await open({ w: 1440, h: 900, save: JSON.stringify({ v: 2, name: 'Old', nextId: 1, train: { seed: 3, phases: 2 }, genome: v1 }) });
-    check(genomeHash((await saved(page)).genome) === genomeHash(defaultGenome()) && (await toastText(page)).includes('changed how brains work'), `a save from before brain v2 is reset, with a note: "${await toastText(page)}"`);
+    check(isStarter((await saved(page)).genome) && (await toastText(page)).includes('changed how brains work'), `a save from before brain v2 is reset to a new starter, with a note: "${await toastText(page)}"`);
     await page.reload();
     await page.waitForSelector('#net g.cell');
     check((await page.locator('#toast').isHidden()), 'the note shows once');

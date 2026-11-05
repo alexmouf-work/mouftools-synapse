@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import { Hasher } from '../../src/common/hash';
-import { castRay, generateTrack, type Track } from '../../src/common/sim/track';
+import { castRay, crossings, FAMILIES, familyOf, generateTrack, hiddenLayer, trackOfFamily, type Track } from '../../src/common/sim/track';
+import { startCar, stepPhysics } from '../../src/common/sim/car';
 import { Rng } from '../../src/common/rng';
 
 const C = CONFIG.track;
@@ -27,6 +28,12 @@ function checkTrack(t: Track): void {
     expect(Math.min(d, t.n - d) * t.ds).toBeGreaterThanOrEqual(C.padApart - 1e-9);
   }
   expect(Math.abs(t.curv[t.startIdx])).toBeLessThan(C.straightCurv);
+  // nothing on the figure eight's crossing: no start, pad or gate on the ramps (or under them)
+  expect(t.layer[t.startIdx]).toBe(0);
+  for (const p of t.pads) for (let j = 0; j < p.n; j++) expect(t.layer[(p.i0 + j) % t.n]).toBe(0);
+  for (const g of t.gates) expect(t.layer[g]).toBe(0);
+  expect(t.crossing !== null).toBe(t.family === 'eight');
+  if (t.family !== 'eight') expect(Math.max(...t.layer, ...t.deck)).toBe(0);
 }
 
 /** Brute-force O(n²) version of the "far parts apart" rule, independent of the generator's grid. */
@@ -34,6 +41,7 @@ function bruteFarApart(t: Track): boolean {
   for (let i = 0; i < t.n; i++) for (let j = i + 1; j < t.n; j++) {
     const d = j - i;
     if (Math.min(d, t.n - d) * t.ds <= C.farAlong) continue;
+    if (t.layer[i] && t.layer[j] && t.layer[i] !== t.layer[j]) continue; // the declared crossing
     const ex = t.px[j] - t.px[i], ey = t.py[j] - t.py[i];
     if (ex * ex + ey * ey < C.farApart * C.farApart) return false;
   }
@@ -44,8 +52,82 @@ describe('track generator', () => {
   it('1000 seeds give valid tracks', () => {
     for (let s = 1; s <= 1000; s++) checkTrack(generateTrack(s));
   });
-  it('no near-overlaps (brute force, 40 seeds)', () => {
+  it('no near-overlaps (brute force, 40 seeds and 5 of each family)', () => {
     for (let s = 1; s <= 40; s++) expect(bruteFarApart(generateTrack(s))).toBe(true);
+    for (const f of FAMILIES) for (let s = 1; s <= 5; s++) expect(bruteFarApart(trackOfFamily(s, f))).toBe(true);
+  });
+  it('the seed picks the family: all seven, about equally, and every family gives valid tracks', () => {
+    const count: Record<string, number> = {};
+    for (let s = 1; s <= 700; s++) count[familyOf(s)] = (count[familyOf(s)] ?? 0) + 1;
+    expect(Object.keys(count).sort()).toEqual([...FAMILIES].sort());
+    for (const f of FAMILIES) expect(count[f]).toBeGreaterThan(60);
+    for (let s = 1; s <= 50; s++) expect(generateTrack(s).family).toBe(familyOf(s));
+    for (const f of FAMILIES) for (let s = 1; s <= 40; s++) { const t = trackOfFamily(s, f); expect(t.family).toBe(f); checkTrack(t); }
+  });
+  it('the figure eight: one crossing at 60–120°, both passes nearly straight across it, the bridge the second pass', () => {
+    for (let s = 1; s <= 40; s++) {
+      const t = trackOfFamily(s, 'eight'), x = crossings(t.px, t.py, t.n, t.ds);
+      expect(x.length).toBe(1);
+      const { lower, upper } = t.crossing!;
+      expect([lower, upper].sort((a, b) => a - b)).toEqual(x[0]);
+      const dot = t.tx[lower] * t.tx[upper] + t.ty[lower] * t.ty[upper];
+      expect(Math.abs(dot)).toBeLessThanOrEqual(0.5 + 1e-12); // 60–120°
+      expect((upper - t.startIdx + t.n) % t.n).toBeGreaterThan((lower - t.startIdx + t.n) % t.n); // second from the start
+      const reach = (C.crossFlat + C.crossRamp) / t.ds, circ = (a: number, b: number) => Math.min(Math.abs(a - b), t.n - Math.abs(a - b));
+      for (let i = 0; i < t.n; i++) {
+        expect(t.deck[i]).toBe(circ(i, upper) <= reach ? 1 : 0); // a pure function of the sample index
+        expect(t.layer[i]).toBe(circ(i, upper) <= reach ? 2 : circ(i, lower) <= reach ? 1 : 0);
+        if (t.layer[i]) expect(Math.abs(t.curv[i])).toBeLessThanOrEqual(C.crossCurv);
+      }
+    }
+  });
+  it('at the crossing a ray skips the other pass\'s walls (and only there), equal to brute force over what it may see', () => {
+    for (let s = 1; s <= 6; s++) {
+      const t = trackOfFamily(s, 'eight'), g = t.grid, r = new Rng(s);
+      const brute = (x: number, y: number, dx: number, dy: number, skip: number) => {
+        let best = 80;
+        for (let k = 0; k < g.seg.length; k += 4) {
+          if (skip && g.layer[k / 4] === skip) continue;
+          const ex = g.seg[k + 2], ey = g.seg[k + 3], den = dx * ey - dy * ex;
+          if (Math.abs(den) < 1e-12) continue;
+          const wx = g.seg[k] - x, wy = g.seg[k + 1] - y, tt = (wx * ey - wy * ex) / den, u = (wx * dy - wy * dx) / den;
+          if (tt >= 0 && u >= -1e-9 && u <= 1 + 1e-9 && tt < best) best = tt;
+        }
+        return best;
+      };
+      for (const at of [t.crossing!.lower, t.crossing!.upper]) {
+        const skip = hiddenLayer(t, at);
+        expect(skip).toBe(at === t.crossing!.lower ? 2 : 1);
+        for (let k = 0; k < 200; k++) {
+          const i = (at + r.int(60) - 30 + t.n) % t.n, a = r.range(-Math.PI, Math.PI), dx = Math.cos(a), dy = Math.sin(a);
+          expect(castRay(g, t.px[i], t.py[i], dx, dy, 80, hiddenLayer(t, i))).toBeCloseTo(brute(t.px[i], t.py[i], dx, dy, hiddenLayer(t, i)), 9);
+        }
+        // across the crossing, sideways to the other pass: without the skip its wall is 12.5 m away; with it, only
+        // this pass's own walls (further, as the passes cross at an angle)
+        const o = at === t.crossing!.lower ? t.crossing!.upper : t.crossing!.lower, nx = -t.ty[o], ny = t.tx[o];
+        // (the crossing's sample is up to a sample's length from the exact crossing point)
+        expect(Math.abs(castRay(g, t.px[at], t.py[at], nx, ny, 80) - t.wallOff)).toBeLessThan(1.5);
+        expect(castRay(g, t.px[at], t.py[at], nx, ny, 80, skip)).toBeGreaterThan(t.wallOff + 5);
+      }
+    }
+  });
+  it('a car keeps its own road through the crossing, and cutting across it is a wall', () => {
+    for (let s = 1; s <= 10; s++) {
+      const t = trackOfFamily(s, 'eight'), circ = (a: number, b: number) => Math.min(Math.abs(a - b), t.n - Math.abs(a - b));
+      for (const pass of [t.crossing!.lower, t.crossing!.upper]) {
+        // straight through: from 40 m before the crossing to 40 m after, never on the other pass
+        const c = startCar(t, (pass - 20 + t.n) % t.n);
+        let walls = 0;
+        for (let k = 0; k < 60 && circ(c.idx, pass) < 25; k++) { if (stepPhysics(c, t, 0.6, 0.6, 0.6, 0.6)) walls++; expect(circ(c.idx, pass)).toBeLessThan(30); }
+        expect(walls).toBe(0);
+        // turned onto the other road at the crossing: it hits this road's wall, it does not switch roads
+        const o = pass === t.crossing!.lower ? t.crossing!.upper : t.crossing!.lower, d = startCar(t, pass);
+        d.hdg = t.th[o];
+        let hit = false;
+        for (let k = 0; k < 40; k++) { hit = stepPhysics(d, t, 0.5, 0.5, 0.5, 0.5) || hit; expect(circ(d.idx, pass)).toBeLessThan(circ(d.idx, o)); }
+        expect(hit).toBe(true);
+      }
+    }
   });
   it('is deterministic', () => {
     const h = (t: Track) => new Hasher().f64s(t.px).f64s(t.py).u32(t.startIdx).hex();

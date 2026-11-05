@@ -263,7 +263,7 @@ function championLap(g: Genome, t: Track, gen: number) {
   const net = compile(g);
   const rec = newRecording(net, CONFIG.drive.ticks);
   new Runner().run(net, t, { ticks: CONFIG.drive.ticks, earlyStop: false, record: rec });
-  return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, ticks: rec.ticks, gen, rec };
+  return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, prog: rec.prog, ticks: rec.ticks, gen, rec };
 }
 
 function close(hooks: TrainingHooks) {

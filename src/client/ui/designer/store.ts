@@ -1,12 +1,13 @@
 // The designer's saved brain: versioned JSON in localStorage. Storage can be missing or throw (private windows,
-// blocked site data), so every access is guarded and the designer always has a brain: a missing save starts from the
-// default brain quietly; a broken one starts from it and says so; a save from before brain v2 (versions 1 and 2) is
+// blocked site data), so every access is guarded and the designer always has a brain. A new brain is the random
+// starter (brain v2 plan §3c: 2–6 input cells, one always a boundary vector cell), seeded from crypto: a missing save
+// starts from one quietly; a broken one starts from it and says so; a save from before brain v2 (versions 1 and 2) is
 // reset to the default brain with a one-time note (Synapse changed how brains work). A brain v2 save from before the
 // built-in biases (a weight per wire only) loads with every bias at 0. A save from before the temperature slider (B2d)
 // has no `temps`: its phases ran at 0 (×1). A save from before the learned fields (B2e) gets every field at its
 // default (0).
-import { defaultGenome, genomeToJSON } from '../../../common/sim/brain';
-import { biasCount, fieldCount, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
+import { genomeToJSON, zeroGenome } from '../../../common/sim/brain';
+import { biasCount, fieldCount, starterSpec, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
 import { validTemperature } from '../../../common/train/trainer';
 
 export const SAVE_KEY = 'synapse.brain';
@@ -25,7 +26,12 @@ export interface Saved { name: string; genome: Genome; train: TrainInfo; trainer
 export const NO_TRAINING: TrainInfo = { seed: null, phases: 0, temps: [] };
 export type LoadStatus = 'ok' | 'missing' | 'corrupt' | 'reset' | 'unavailable';
 
-export const startSaved = (): Saved => ({ name: DEFAULT_NAME, genome: defaultGenome(), train: NO_TRAINING, trainer: 'evolution' });
+/** A fresh random seed for a new brain (browser crypto; never used inside the sim). */
+const freshSeed = (): number => crypto.getRandomValues(new Uint32Array(1))[0];
+/** A new brain's genome: the random starter, untrained (every weight, bias and field parameter 0). */
+export const starterGenome = (seed: number = freshSeed()): Genome => zeroGenome(starterSpec(seed));
+/** A new brain: the first visit, Reset, a save from before brain v2, or one that can't be read. */
+export const startSaved = (genome: Genome = starterGenome()): Saved => ({ name: DEFAULT_NAME, genome, train: NO_TRAINING, trainer: 'evolution' });
 
 export function serialize(s: Saved): string {
   return JSON.stringify({ v: SAVE_VERSION, name: s.name, trainer: s.trainer, train: s.train, genome: JSON.parse(genomeToJSON(s.genome)) as Genome });

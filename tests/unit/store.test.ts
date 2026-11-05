@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
-import { parse, serialize, startSaved } from '../../src/client/ui/designer/store';
-import { biasCount, fieldCount, wireCount } from '../../src/common/sim/spec';
+import { parse, serialize, startSaved, starterGenome } from '../../src/client/ui/designer/store';
+import { biasCount, fieldCount, SENSE_IDS, starterSpec, validateGenome, wireCount, type Genome } from '../../src/common/sim/spec';
+
+/** A new brain (plan §3c): 2–6 input cells, at least one boundary vector cell, 3 tanh neurons, untrained. */
+function expectStarter(g: Genome): void {
+  validateGenome(g);
+  const n = SENSE_IDS.reduce((a, id) => a + g.spec.senses[id], 0);
+  expect(n).toBeGreaterThanOrEqual(2);
+  expect(n).toBeLessThanOrEqual(6);
+  expect(g.spec.senses.boundary).toBeGreaterThanOrEqual(1);
+  expect(g.spec.layers).toEqual([{ n: 3, fn: 'tanh' }]);
+  expect(g.w.every((w) => w === 0)).toBe(true);
+}
 
 describe('designer save', () => {
   it('round-trips name, trainer, training history and the genome exactly', () => {
@@ -21,7 +32,7 @@ describe('designer save', () => {
       expect(r.status).toBe('reset');
       expect(r.saved.name).toBe('Old');
       expect(r.saved.train).toEqual({ seed: null, phases: 0, temps: [] });
-      expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
+      expectStarter(r.saved.genome);
       expect(parse(serialize(r.saved)).status).toBe('ok'); // once: saved back as v3
     }
   });
@@ -37,7 +48,21 @@ describe('designer save', () => {
   it('missing → the starting brain, quietly', () => {
     const r = parse(null);
     expect(r.status).toBe('missing');
-    expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
+    expectStarter(r.saved.genome);
+  });
+  it('the random starter: 2–6 cells (every count), always a boundary vector cell, every sense drawn; seeded', () => {
+    const counts = new Set<number>(), seen = new Set<string>();
+    for (let seed = 0; seed < 2000; seed++) {
+      const s = starterSpec(seed), g = { spec: s, w: new Array(starterGenome(seed).w.length).fill(0) };
+      expectStarter(g);
+      counts.add(SENSE_IDS.reduce((a, id) => a + s.senses[id], 0));
+      for (const id of SENSE_IDS) if (s.senses[id] > (id === 'boundary' ? 1 : 0)) seen.add(id);
+      expect(starterSpec(seed)).toEqual(s); // the same seed, the same brain
+    }
+    expect([...counts].sort()).toEqual([2, 3, 4, 5, 6]);
+    expect([...seen].sort()).toEqual([...SENSE_IDS].sort()); // copies of the boundary cell too
+    expectStarter(startSaved().genome);
+    expect(new Set(Array.from({ length: 40 }, () => JSON.stringify(startSaved().genome.spec))).size).toBeGreaterThan(5); // crypto-seeded
   });
   const good = JSON.parse(serialize(startSaved()));
   const corrupt: [string, string][] = [
@@ -55,7 +80,7 @@ describe('designer save', () => {
     it(`corrupt (${what}) → the starting brain, flagged`, () => {
       const r = parse(text);
       expect(r.status).toBe('corrupt');
-      expect(genomeHash(r.saved.genome)).toBe(genomeHash(defaultGenome()));
+      expectStarter(r.saved.genome);
     });
   }
 });

@@ -19,6 +19,7 @@ import { runDrive } from '../../src/common/sim/race';
 import { defaultSpec, type Genome } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
+import { fixtureBrain } from './fixture';
 
 const SEED = 7, T = 300_000, GENS = 10;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
@@ -92,6 +93,7 @@ async function main() {
 
   try {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await fixtureBrain(ctx);
     const page = await ctx.newPage();
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));

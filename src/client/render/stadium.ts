@@ -1,7 +1,9 @@
 // The drive view's stadium, from the look mock-up ("FIRE"): a grandstand with a crowd and a SYNAPSE banner by the
 // start, a start gate and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards on tight corners, and the
 // broadcast camera spots. Built from a sim Track; textures are passed in so Node tests can build it without a canvas.
-// Lit surfaces stay under the bloom threshold; lit bands and lamp heads are tagged glow.
+// Lit surfaces stay under the bloom threshold; lit bands and lamp heads are tagged glow. Every stand, board, light and
+// camera spot goes on the side of the road that is clear of the rest of the track (the hairpin's, clover's and figure
+// eight's other roads can be close), and none by the figure eight's crossing.
 import * as THREE from 'three';
 import { Rng } from '../../common/rng';
 import type { Track } from '../../common/sim/track';
@@ -39,14 +41,34 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
     return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
   };
   const glow = <T extends THREE.Object3D>(o: T) => { o.userData.glow = true; return o; };
+  /** Every point `o` m to `side` of samples i + k (k over ks) is at least `gap` m from the centreline, off the crossing. */
+  const clear = (i: number, side: number, ks: readonly number[], os: readonly number[], gap: number) => {
+    for (const k of ks) {
+      const j = ((i + k) % t.n + t.n) % t.n;
+      if (t.layer[j]) return false;
+      for (const o of os) {
+        at(t, j, side * o, 0, v0);
+        for (let q = 0; q < t.n; q += 2) { const dx = v0.x - t.px[q], dz = v0.z + t.py[q]; if (dx * dx + dz * dz < gap * gap) return false; }
+      }
+    }
+    return true;
+  };
+  /** The side (±1) to put something on, the outside first, or 0 if neither is clear. */
+  const sideFor = (i: number, ks: readonly number[], os: readonly number[], gap: number) => {
+    const s = outSide(i);
+    return clear(i, s, ks, os, gap) ? s : clear(i, -s, ks, os, gap) ? -s : 0;
+  };
   const litMat = M(fadeNear(new THREE.MeshBasicMaterial({ color: LIT })));
 
   // grandstand on the outside of the start straight
   {
-    const i = (t.startIdx + Math.round(34 / t.ds)) % t.n, s = outSide(i);
+    const i = (t.startIdx + Math.round(34 / t.ds)) % t.n, LEN = 120, tiers = 8;
+    const along = [-30, -15, 0, 15, 30].map((m) => Math.round(m / t.ds)), deep = [WALL_OUT + 5, WALL_OUT + 15, WALL_OUT + 5 + tiers * 2.4 + 6];
+    const s = sideFor(i, along, deep, WALL_OUT + 2) || outSide(i);
     const g = new THREE.Group();
-    const LEN = 120, tiers = 8;
-    const seatMats = [M(new THREE.MeshStandardMaterial({ color: '#1f5eff', roughness: 0.6, flatShading: true })), M(new THREE.MeshStandardMaterial({ color: '#dfe5f0', roughness: 0.6, flatShading: true }))];
+    const seatMats = [M(new THREE.MeshStandardMaterial({ color: '#1f5eff', roughness: 0.6, flatShading: true })), M(new THREE.MeshStandardMaterial({ color: '#c3cad8', roughness: 0.8, flatShading: true }))];
+    // the pale tiers and crowd are toned down and matte: since B5 a track can face any way, and a near-white tier or
+    // spectator square to a low sun went over the bloom threshold (1.61 at the drive check's start)
     const crowd = new THREE.InstancedMesh(G(new THREE.BoxGeometry(0.55, 0.8, 0.5)), M(new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true })), tiers * 130);
     crowd.name = 'crowd';
     const m4 = new THREE.Matrix4(), cc = new THREE.Color(), pal = ['#ffc21a', '#ff3d7f', '#1ed2f0', '#78e04a', '#f3f6fb', '#ff7a1a', '#1f5eff'];
@@ -58,7 +80,7 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
       for (let z = -LEN / 2 + 1; z < LEN / 2 - 1 && n < crowd.instanceMatrix.count; z += 0.92) {
         if (rand() < 0.18) continue;
         m4.makeTranslation(k * 2.4 + 1.0 + rand() * 0.5, h, z + rand() * 0.3);
-        setInstance(crowd, n, m4); cc.set(pal[Math.floor(rand() * pal.length)]); crowd.setColorAt(n, cc); n++;
+        setInstance(crowd, n, m4); cc.set(pal[Math.floor(rand() * pal.length)]).multiplyScalar(0.8); crowd.setColorAt(n, cc); n++;
       }
     }
     assertCapacity(crowd, n);
@@ -113,7 +135,9 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
       [0.8, 'Build · Train · Drive', '#78e04a', '#1ed2f0', '#0d1020'],
     ];
     for (const [f, sub, a, b, fg] of boards) {
-      const i = Math.round(f * t.n) % t.n, s = outSide(i), g = new THREE.Group();
+      const i = Math.round(f * t.n) % t.n, s = sideFor(i, [-8, 0, 8], [34], WALL_OUT + 16);
+      if (!s) continue;
+      const g = new THREE.Group();
       const panel = new THREE.Mesh(G(new THREE.PlaneGeometry(30, 9.4)), M(new THREE.MeshStandardMaterial({ map: tex.banner('SYNAPSE', sub, a, b, fg), roughness: 0.5 })));
       panel.position.y = 11; g.add(panel);
       const fr = new THREE.Mesh(G(new THREE.BoxGeometry(30.8, 10.2, 0.6)), frameMat); fr.position.set(0, 11, -0.35); fr.castShadow = true; g.add(fr);
@@ -126,7 +150,9 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
     const poleMat = M(new THREE.MeshStandardMaterial({ color: '#d7deec', roughness: 0.75, metalness: 0.15, flatShading: true }));
     const lampMat = M(new THREE.MeshBasicMaterial({ map: tex.lamp, color: new THREE.Color(2.4, 2.3, 2.1) }));
     for (const f of [0.14, 0.36, 0.64, 0.9]) {
-      const i = Math.round(f * t.n) % t.n, s = outSide(i), g = new THREE.Group();
+      const i = Math.round(f * t.n) % t.n, s = sideFor(i, [0], [30], WALL_OUT + 3);
+      if (!s) continue;
+      const g = new THREE.Group();
       const pole = new THREE.Mesh(G(new THREE.CylinderGeometry(0.5, 0.9, 46, 6)), poleMat); pole.position.y = 23; pole.castShadow = true; g.add(pole);
       const head = new THREE.Mesh(G(new THREE.BoxGeometry(9, 4.5, 1.4)), [poleMat, poleMat, poleMat, poleMat, lampMat, poleMat]);
       head.position.set(0, 47, 0.6); head.rotation.x = 0.35; head.castShadow = true; head.userData.glow = true; g.add(head);
@@ -156,8 +182,10 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
   // broadcast camera spots
   const tvSpots: Stadium['tvSpots'] = [];
   for (let i = 5; i < t.n; i += Math.round(104 / t.ds)) {
-    const s = outSide(i), p = at(t, i, s * (24 + rand() * 12), 0);
-    p.y = 4 + rand() * 9;
+    const off = 24 + rand() * 12, hy = 4 + rand() * 9, s = sideFor(i, [0], [off], WALL_OUT + 4);
+    if (!s) continue;
+    const p = at(t, i, s * off, 0);
+    p.y = hy;
     tvSpots.push({ i, p }); keepClear.push({ x: p.x, z: p.z, r: 10 });
   }
   return { group, tvSpots, keepClear, dispose: () => { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); } };

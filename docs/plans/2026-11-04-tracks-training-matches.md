@@ -1,4 +1,4 @@
-# Tracks, the training view and match size (plan; §3 built in B6)
+# Tracks, the training view and match size (plan; §3 built in B6, §1–2 in B5)
 
 Status: drafted 2026-11-04 from the principal's requests (verbatim in `docs/CONTEXT.md`). Mock-ups:
 `reference/training-view-mockup.html`, `reference/track-shapes-mockup.html`. To be built after the trainer work lands,
@@ -29,6 +29,68 @@ The sim stays flat. What makes the crossing work is that a car always knows whic
 - **Generator rules for a crossing:** crossing angle 60–120°, both passes nearly straight through the crossing and
   ramps, no start line, gate or pad on the ramps.
 - Deterministic: the deck is a pure function of the sample index; no new floating-point paths.
+
+Built (B5, 2026-11-05):
+- **Families.** `familyOf(seed)` picks one of the seven evenly (seeds 1–700: 91–112 each); every sub-seed keeps it.
+  Loop is today's generator unchanged (a loop seed gives the same track as before). Kidney, hairpin, chicane and
+  dogleg use the mock-up's control points, each jittered ±0.015 of the shape's units, stretched ×U(0.88, 1.12) one way
+  and ÷ the same the other, scaled so the control polygon is a 1250–1750 m lap, turned by a seeded angle and mirrored
+  half the time. Clover and figure eight are drawn by heading in metres, then turned and mirrored.
+- **Where the shapes differ from the mock-up** (only where the validator's rules need it; worth a look): the mock-up's
+  kidney (a dented circle) and clover (a round trefoil) have no 150 m straight at any size that fits the length rule,
+  so the kidney's long side is flat and the clover is three leaves on long straight stems (170–182 m stem out, round
+  the tip at 52–60 m, the stem back, a 28–38 m bend the other way at the waist). The hairpin is shorter, with its three
+  turns wider half-circles (the mock-up's hairpin turn is about 16 m round at track size; the rule is 25 m); the
+  chicane's kink is a gentler step. Point jitter is ±0.015 (±0.035 put the hairpin's turns under 25 m).
+- **Retries** (mean sub-seeds to a valid track, seeds 1–150): loop 14 (as before), clover 6, hairpin 3, dogleg 1,
+  kidney, chicane and figure eight 0. Each family passes the generator test on 40 seeds; the 1000-seed test passes.
+- **The figure eight.** Two lobes (a corner, a 180–215 m far straight, the mirror corner), radius 38–50 m, and the
+  crossing between them at 75–105°. Validated: exactly one self-crossing (segment pairs more than 60 m apart along the
+  track that cross at a real angle; collinear pieces of one straight would otherwise "cross" by round-off), at 60–120°,
+  both passes within 1/150 m⁻¹ of straight for 75 m either side; the near-overlap rule exempts only pairs from the two
+  passes' 75 m reaches; no start, gate or pad within them.
+- **Decks.** The second pass from the start is the bridge: deck 1 within 20 m (flat) + 55 m (ramps) of the crossing,
+  a pure function of the sample index. Each sample also has a layer: 0 open, 1 the lower pass's 75 m reach, 2 the
+  bridge's. Wall segments carry it; a boundary ray from a car on layer 1 skips layer-2 walls and the reverse; from
+  layer 0 it sees every wall (`hiddenLayer`, `castRay(…, skip)`). My call: "skips walls on the other deck" applied
+  everywhere would make a car at the foot of a ramp see a gap in its own walls where its road changes deck, so the
+  skip is limited to the crossing's two reaches; outside them the other pass is over 60 m away, out of every sense's
+  range. A car finds its sample within ±3 of its last one and hits its own road's wall, so it can't change roads or cut
+  across (unit test: straight through on either pass, and turned onto the other road at the crossing).
+- **Height is drawn, not simulated.** The bridge rises on cosine ramps to 7 m over the crossing (`trackMesh.liftOf`);
+  its walls are the parapets; an underside (1.2 m below the deck) and pillar pairs every 14 m that stand clear of the
+  road below. Cars' height and pitch come from their recorded progress (paths now record it; `sampleOf`, `liftAt`),
+  never a nearest-sample search, so a car at the crossing is drawn on its own road. The training map draws the road,
+  the cars on the ground, the deck (white edge, soft shadow) over them, then the cars on the bridge. The drive view's
+  beams skip the other deck as the sim's rays do. Stadium pieces (stand, boards, lights, camera spots) go on whichever
+  side is clear of the rest of the track (the hairpin's and clover's other roads can be close), none by the crossing.
+  Tracks now face any way, so the grandstand's pale tiers and crowd are toned down (a near-white tier facing a low
+  sun reached 1.61 against the bloom threshold of 1.3 at the drive check's start; now 1.24).
+- **Checked:** unit tests (families, crossing, decks, ray skip = brute force, keeping the road, bridge geometry finite
+  with pillars off the lower road); determinism goldens regenerated (every track changed) plus a heavy brain racing
+  on a figure eight; the drive check drives track 13 (a figure eight) under and over the bridge (car drawn at 0 m and
+  7 m, bloom audit clean, screenshots `out/s4/eight-*.png`). The training view on a figure eight was looked at, not
+  checked by a script.
+- **S1 re-run, evolution** (seeds 1–20, T 6M, the default brain; the tracks are now any family): see the table below.
+
+| S1, evolution, seeds 1–20, T 6M | B2e (loops only) | B5 (seven families) |
+|---|---|---|
+| final training fitness, median | 3106 (20/20 ≥ 500) | 2839 (20/20 ≥ 500) |
+| gate: end ≥ 1.5× start | 20/20 | 20/20 |
+| (a) median 30 s on the unseen track | 1403 m | 1303 m (×27 gen 1) |
+| (b) ≥ 80% of a lap in 30 s | 15/20 | **12/20** (need 15) |
+| (c) end ≥ 2× gen 1 | 19/20 | 19/20 |
+| (d) Minimal (1 boundary, 1 linear) ≥ 50% of a lap | 18/20 | 16/20 |
+| 60 s: ≥ 1.6 laps / Minimal ≥ 1 lap | 12/20 / 14/20 | 13/20 / 12/20 |
+| (f) same seed → same hash; 1 vs 4 workers | pass | pass |
+| phase time, Node 4 workers, median (max) | 3.86 s (6.00) | 4.24 s (5.09) |
+| the teacher alone, 30 s on the unseen track, median | ~1550 m | 1497 m |
+
+The tracks got harder (hairpins, chicanes, the clover's waists): the median brain still learns 27× over its first
+generation, but three fewer seeds reach 80% of a lap in 30 s, so (b) now misses its bar of 15. The eight that miss
+are spread over the families (unseen track: 2 chicane, 3 hairpin, 7 chicane, 8 figure eight, 11 loop, 12 dogleg,
+17 figure eight, 19 clover; `out/bench/seed-NN.svg`). Not tuned (no sweeps this stage); the principal may want to
+weigh it.
 
 ## 3. Training view (supersedes section 10 of the brain designer v2 plan)
 - **Stop = finishing early** (2026-11-04): "if the car is training and the user stops it mid-train, we take the best

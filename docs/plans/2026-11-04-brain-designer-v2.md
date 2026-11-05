@@ -164,6 +164,13 @@ evenly, as an untrained added cell does. The hidden layer (3 tanh) and the four 
 `starterSpec(seed)` in src/common, so it is deterministic given its seed. The client seeds it from
 `crypto.getRandomValues` and it never runs inside the sim. `defaultSpec()` stays the fixed brain below: the goldens,
 S1 and the checks use it as their fixture.
+Built (2026-11-05, with B5): `starterSpec(seed)` in `src/common/sim/spec.ts`; the store's `starterGenome()` seeds it
+from `crypto.getRandomValues` for a first visit, Reset, a save from before brain v2 and an unreadable save. One detail
+the ruling leaves open: speed allows one cell, so a second speed draw is drawn again (the other senses' maxima are 5
+or more, so only speed can fill up). Unit test: over 2000 seeds every count 2–6 appears, every brain has a boundary
+vector cell and every sense is drawn (copies of the boundary cell too). The checks start every page with
+`defaultSpec()`'s brain saved (`scripts/checks/fixture.ts`), so their Node comparisons don't move; check:workbench
+confirms Reset gives a valid random starter (twice), and a corrupt or pre-v2 save loads one.
 
 Earlier fixed default, still `defaultSpec()`: one boundary cell, one head-direction cell, one hidden layer of three neurons, the four wheels. About 23% brain / 77%
 speed. When v2 is built, the learning benchmark must be re-run on this brain: a two-input brain may not lap, which is

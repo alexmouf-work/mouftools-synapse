@@ -1,19 +1,22 @@
 // The drive view's 3-D rig, from the look mock-up: the detailed car in the player's yellow with each wheel spinning
 // at its own output (backwards when the output is negative), one ray per boundary vector cell, cast along the centre
 // of its field (sensors.bearingDir) up to its 20 m range and brighter as a wall gets closer, and the chase, broadcast
-// and showroom cameras. Poses come from a recorded drive; nothing here feeds the sim.
+// and showroom cameras. Poses come from a recorded drive; nothing here feeds the sim. On the figure eight's bridge the
+// car rides up the ramps (pitched) and its rays, like the sim's, skip the walls of the road below (and the reverse).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CONFIG } from '../../common/config';
 import { bearingDir } from '../../common/sim/sensors';
-import { castRay, type Track } from '../../common/sim/track';
+import { castRay, hiddenLayer, type Track } from '../../common/sim/track';
 import { makeCar, type CarModel } from './car';
 import { assertFiniteArray } from './guard';
-import { toWorld, yawOf } from './trackMesh';
+import { liftAt, pitchOf, toWorld, yawOf } from './trackMesh';
 
 export type CamMode = 'chase' | 'tv' | 'orbit';
 export interface DrivePose {
   x: number; y: number; hdg: number; v: number; idx: number;
+  /** Fractional track sample (from the run's progress): where on the road, and so how high. */
+  f: number;
   /** Wheel outputs FL, FR, RL, RR (−1..1). */
   wheels: ArrayLike<number>;
   /** Field centre of each boundary vector cell (degrees clockwise from the nose). */
@@ -49,6 +52,7 @@ export class DriveRig {
 
   constructor(glowTex: THREE.Texture, private readonly camera: THREE.PerspectiveCamera, dom: HTMLElement) {
     this.car = makeCar('#ffc21a', '#14161d', glowTex);
+    this.car.car.rotation.order = 'YXZ';
     this.group.add(this.car.car);
     const col = new THREE.Color('#ffc21a').multiplyScalar(2.4);
     for (let e = 0; e < MAX_BEAMS; e++) {
@@ -90,13 +94,14 @@ export class DriveRig {
     const t = this.track;
     if (!t) return;
     const car = this.car.car;
-    toWorld(p.x, p.y, 0, car.position);
-    car.rotation.set(0, yawOf(p.hdg), 0);
+    const lift = liftAt(t, p.f);
+    toWorld(p.x, p.y, lift.h, car.position);
+    car.rotation.set(pitchOf(t, p.f, p.hdg, lift.slope), yawOf(p.hdg), 0);
     car.updateMatrixWorld();
     assertFiniteArray(car.matrixWorld.elements, 'drive car');
     this.car.wheels.forEach((w, k) => { w.spin.rotation.x = (w.spin.rotation.x + p.wheels[k] * WHEEL_SPIN * dt) % (2 * Math.PI); });
     // one ray per boundary vector cell along its field's centre, at eye height
-    const oy = 0.75;
+    const oy = lift.h + 0.75, skip = hiddenLayer(t, p.idx);
     this.shown = Math.min(p.beams.length, MAX_BEAMS);
     for (let e = 0; e < MAX_BEAMS; e++) {
       const b = this.beams[e], on = e < this.shown;
@@ -105,7 +110,7 @@ export class DriveRig {
       // the field's direction, from the sim's rule (sensors.bearingDir), sim (x, y) → world (x, −y)
       const dir = bearingDir(p.hdg, p.beams[e]);
       const R = p.ranges?.[e] ?? RANGE;
-      const d = castRay(t.grid, p.x, p.y, dir.dx, dir.dy, R);
+      const d = castRay(t.grid, p.x, p.y, dir.dx, dir.dy, R, skip);
       this.rayDist[e] = d;
       const dx = dir.dx, dz = -dir.dy;
       b.beam.position.set(car.position.x, oy, car.position.z);

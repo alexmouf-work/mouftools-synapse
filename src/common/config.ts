@@ -82,6 +82,19 @@ export const CONFIG = {
     gateEvery: 300, // m: cosmetic gates
     maxAttempts: 200, // failures before the generator throws
     gridCell: 16, // m: spatial grid cell for wall segments
+    // families (tracks plan §1): a seeded family's control points, scaled to a lap of lapMin–lapMax m before the spline
+    lapMin: 1250,
+    lapMax: 1750,
+    pointJitter: 0.015, // ± per control point, in the family's own units (its shape spans about 3)
+    aspectJitter: 0.12, // x × U(1 − this, 1 + this), y ÷ the same
+    straightStep: 45, // m between control points on the straights of the shapes drawn by heading (clover, eight)
+    // the figure eight's crossing (plan §2): the bridge is flat here and ramps down after; the same reach on the lower
+    // pass is the crossing's other layer
+    crossFlat: 20, // m either side of the crossing on the bridge at full height
+    crossRamp: 55, // m of cosine ramp beyond that (height is render-only)
+    crossAngleMin: 60, // degrees between the passes
+    crossAngleMax: 120,
+    crossCurv: 1 / 150, // 1/m: both passes at most this curved across the crossing and its ramps
   },
 
   train: {

@@ -18,11 +18,14 @@ import { defaultSpec, type Genome } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/designer/store';
+import { BRIDGE_H, sampleOf } from '../../src/client/render/trackMesh';
+import { fixtureBrain } from './fixture';
 
 const OUT = 'out/s4';
 
 const T = 1_000_000;
 const SEED = 7;
+const EIGHT = 13; // a figure-eight track seed the trained brain drives under and then over the bridge
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 let fails = 0;
@@ -48,6 +51,7 @@ async function main() {
   const errors: string[] = [];
   async function open(query: string, w = 1440, h = 900, mobile = false, save?: Genome): Promise<Page> {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile, hasTouch: mobile });
+    await fixtureBrain(ctx);
     const page = await ctx.newPage();
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -58,7 +62,7 @@ async function main() {
     await page.goto(base + query);
     return page;
   }
-  const drive = (page: Page) => page.evaluate(() => { const d = window.__drive; return d ? { ...d, probe: undefined, bloomAudit: undefined, seek: undefined, setCam: undefined, camPos: undefined, auditAt: undefined, spikes: undefined, resetSpikes: undefined, beamCheck: undefined } : null; });
+  const drive = (page: Page) => page.evaluate(() => { const d = window.__drive; return d ? { ...d, probe: undefined, bloomAudit: undefined, seek: undefined, setCam: undefined, camPos: undefined, carDrawn: undefined, auditAt: undefined, spikes: undefined, resetSpikes: undefined, beamCheck: undefined } : null; });
   const waitFrames = (page: Page, n = 3) => page.waitForFunction((x) => (window.__drive?.frames ?? 0) > x, n, { timeout: 120_000 });
 
   try {
@@ -147,6 +151,33 @@ async function main() {
     check(moved > 0.3, `camera keeps moving round the stuck car (${moved.toFixed(2)} m in 1.5 s): not a frozen frame`);
     await page.screenshot({ path: `${OUT}/stuck.png` });
     await page.context().close();
+
+    // 3. the figure eight (tracks plan §2): over the bridge at its height and under it on the ground, the bloom audit
+    // clean on both, and the scene from the chase and broadcast cameras
+    {
+      const run = runDrive(trained, EIGHT), t = run.track, cr = t.crossing!;
+      const tickAt = (i0: number) => { for (let k = 0; k < run.rec.ticks; k++) { const i = Math.round(sampleOf(t, run.rec.prog[k])) % t.n; if (Math.min(Math.abs(i - i0), t.n - Math.abs(i - i0)) < 2) return k; } return -1; };
+      const under = tickAt(cr.lower), over = tickAt(cr.upper);
+      check(t.family === 'eight' && under > 0 && over > 0, `track ${EIGHT} is a figure eight the trained car crosses: under the bridge at tick ${under}, over it at ${over}`);
+      page = await open(`?view=drive&track=${EIGHT}`, 1440, 900, false, trained);
+      await waitFrames(page);
+      check((await drive(page))?.hash === run.hash, 'its drive hash = Node replay');
+      for (const [k, name, wantY] of [[over, 'over', BRIDGE_H], [under, 'under', 0]] as const) {
+        const sec = (k + 0.5) / 20;
+        const au = await page.evaluate((x) => window.__drive!.auditAt(x), sec);
+        const cd = await page.evaluate(() => window.__drive!.carDrawn());
+        check(Math.abs(cd.y - wantY) < 0.3, `${name} the bridge: car drawn at ${cd.y.toFixed(2)} m (want ${wantY})`);
+        check(au.over === 0, `${name} the bridge: bloom audit over ${(au.over * 100).toFixed(3)}% (max ${au.max.toFixed(2)})`);
+        await page.evaluate((x) => window.__drive!.seek(x), sec - 0.7);
+        await page.waitForTimeout(900);
+        await page.screenshot({ path: `${OUT}/eight-${name}.png` });
+      }
+      await page.click('#driveOverlay [data-cam="tv"]');
+      await page.evaluate((s) => window.__drive!.seek(s), (over - 30) / 20);
+      await page.waitForTimeout(1800);
+      await page.screenshot({ path: `${OUT}/eight-broadcast.png` });
+      await page.context().close();
+    }
 
     // 4. landscape phone
     page = await open(`?view=drive&track=${firstTrack}`, 844, 390, true, trained);

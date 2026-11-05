@@ -102,11 +102,11 @@ describe('copying the teacher (imitate kernel)', () => {
 });
 
 describe('the teacher', () => {
-  it('laps every one of 10 tracks in a minute without touching a wall', () => {
+  it('laps every one of 10 tracks (1.5 laps or more) in a minute without touching a wall', () => {
     for (let seed = 1; seed <= 10; seed++) {
       const t = generateTrack(phaseSeeds(seed).unseenTrack);
       const r = driveTeacher(t, CONFIG.drive.ticks);
-      expect(r.prog, `seed ${seed}`).toBeGreaterThan(2 * t.len);
+      expect(r.prog, `seed ${seed}`).toBeGreaterThan(1.5 * t.len); // 1.76–2.34 laps (B5: longer, twistier tracks than the loops' 2+)
       expect(r.wallTicks, `seed ${seed}`).toBe(0);
     }
   });

@@ -3,6 +3,7 @@
 // 2026-11-04: no wiring by hand), so a brain is just its sense counts and its layers; the genome adds one weight per
 // wire in the canonical order below. Adding a cell of a sense re-tunes the whole set (senses.ts).
 import { ACTS, CONFIG, type Act } from '../config';
+import { derive, Rng, TAG } from '../rng';
 
 export type SenseId = 'boundary' | 'landmark' | 'hd' | 'grid' | 'speed';
 /** The senses in their fixed order: the order of the compiled net's first nodes. */
@@ -27,9 +28,31 @@ export const OUTPUTS = [
   { id: 'o:rr', label: 'Rear-right' },
 ] as const;
 
-/** The starting brain (2026-11-04): one boundary vector cell, one head-direction cell, three tanh neurons, the wheels. */
+/**
+ * The fixed brain (2026-11-04): one boundary vector cell, one head-direction cell, three tanh neurons, the wheels. Since
+ * 2026-11-05 new brains start from starterSpec; this one stays as the fixture for the goldens, S1 and the checks.
+ */
 export function defaultSpec(): BrainSpec {
   return { v: 2, senses: { boundary: 1, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] };
+}
+
+/**
+ * A new brain (plan §3c, 2026-11-05: "a random assortment of input neurons, including copies of the same, with at
+ * least 1 boundary vector cell always … between 2 and 6 inputs"): 2–6 cells, the count uniform; one boundary vector
+ * cell, each of the rest uniform over the five senses, repeats allowed (a sense already at its most, which only the one
+ * speed cell can be, is drawn again); copies spread their fields evenly (field parameters 0); 3 tanh neurons, the
+ * wheels. Deterministic given its seed; the client seeds it from crypto and the sim never calls it.
+ */
+export function starterSpec(seed: number): BrainSpec {
+  const r = new Rng(derive(seed >>> 0, TAG.starter));
+  const n = 2 + r.int(5);
+  const senses: Record<SenseId, number> = { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 };
+  for (let k = 1; k < n; k++) {
+    let id: SenseId;
+    do id = SENSE_IDS[r.int(SENSE_IDS.length)]; while (senses[id] >= CONFIG.senses[id].max);
+    senses[id]++;
+  }
+  return { v: 2, senses, layers: [{ n: 3, fn: 'tanh' }] };
 }
 
 export const inputIds = (s: BrainSpec): string[] => SENSE_IDS.flatMap((id) => Array.from({ length: s.senses[id] }, (_, k) => `i:${id}:${k}`));

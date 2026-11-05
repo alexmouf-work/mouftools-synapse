@@ -1,6 +1,7 @@
 // Contract every trainer must pass (solo-loop plan step 1): spends within budget, same seed → same hash, weights()
 // keeps the architecture, ticks monotonic, declared channels present. contract.test.ts runs it for evolution and
-// backprop, contract-rl.test.ts for actor-critic and A_RP (two files, so neither keeps a test worker busy for a minute).
+// backprop, contract-ac.test.ts and contract-arp.test.ts for actor-critic and A_RP (so no file keeps a test worker busy for a
+// minute).
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
 import { genomeHash, specHash, zeroGenome } from '../sim/brain';

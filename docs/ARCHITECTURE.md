@@ -23,11 +23,11 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `fmath.ts` | sin, cos, atan, atan2, exp, tanh, sigmoid, log from + − × ÷, sqrt, floor, round only. |
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
-| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the default brain, column ids, the canonical wire order (`wireList`), the parameter layout (weights, biases, then each input cell's field: `paramCount`, `biasIndex`, `FIELD_PARAMS`, `fieldIndex`), `Genome`, validation. |
+| `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the fixed default brain and the random starter, column ids, the canonical wire order (`wireList`), the parameter layout (weights, biases, then each input cell's field: `paramCount`, `biasIndex`, `FIELD_PARAMS`, `fieldIndex`), `Genome`, validation. |
 | `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs; each cell's default tuning and its learned field (`fieldOf`, `hdOf`, `gridOf`, `speedGainOf`). |
 | `sim/energy.ts` | THE energy rule: per-node coefficients, the flat-out and resting loads, the speed cap (floor 10%), the match refusal, the designer's "at maximum firing rate" figures. |
 | `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
-| `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
+| `sim/track.ts` | Track families, generator + validation, the figure eight's crossing and decks, wall grid, ray cast (grid DDA, skipping the other deck), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule the drive view's beams also use. |
 | `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, landmark, boundary range. |
@@ -44,7 +44,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `train/backprop.ts`, `train/actorCritic.ts`, `train/arp.ts` | Backprop (copy a teacher), actor-critic, A_RP. |
 | `train/probe.ts` | The `signal` probe all trainers share. |
 | `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop). |
-| `train/contract.suite.ts`, `contract.test.ts`, `contract-rl.test.ts` | The suite every trainer must pass (evolution and backprop in one file, actor-critic and A_RP in the other, so neither file holds a test worker for a minute). |
+| `train/contract.suite.ts`, `contract.test.ts`, `contract-ac.test.ts`, `contract-arp.test.ts` | The suite every trainer must pass (evolution and backprop in one file, actor-critic and A_RP one each, so no file holds a test worker for a minute). |
 
 ### Brain (v2, 2026-11-04; plan `docs/plans/2026-11-04-brain-designer-v2.md`)
 A brain is its sense counts and its hidden layers; every column is fully wired to the next, always (no wiring by
@@ -66,8 +66,10 @@ in 5–20 m or 10–40 m; head direction + 45°·p; grid scale default·2^(p/2) 
 15°·p; speed gain 2^(p/4), 0.5–2×), decoded into `net.tune` by `compile` and `setWeights`. Evolution mutates biases
 and fields like weights (scaled by the temperature); the gradient trainers learn the biases (Δb ∝ δ) and the fields
 that have a gradient (`fieldgrad.ts`: the error at each sense cell, Σ w·δ, times ∂reading/∂p). A fresh start draws weights and biases
-and keeps the fields it is given. The default brain: one boundary vector cell, one
-head-direction cell, three tanh neurons. Every node has a firing rate 0..1 (`rateOf`: tanh and linear (y + 1)/2,
+and keeps the fields it is given. A new brain is the random starter (`starterSpec(seed)`, plan §3c: 2–6 input cells,
+the count uniform, one always a boundary vector cell, the rest uniform over the five senses with repeats, three tanh
+neurons; the client seeds it from crypto). `defaultSpec()` stays the fixed brain the goldens, S1 and the checks use:
+one boundary vector cell, one head-direction cell, three tanh neurons. Every node has a firing rate 0..1 (`rateOf`: tanh and linear (y + 1)/2,
 ReLU min(y, 1), sigmoid y; head direction (cos + 1)/2; the other senses their value).
 
 Energy (speed follows firing, §3a, §3aa): one supply each tick. Each node spends its cost × its rate, each wire its
@@ -95,10 +97,22 @@ standstill), and loses speed to front/rear mismatch on a side (`scrub`). Walls a
 +10 m/s (cap 72) once per pad per lap, not sensed. Every tick asserts the state is finite.
 
 ### Track
-Closed centripetal Catmull-Rom through 8–14 jittered points, resampled every ~2 m, validated (length 1100–1900 m,
-smoothed radius ≥ 25 m, parts > 60 m apart along the track ≥ 31 m apart in space, a ≥ 150 m straight with
-|curvature| < 1/300 for the start, 2–3 pads on the calmest 30 m windows ≥ 300 m apart). A failure moves to the next
-sub-seed; 200 failures throw. About 1 attempt in 16 is valid; the 1000-seed test passes with room to spare.
+The seed picks one of seven families (B5, tracks plan §1–2), evenly: loop (today's: 8–14 jittered points round a
+circle), kidney, hairpin, chicane, dogleg (the mock-up's control points, each jittered ±0.015 of the shape's units,
+stretched ×U(0.88, 1.12) one way, scaled to a lap of 1250–1750 m, turned and mirrored), clover (three leaves drawn
+by heading: stem, tip, stem, waist) and figure eight (two lobes and the crossing between them, at 75–105°). Then a
+closed centripetal Catmull-Rom, resampled every ~2 m, validated (length 1100–1900 m, smoothed radius ≥ 25 m, parts
+> 60 m apart along the track ≥ 31 m apart in space, a ≥ 150 m straight with |curvature| < 1/300 for the start, 2–3
+pads on the calmest 30 m windows ≥ 300 m apart). A failure moves to the next sub-seed of the same family; 200
+failures throw. Mean retries: loop 14, clover 6, hairpin 3, dogleg 1, the rest 0.
+The figure eight stays flat in the sim. Its one crossing is declared (exactly one self-crossing at 60–120°, both
+passes within 1/150 m⁻¹ of straight for 75 m either side) and is the only exemption from the near-overlap rule. The
+second pass from the start is the bridge: its samples within 20 m (flat) + 55 m (ramps) of the crossing have deck 1.
+Each sample also has a layer (0 open, 1 the lower pass near the crossing, 2 the bridge); wall segments carry it and a
+boundary ray skips the other layer's walls (`castRay(…, skip)`, `hiddenLayer`), so a car under the bridge doesn't see
+its parapets and a car on it doesn't see the road below. Outside the crossing a ray sees every wall, so nothing
+changes at a deck's end. A car finds its sample within ±3 of its last one and hits its own road's wall, so it never
+jumps or cuts across. No start, gate or pad near the crossing.
 
 ### Training
 `runPhase(executor, spec, seed)` derives the phase's two training tracks and the unseen track from the seed; builds a `MeteredEnv` over an `Executor`; runs the trainer until it is done; hashes
@@ -208,8 +222,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   wordmark is the way back to the title. No Drive button: the drive view is reached after training.
 - Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
   {seed, phases, temps}, genome}` (canonical genome JSON; a save from before the biases or the fields gets them at 0; `temps` holds each phase's temperature, log2 of the
-  multiplier, so seed, phase and temperature reproduce every run; a save from before B2d has none: all ×1). Reads and writes are in try/catch: a missing save starts from the
-  starting brain; an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
+  multiplier, so seed, phase and temperature reproduce every run; a save from before B2d has none: all ×1). Reads and writes are in try/catch: a missing save starts from a
+  new random starter (`store.starterGenome`, as Reset does); an unreadable one starts from it with a toast; a save from before brain v2 (v1, v2) is reset to
   the starting brain with a one-time note; a v2 save from before the biases loads with every bias 0; a browser that
   refuses storage gets a toast that changes last until the
   tab closes. Any edit, and Reset, clear the training history (new seed, trains from scratch).
@@ -243,7 +257,9 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   banner, start and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards on tight corners, broadcast
   camera spots; trees keep clear of them), `trackMesh.ts` (road, kerbs red/white in corners,
   run-off, walls with light strip, boost pads, the start/finish line as a chequered band of four rows of 1 m squares,
-  from the sim Track; flat for now), `finish.ts` (a chequered flag on a black pole each side of the finish line, in
+  from the sim Track; flat except the figure eight's bridge: 7 m over the crossing on cosine ramps, its walls the
+  parapets, an underside and pillar pairs every 14 m that stand clear of the road below; `liftAt`/`sampleOf` give a
+  car's height and pitch from its recorded progress, never a nearest-sample search), `finish.ts` (a chequered flag on a black pole each side of the finish line, in
   the run-off, the cloth reaching away from the road), `scenery.ts` (terrain,
   tree groves, clouds; seeded by the track), `textures.ts`, `ghosts.ts` (the training playback, B6: one InstancedMesh of 64,
   made once, a new generation's ghosts added in 16 a frame, the highlighted one first; the newest finished generation replays at 12× as see-through cyan ghosts, the highlighted car warm
@@ -306,7 +322,9 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`; a short phase of
   every trainer, inline = 4 workers), `bench.ts`
   (+ `bench-baseline.json`, Node time ≤ baseline × 1.3), `bench-browser.ts` (headless Chrome time + hash = Node).
-- `scripts/checks/workbench.ts` — the designer in headless Chromium: the starting brain, the energy split = energy.ts,
+- `scripts/checks/fixture.ts` — every page a check opens starts with `defaultSpec()`'s brain saved (an init script that
+  writes only when nothing is stored), so the checks compare against the same Node runs as before the random starter.
+- `scripts/checks/workbench.ts` — the designer in headless Chromium: the starting brain, Reset to a valid random starter, the energy split = energy.ts,
   the rule strip and trainer picker, tray → cell selected with graph, description and energy line, bin, full sense,
   layer panel (function, live slider, energy), "+"/"−" and their limits, every edit untrained, Reset and Train
   dialogs, reload, corrupt and pre-v2 saves, a learned field drawn by the inspector and a save from before the fields
