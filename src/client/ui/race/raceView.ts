@@ -12,9 +12,10 @@
 // winner music.
 import cpuData from '../../../assets/cpu/brains.json';
 import { CONFIG } from '../../../common/config';
-import { compile, nodeRate } from '../../../common/sim/brain';
+import { compile, nodeRate, type Net } from '../../../common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../../common/sim/cpu';
-import { gridCar, LAPPED, raceTrackSeed, rank, ROUND_RACE, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
+import { gridCar, LAPPED, raceTrackSeed, rank, recordCar, ROUND_RACE, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
+import type { Recording } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { MAX_RIVALS, type DrivePose, type RivalPose } from '../../render/drive';
 import type { Stage } from '../../render/stage';
@@ -112,6 +113,15 @@ export interface RaceStatus {
   seek(seconds: number): void;
   /** Checks only: true holds the playback where it is (the clock stops; frames still draw). */
   hold: boolean;
+  /**
+   * Following a racer (follow-a-racer plan): the car the camera and the brain card follow, the card's title and its
+   * values this frame, your own brain's values this frame (null watching), how far the camera's aim is from the
+   * followed car (m), the camera's mode and its cuts (s on the camera's clock, and why).
+   */
+  following: () => number; cardTitle: () => string; cardVals: () => number[] | null; ownVals: () => number[] | null;
+  lookOff: () => number; cam: () => { mode: string; cuts: { t: number; why: string }[] };
+  /** Where car k's dot is on the sidebar map (CSS px in the page), or null. */
+  dotAt: (k: number) => { x: number; y: number } | null;
   /** Seek, snap the camera, draw that frame and audit bloom on it (deterministic). */
   auditAt(seconds: number, mask?: boolean): { over: number; max: number; mask?: string };
   probe?: () => { mean: number; sd: number; w: number; h: number };
@@ -157,8 +167,15 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const race: RaceResult = setup.result ?? runRace(genomes, raceSeed, (k) => k === me, len);
   const computeMs = performance.now() - c0;
   const { track, cars } = race;
-  const follow = me >= 0 ? me : 0, mine = me >= 0;
-  const net = compile(genomes[follow]), rec0 = cars[follow].rec, nN = net.nNodes, end = race.endTicks / HZ, goal = len.laps * track.len;
+  // the car the camera and the brain card follow (follow-a-racer plan): yours (watching: the first) until you pick
+  // another in the racers list or on the map; every race starts on yours again
+  const mine = me >= 0, own = mine ? me : 0;
+  let follow = own, picked = false;
+  const rec0 = cars[own].rec, end = race.endTicks / HZ, goal = len.laps * track.len;
+  /** Each followed car's run with its brain's activity (yours is recorded by the race; another's is replayed once). */
+  const recs = new Map<number, Recording>();
+  if (mine) recs.set(me, rec0);
+  const recOf = (k: number): Recording => { let r = recs.get(k); if (!r) { r = recordCar(genomes[k], track, cars[k].slot, len); recs.set(k, r); } return r; };
   const results: RaceRow[] = race.ranking.map((k, i) => ({ name: names[k], place: i + 1, finish: cars[k].finish, prog: cars[k].prog, slot: cars[k].slot, dist: cars[k].dist }));
   const place = mine ? race.ranking.indexOf(me) + 1 : 0;
   const grid = cars.map((c) => gridCar(track, c.slot));
@@ -181,9 +198,38 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   $('rcLapK').textContent = timed ? 'Distance' : 'Lap';
   $('rcLeave').hidden = !!hooks.ended; // a round: Main menu leaves the match
   // your live brain in the camera's corner (sidebar plan): its nodes are recorded for your car only
-  $('rcBrainC').hidden = !mine;
-  const panel = mine ? new BrainPanel($('rcBrain') as HTMLCanvasElement, net) : null;
-  const spikes = new SpikeTrains(nN), every = new Uint8Array(nN).fill(1), rates = new Float64Array(nN);
+  // the corner brain card: the followed racer's brain, firing as in the replay
+  interface Card { k: number; net: Net; rec: Recording; nN: number; panel: BrainPanel; spikes: SpikeTrains; every: Uint8Array; rates: Float64Array; vals: Float64Array }
+  let card: Card | null = null;
+  const setCard = (k: number) => {
+    const show = mine || picked;
+    $('rcBrainC').hidden = !show;
+    $('rcBrainT').textContent = k === me ? 'Brain · live' : `Brain · ${names[k]}`;
+    if (!show) { card = null; return; }
+    const net = compile(genomes[k]), nN = net.nNodes;
+    card = { k, net, rec: recOf(k), nN, panel: new BrainPanel($('rcBrain') as HTMLCanvasElement, net), spikes: new SpikeTrains(nN), every: new Uint8Array(nN).fill(1), rates: new Float64Array(nN), vals: new Float64Array(nN) };
+  };
+  setCard(own);
+  /** Your brain's values this frame (checks: the followed card's must differ). */
+  const ownN = mine ? compile(genomes[me]).nNodes : 0, ownNow = new Float64Array(ownN);
+  /** Follow car k: the camera glides (chase) or cuts (broadcast) to it, the card shows its brain, its row is outlined. */
+  const followCar = (k: number) => {
+    if (!Number.isInteger(k) || k < 0 || k >= n) return;
+    picked = true;
+    if (k !== follow) { follow = k; stage?.drive.glide(0.4); stage?.drive.setCarColor(colorOf(k)); }
+    if (card?.k !== k) setCard(k);
+    $('rcMine').hidden = !mine || follow === me;
+    lastUi = -1;
+  };
+  stage?.drive.setCarColor(colorOf(follow));
+  $('rcMine').hidden = true;
+  $('rcMine').onclick = () => followCar(me);
+  const rows = listOf($('rcList') as HTMLOListElement);
+  $('rcList').onclick = (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>('button[data-k]'); if (b) followCar(Number(b.dataset.k)); };
+  ($('rcMap') as HTMLCanvasElement).onclick = (e) => {
+    const r = $('rcMap').getBoundingClientRect(), k = map ? map.nearest(e.clientX - r.left, e.clientY - r.top, dots) : -1;
+    if (k >= 0) followCar(k);
+  };
   const engine = new Engine(mine ? 1 : 0.35), cd = setup.goAt !== undefined ? countdownTo(setup.goAt) : raceCountdown();
   let timers: number[] = [];
   const showCount = (label: string) => {
@@ -242,6 +288,9 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     shown: () => { const o = listOrder(), r = listRows(n, o.indexOf(follow)); return r.idx.flatMap((i, j) => (r.gap && j === 3 ? ['⋯', names[o[i]]] : [names[o[i]]])); },
     drawn: () => (stage ? stage.drive.drawn().map((p, i) => [...p, i ? drawnIdx[i - 1] : follow]) : []), dots: () => dots.length,
     hold: false,
+    following: () => follow, cardTitle: () => $('rcBrainT').textContent ?? '', cardVals: () => (card ? Array.from(card.vals) : null), ownVals: () => (mine ? Array.from(ownNow) : null),
+    lookOff: () => (stage ? stage.drive.lookOff() : -1), cam: () => ({ mode: stage?.drive.mode ?? '', cuts: stage ? [...stage.drive.cuts] : [] }),
+    dotAt: (k) => { const q = map?.cssOf(dots[k].x, dots[k].y), r = $('rcMap').getBoundingClientRect(); return q ? { x: r.left + q.x, y: r.top + q.y } : null; },
     seek: (sec) => { endCount(); playT = Math.max(0, Math.min(sec, end)); stage?.drive.snapNow(); },
     auditAt: (sec, mask) => {
       if (!stage) return { over: 0, max: 0 };
@@ -261,8 +310,8 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     for (let k = 0; k < n; k++) at(k, pt, poses[k]);
     const f = poses[follow], j = at(follow, pt, pose);
     pose.idx = Math.round(pose.f) % track.n;
-    const moving = j >= 0 && pt * HZ < rec0.ticks;
-    for (let o = 0; o < 4; o++) wheels[o] = !moving ? 0 : mine ? rec0.act[j * nN + net.outStart + o] : f.v / CONFIG.car.wheelSpeed;
+    const moving = j >= 0 && pt * HZ < rec0.ticks, c = card && card.k === follow ? card : null;
+    for (let o = 0; o < 4; o++) wheels[o] = !moving ? 0 : c ? c.rec.act[j * c.nN + c.net.outStart + o] : f.v / CONFIG.car.wheelSpeed;
     // the nearest others are drawn as cars (all of them in a race of up to MAX_RIVALS + 1)
     for (let k = 0; k < n; k++) { const dx = poses[k].x - f.x, dy = poses[k].y - f.y; dist[k] = k === follow ? Infinity : dx * dx + dy * dy; }
     const near = cars.map((_, k) => k).sort((a, b) => dist[a] - dist[b] || a - b).slice(0, R).sort((a, b) => a - b);
@@ -277,7 +326,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
 
   /** Your car at recording index j: going the wrong way (or just put back) long enough to say so. */
   const wrongNow = (j: number) => {
-    if (!mine || j < 0) return false;
+    if (!mine || follow !== me || j < 0) return false; // "Wrong way" is about your car, over it
     const w = rec0.wrong;
     if (w[j] >= WRONG_SHOW && w[j] < WRONG_WAY) return true;
     for (let i = Math.max(0, j - WRONG_SHOW + 1); i <= j; i++) if (w[i] >= WRONG_WAY) return true;
@@ -316,7 +365,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     status.t = playT;
     const pt = Math.min(playT, end), j = poseAll(pt, status.go ? dt : 0);
     // your car put back since the last frame: the camera jumps with it instead of sweeping across the track
-    if (j >= 0 && lastJ >= 0 && j > lastJ) for (let i = lastJ + 1; i <= j; i++) if (rec0.wrong[i] >= WRONG_WAY) { stage?.drive.snapNow(); break; }
+    if (j >= 0 && lastJ >= 0 && j > lastJ) for (let i = lastJ + 1; i <= j; i++) if (cars[follow].rec.wrong[i] >= WRONG_WAY) { stage?.drive.snapNow(); break; }
     lastJ = j;
     const wrong = wrongNow(j) && playT < end;
     status.wrongWay = wrong;
@@ -327,34 +376,38 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     if (wrongEl.hidden === wrong) wrongEl.hidden = !wrong;
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; status.frames = frames; }
     const ended = playT >= end;
-    if (panel) {
-      const live = j >= 0 && !ended, vals = rec0.act.subarray(Math.max(0, j) * nN, (Math.max(0, j) + 1) * nN);
-      for (let d = 0; d < nN; d++) rates[d] = live ? nodeRate(net, d, vals[d]) : 0;
-      spikes.update(rates, every, live ? dt : 0, now / 1000);
-      panel.draw(vals, rates, spikes, now / 1000, reduce());
+    if (mine && j >= 0) ownNow.set(rec0.act.subarray(j * ownN, (j + 1) * ownN));
+    if (card) {
+      const c = card, live = j >= 0 && !ended, vals = c.rec.act.subarray(Math.max(0, j) * c.nN, (Math.max(0, j) + 1) * c.nN);
+      c.vals.set(vals);
+      for (let d = 0; d < c.nN; d++) c.rates[d] = live ? nodeRate(c.net, d, vals[d]) : 0;
+      c.spikes.update(c.rates, c.every, live ? dt : 0, now / 1000);
+      c.panel.draw(vals, c.rates, c.spikes, now / 1000, reduce());
     }
     engine.set(ended || j < 0 ? 0 : pose.v / CONFIG.car.wheelSpeed, Math.abs((wheels[0] + wheels[2]) - (wheels[1] + wheels[3])) / 2);
     // first across the line: the winner music then and there
     if (!timed && place === 1 && cars[me].finish !== null && pt * HZ >= cars[me].finish!) cheer();
-    if (status.go && !wentGo) { wentGo = true; hooks.go?.(); }
+    // a match's race is seen from the broadcast camera from Go (follow-a-racer plan), following the followed car
+    if (status.go && !wentGo) { wentGo = true; stage?.drive.setMode('tv', reduce()); hooks.go?.(); }
     if (playT >= end + RESULTS_AFTER_S) {
       if (!hooks.ended) showResults();
       else if (!over) { over = true; status.state = 'results'; hooks.ended(race); }
     }
     if (now - lastUi > 100) {
       lastUi = now;
-      const order = listOrder(), pos = order.indexOf(follow) + 1, lap = Math.min(len.laps, Math.max(1, Math.floor(progNow[follow] / track.len) + 1));
-      const fin = cars[follow].finish;
+      // Position and Distance stay yours (watching: the car followed)
+      const you = mine ? me : follow, order = listOrder(), pos = order.indexOf(you) + 1, lap = Math.min(len.laps, Math.max(1, Math.floor(progNow[you] / track.len) + 1));
+      const fin = cars[you].finish;
       $('rcState').textContent = !status.go ? 'on the grid' : ended ? 'finished' : 'racing';
-      $('rcPos').textContent = `${ord(pos)} of ${n}${mine ? '' : ` (${esc(names[follow])})`}`;
-      $('rcLap').textContent = timed ? fmtKm(shownOf(follow)) : fin !== null && pt * HZ >= fin ? 'finished' : `${lap} of ${len.laps}`;
+      $('rcPos').textContent = `${ord(pos)} of ${n}${mine ? '' : ` (${esc(names[you])})`}`;
+      $('rcLap').textContent = timed ? fmtKm(shownOf(you)) : fin !== null && pt * HZ >= fin ? 'finished' : `${lap} of ${len.laps}`;
       $('rcTime').textContent = `${fmtClock(pt)} / ${fmtClock(len.ticks / HZ)}`;
       $('rcListH').textContent = playT > 0 ? 'Standings' : 'Grid';
       const L = listRows(n, pos - 1);
-      $('rcList').innerHTML = L.idx.map((i, j) => {
+      rows.update(L.idx.map((i) => {
         const k = order[i], c = cars[k], done = c.finish !== null && c.finish <= pt * HZ;
-        return `${L.gap && j === 3 ? '<li class="gap" aria-hidden="true">⋯</li>' : ''}<li class="${k === follow ? 'you' : ''}"><b>${i + 1}</b><i style="background:${colorOf(k)}"></i><span>${esc(names[k])}</span><small>${done ? fmtT(c.finish! / HZ) : playT > 0 ? fmtKm(shownOf(k)) : ''}</small></li>`;
-      }).join('');
+        return { k, place: i + 1, cls: `${k === you ? 'you' : ''}${k === follow && k !== you ? ' followed' : ''}`.trim(), color: colorOf(k), name: names[k], small: done ? fmtT(c.finish! / HZ) : playT > 0 ? fmtKm(shownOf(k)) : '', on: k === follow };
+      }), L.gap ? 3 : -1);
       map?.draw(dots);
     }
   };
@@ -362,3 +415,43 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
 }
 
 const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+interface ListRow { k: number; place: number; cls: string; color: string; name: string; small: string; on: boolean }
+/**
+ * The racers list, updated in place ten times a second: each row is a button (click, tap, Enter or Space follows that
+ * racer: follow-a-racer plan) that stays the same element, so a press or the keyboard focus is never lost to a redraw.
+ * Row j shows whichever racer is j-th; a "⋯" row goes before row `gapAt` (−1: none).
+ */
+function listOf(ul: HTMLOListElement): { update(rows: ListRow[], gapAt: number): void } {
+  ul.textContent = '';
+  const slots: { li: HTMLLIElement; btn: HTMLButtonElement; b: HTMLElement; dot: HTMLElement; name: HTMLElement; small: HTMLElement }[] = [];
+  const gap = document.createElement('li');
+  gap.className = 'gap'; gap.setAttribute('aria-hidden', 'true'); gap.textContent = '⋯';
+  let shape = '';
+  const set = (e: HTMLElement, t: string) => { if (e.textContent !== t) e.textContent = t; };
+  return {
+    update(rows, gapAt) {
+      while (slots.length < rows.length) {
+        const li = document.createElement('li'), btn = document.createElement('button'), b = document.createElement('b'), dot = document.createElement('i'), name = document.createElement('span'), small = document.createElement('small');
+        btn.type = 'button'; btn.append(b, dot, name, small); li.append(btn);
+        slots.push({ li, btn, b, dot, name, small });
+      }
+      const key = `${rows.length}:${gapAt}`;
+      if (key !== shape) {
+        // the rows' set changed (a race of a few cars, or the gap moved): put them in order; the focus stays where it was
+        const had = document.activeElement;
+        shape = key;
+        ul.replaceChildren(...rows.flatMap((_, j) => (j === gapAt ? [gap, slots[j].li] : [slots[j].li])));
+        if (had instanceof HTMLElement && had.isConnected && document.activeElement !== had) had.focus({ preventScroll: true });
+      }
+      rows.forEach((r, j) => {
+        const s = slots[j];
+        if (s.li.className !== r.cls) s.li.className = r.cls;
+        if (s.btn.dataset.k !== String(r.k)) { s.btn.dataset.k = String(r.k); s.btn.setAttribute('aria-label', `Follow ${r.name}`); }
+        s.btn.setAttribute('aria-pressed', String(r.on));
+        set(s.b, String(r.place)); set(s.name, r.name); set(s.small, r.small);
+        if (s.dot.dataset.c !== r.color) { s.dot.dataset.c = r.color; s.dot.style.background = r.color; }
+      });
+    },
+  };
+}

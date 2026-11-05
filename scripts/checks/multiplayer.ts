@@ -32,10 +32,10 @@ import cpuData from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
 import { derive } from '../../src/common/rng';
 import { roundTimes } from '../../src/common/schedule';
-import { genomeToJSON, zeroGenome } from '../../src/common/sim/brain';
+import { compile, genomeToJSON, zeroGenome } from '../../src/common/sim/brain';
 import { energyRefusal } from '../../src/common/sim/energy';
 import { cpuRounds } from '../../src/common/sim/cpu';
-import { ROUND_RACE, runRace, type RaceResult } from '../../src/common/sim/match';
+import { recordCar, ROUND_RACE, runRace, type RaceResult } from '../../src/common/sim/match';
 import type { BrainSpec, Genome } from '../../src/common/sim/spec';
 import { MAX_RIVALS } from '../../src/client/render/drive';
 import { fixtureBrain, STANDINGS_LAYOUT, standingsClear, type StandingsLayout } from './fixture';
@@ -260,8 +260,9 @@ async function main() {
     const nodeRound = (n: number) => {
       const entries = JSON.parse(si.rooms.get(code)!.frozen.get(n)!) as { id: string; name: string; brain: string }[];
       const ok = entries.filter((e) => energyRefusal((JSON.parse(e.brain) as Genome).spec, CONFIG.rounds.budgets[n - 1]) === null);
-      node[n - 1] = runRace(ok.map((e) => JSON.parse(e.brain) as Genome), derive(matchSeed >>> 0, 0x50d5, n), undefined, ROUND_RACE);
-      return { entries, ok, race: node[n - 1] };
+      const genomes = ok.map((e) => JSON.parse(e.brain) as Genome);
+      node[n - 1] = runRace(genomes, derive(matchSeed >>> 0, 0x50d5, n), undefined, ROUND_RACE);
+      return { entries, ok, genomes, race: node[n - 1] };
     };
     /** Build → train (no buttons) → hand in → the race (= Node on every page) → standings; returns Node's round. */
     const playRound = async (n: number, players: Page[], watchers: Page[], o: { shots?: boolean } = {}) => {
@@ -347,6 +348,29 @@ async function main() {
     check(shown.filter((x) => x !== '⋯').length === 10 && shown.length <= 11 && shown.includes('Host'), `the sidebar lists 10 racers of 96: places 1–3 and those nearest you (${shown.join(', ')})`);
     check(r.drawn.length === 1 + MAX_RIVALS && JSON.stringify(got) === JSON.stringify(want) && r.dots === 96, `at ${r.t.toFixed(1)} s: ${MAX_RIVALS} others drawn in 3-D, the nearest to your car (${got.join(' ')}); 96 dots on the map`);
     await host.screenshot({ path: `${OUT}/race-100.png` });
+
+    // follow a far car from the map (follow-a-racer plan): it is drawn, the cars drawn are those nearest it, its brain
+    const dotsAt = await host.evaluate(() => Array.from({ length: window.__race!.dots() }, (_, k) => window.__race!.dotAt(k)));
+    const far = n1.race.cars.map((_, k) => k).filter((k) => k > 1 && dotsAt[k]).sort((a, b) => d2[b] - d2[a]).slice(0, 30)
+      .map((k) => ({ k, gap: Math.min(...dotsAt.map((q, j) => (j === k || !q ? Infinity : Math.hypot(q.x - dotsAt[k]!.x, q.y - dotsAt[k]!.y)))) }))
+      .sort((a, b) => b.gap - a.gap)[0];
+    await host.mouse.click(dotsAt[far.k]!.x, dotsAt[far.k]!.y);
+    const fr0 = await host.evaluate(() => window.__race!.frames); // frames drawn since the tap
+    await host.waitForFunction((f) => (window.__race?.frames ?? 0) > f + 2, fr0, { timeout: 30_000 });
+    const fo = await host.evaluate(`(() => { const r = window.__race; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), own: r.ownVals(), main: r.drawn()[0], others: r.drawn().slice(1).map((p) => p[4]), look: r.lookOff(), cam: r.cam().mode, t: r.t, mine: !document.getElementById('rcMine').hidden }; })()`) as
+      { k: number; title: string; vals: number[] | null; own: number[] | null; main: number[]; others: number[]; look: number; cam: string; t: number; mine: boolean };
+    const fg = n1.genomes[far.k], frec = recordCar(fg, n1.race.track, n1.race.cars[far.k].slot, ROUND_RACE), fN = compile(fg).nNodes, fb = Math.min(Math.floor(fo.t * HZ - 1) + 1, frec.ticks - 1);
+    const fvals = Array.from(frec.act.subarray(fb * fN, (fb + 1) * fN));
+    const fp = posAt(far.k), dk = n1.race.cars.map((_, k) => { const p = posAt(k); return k === far.k ? Infinity : (p[0] - fp[0]) ** 2 + (p[1] - fp[1]) ** 2; });
+    const wantF = n1.race.cars.map((_, k) => k).sort((a, b) => dk[a] - dk[b] || a - b).slice(0, MAX_RIVALS).sort((a, b) => a - b);
+    check(fo.k === far.k && fo.main[4] === far.k && fo.main[3] === 1 && JSON.stringify(fo.others) === JSON.stringify(wantF) && fo.look < 3 && fo.cam === 'tv',
+      `the map: tap ${n1.ok[far.k].name}'s dot (${Math.sqrt(d2[far.k]).toFixed(0)} m from you): the broadcast camera follows that car, drawn (never a ghost), with the ${MAX_RIVALS} cars nearest it (${wantF.join(' ')}${JSON.stringify(fo.others) === JSON.stringify(wantF) ? '' : `; drawn ${fo.others.join(' ')}`}; following ${fo.k}, main car ${fo.main[4]} shown ${fo.main[3]}, aim ${fo.look.toFixed(2)} m off, ${fo.cam})`);
+    check(fo.title === `Brain · ${n1.ok[far.k].name}` && !!fo.vals && fo.vals.length === fvals.length && fo.vals.every((x, i) => Math.abs(x - fvals[i]) < 1e-9) && JSON.stringify(fo.vals) !== JSON.stringify(fo.own) && fo.mine,
+      `its brain card ("${fo.title}") fires as Node's replay of that entry; "Back to my car" shows (values ${fo.vals?.length} vs ${fvals.length}, max diff ${fo.vals ? Math.max(...fo.vals.map((x, i) => Math.abs(x - (fvals[i] ?? NaN)))).toExponential(1) : '-'}, at ${fo.t.toFixed(2)} s; button ${fo.mine})`);
+    await host.screenshot({ path: `${OUT}/follow-far.png` });
+    await host.click('#rcMine');
+    await host.waitForFunction(() => window.__race?.following() === 0, null, { timeout: 10_000 }).catch(() => undefined);
+    check((await host.evaluate(() => [window.__race!.following(), window.__race!.cardTitle()].join('|'))) === '0|Brain · live', '"Back to my car": your car and your brain again');
     await host.evaluate(() => { window.__race!.hold = false; });
     const st8 = await toStandings(1, pages);
     check(Math.abs(st8) < 400 && roundTimes(1).next - roundTimes(1).standings === 8000, `round 1's race ends: 8 s of standings, counting down to round 2's build on the server's clock (${st8.toFixed(0)} ms off)`);

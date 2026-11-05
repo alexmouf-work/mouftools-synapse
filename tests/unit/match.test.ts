@@ -8,7 +8,7 @@ import { newRecording, putBack, Runner } from '../../src/common/sim/race';
 import { biasIndex, OUTPUTS, type Genome } from '../../src/common/sim/spec';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
 import { maxLoad } from '../../src/common/sim/energy';
-import { gridCar, gridOrder, gridPlace, rank, raceTrackSeed, ROUND_RACE, runRace } from '../../src/common/sim/match';
+import { gridCar, gridOrder, gridPlace, rank, raceTrackSeed, recordCar, ROUND_RACE, runRace } from '../../src/common/sim/match';
 import { generateTrack, gridDepth } from '../../src/common/sim/track';
 
 const M = CONFIG.match;
@@ -183,6 +183,20 @@ describe('the CPU brains', () => {
       expect(c.layers.length).toBe(a.layers.length);
       a.layers.forEach((l, L) => expect(c.layers[L].n).toBeGreaterThanOrEqual(l.n));
       for (const id of Object.keys(a.senses) as (keyof typeof a.senses)[]) expect(c.senses[id]).toBeGreaterThanOrEqual(a.senses[id]);
+    }
+  });
+});
+
+describe('following a racer', () => {
+  it('recordCar replays one car of a race exactly, with its brain\'s activity (the followed racer\'s brain card)', () => {
+    const g = [defaultGenome(), ...cpuRounds(data)[2].map((b) => b.genome)], r = runRace(g, 11, (k) => k === 0, ROUND_RACE);
+    for (const k of [0, 3, 9]) {
+      const c = r.cars[k], rec = recordCar(g[k], r.track, c.slot, ROUND_RACE), nN = compile(g[k]).nNodes;
+      expect(rec.ticks).toBe(c.rec.ticks);
+      for (const f of ['x', 'y', 'hdg', 'v', 'prog', 'wrong'] as const) expect(Array.from(rec[f])).toEqual(Array.from(c.rec[f]));
+      expect(rec.act.length).toBe(ROUND_RACE.ticks * nN);
+      if (k === 0) expect(Array.from(rec.act)).toEqual(Array.from(c.rec.act));
+      expect(rec.act.every(Number.isFinite)).toBe(true);
     }
   });
 });

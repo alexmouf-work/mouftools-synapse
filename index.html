@@ -159,6 +159,7 @@
         <div class="tv-hd"><h2 class="rc-h" id="rcListH">Grid</h2><span class="tv-gen" id="rcCars"></span></div>
         <ol class="rc-list" id="rcList"></ol>
         <div class="tv-actions">
+          <button class="btn" id="rcMine" type="button" hidden>Back to my car</button>
           <button class="btn" id="rcLeave" type="button">Back</button>
           <button class="btn menu" id="rcMenu" type="button">Main menu</button>
           <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicRc" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxRc" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
@@ -172,7 +173,7 @@
     <div class="tv-cam">
       <div class="dv-count" id="rcCount" aria-live="assertive"></div>
       <div class="rc-wrong" id="rcWrong" role="status" hidden>Wrong way</div>
-      <div class="tv-mini tv-brainc" id="rcBrainC"><div class="tv-hd"><h2>Brain · live</h2></div><canvas id="rcBrain" aria-label="Your car's brain, firing"></canvas></div>
+      <div class="tv-mini tv-brainc" id="rcBrainC"><div class="tv-hd"><h2 id="rcBrainT">Brain · live</h2></div><canvas id="rcBrain" aria-label="Your car's brain, firing"></canvas></div>
       <section class="tv-panel rc-results" id="rcResults" aria-label="Results" hidden>
         <h2 id="rcResT">Results</h2>
         <div class="rc-scroll" id="rcScroll"><table class="rc-table"><thead id="rcHead"><tr><th>Place</th><th>Name</th><th>Time</th><th>Distance</th></tr></thead><tbody id="rcRows"></tbody></table></div>

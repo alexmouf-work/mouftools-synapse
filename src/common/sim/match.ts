@@ -85,6 +85,16 @@ export const LAPPED: RaceLength = { ticks: M.capTicks, laps: M.laps };
 export const ROUND_RACE: RaceLength = { ticks: CONFIG.rounds.raceTicks, laps: 0 };
 
 /**
+ * One car of a race run again on its own, keeping every node's output per tick (follow-a-racer plan: the brain card of
+ * a racer you follow). Cars never touch, so this is the same run as that car's in runRace, tick for tick.
+ */
+export function recordCar(genome: Genome, track: Track, slot: number, len: RaceLength = LAPPED): Recording {
+  const net = compile(genome), rec = newRecording(net, len.ticks, true);
+  new Runner().run(net, track, { ticks: len.ticks, earlyStop: false, record: rec, start: gridCar(track, slot), wrongWay: true });
+  return rec;
+}
+
+/**
  * Run a race: car k is genomes[k]. `act(k)` says which cars keep every node's output per tick (the player's, for its
  * live brain); the rest record frames only. Every car has the wrong-way reset. Every car drives the whole cap (after the flag it carries on, as on a
  * cool-down lap), so a race's recordings never depend on the other cars.

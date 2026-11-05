@@ -179,10 +179,13 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
     }
   }
 
-  // broadcast camera spots
+  // broadcast camera spots (follow-a-racer plan, broadcast in matches): about 140 m apart, 40–60 m off the centreline
+  // and 8–18 m up; where neither side is clear that far out (another stretch of track), 30 m if that is clear
   const tvSpots: Stadium['tvSpots'] = [];
-  for (let i = 5; i < t.n; i += Math.round(104 / t.ds)) {
-    const off = 24 + rand() * 12, hy = 4 + rand() * 9, s = sideFor(i, [0], [off], WALL_OUT + 4);
+  for (let i = 5; i < t.n; i += Math.round(140 / t.ds)) {
+    let off = 40 + rand() * 20, s = sideFor(i, [0], [off], WALL_OUT + 4);
+    const hy = 8 + rand() * 10;
+    if (!s) { off = 30; s = sideFor(i, [0], [off], WALL_OUT + 4); }
     if (!s) continue;
     const p = at(t, i, s * off, 0);
     p.y = hy;

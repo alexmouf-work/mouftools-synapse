@@ -34,6 +34,18 @@ export class TrackMap {
     return true;
   }
 
+  /** Where a sim point is on the map, in CSS px from its top-left (null before the first draw). */
+  cssOf(x: number, y: number): { x: number; y: number } | null {
+    if (!this.layout()) return null;
+    return { x: this.X(x) / this.pr, y: this.Y(y) / this.pr };
+  }
+  /** The dot nearest a point on the map (CSS px from its top-left) within `px`, or −1 (follow-a-racer plan: 16 px). */
+  nearest(cx: number, cy: number, dots: readonly Dot[], px = 16): number {
+    let best = -1, bd = px * px;
+    dots.forEach((d, k) => { const q = this.cssOf(d.x, d.y); if (!q) return; const e = (q.x - cx) ** 2 + (q.y - cy) ** 2; if (e <= bd) { bd = e; best = k; } });
+    return best;
+  }
+
   private X(x: number): number { return this.ox + x * this.sx; }
   private Y(y: number): number { return this.oy - y * this.sx; }
 

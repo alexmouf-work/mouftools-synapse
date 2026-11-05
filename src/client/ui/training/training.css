@@ -92,6 +92,14 @@ body.training { overflow: hidden; }
 .rc-list li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rc-list li small { color: var(--muted); font-size: 11px; }
 .rc-list li.you { background: var(--accent-soft); font-weight: 700; }
+/* each row is a button that follows that racer (follow-a-racer plan); the followed racer's row is outlined */
+.rc-list li:has(> button) { padding: 0; }
+.rc-list li > button { font: inherit; color: inherit; background: none; border: 0; border-radius: 0; margin: 0; width: 100%; min-width: 0; text-align: left;
+  display: flex; gap: 8px; align-items: center; padding: 1px 6px; cursor: pointer; }
+.rc-list li > button:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
+.rc-list li > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rc-list li.followed { outline: 2px solid var(--accent); outline-offset: -2px; }
+#rcMap { cursor: pointer; }
 
 /* the title and the buttons stay put; only the table scrolls (a room's race lists up to 100) */
 .rc-results { pointer-events: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: hidden;
@@ -118,7 +126,7 @@ body.timed .rc-results { top: calc(50px + clamp(30px, 7vh, 54px)); transform: tr
 /* at most 10 rows (places 1–3, then those nearest you): "⋯" where the two groups don't meet */
 .rc-table tr.gap td { text-align: center; color: var(--muted); padding: 0; line-height: 1.1; }
 @media (max-height: 540px) and (orientation: landscape) {
-  .rc-list { font-size: 10.5px; gap: 0; } .rc-list li { padding: 0 4px; gap: 5px; }
+  .rc-list { font-size: 10.5px; gap: 0; } .rc-list li { padding: 0 4px; gap: 5px; } .rc-list li > button { padding: 0 4px; gap: 5px; }
   .rc-side .kv, .dv-side .kv, .rc-side .kv dd, .dv-side .kv dd { font-size: 10.5px; }
   .tv-half { padding: 5px 6px; gap: 3px; }
   .rc-results { gap: 6px; padding: 8px 12px; }

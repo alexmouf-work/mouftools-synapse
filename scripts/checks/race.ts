@@ -30,7 +30,7 @@ import cpuData from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
 import { compile, defaultGenome, genomeHash, zeroGenome } from '../../src/common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
-import { gridCar, raceTrackSeed, ROUND_RACE, runRace } from '../../src/common/sim/match';
+import { gridCar, raceTrackSeed, recordCar, ROUND_RACE, runRace } from '../../src/common/sim/match';
 import { Runner } from '../../src/common/sim/race';
 import { derive } from '../../src/common/rng';
 import { biasIndex, defaultSpec, OUTPUTS, type BrainSpec, type Genome } from '../../src/common/sim/spec';
@@ -208,6 +208,15 @@ async function main() {
     // (the grid's bloom audit above brings Go forward and takes a while on SwiftShader: the race timer has been running since)
     check(r.countdownSeen.slice(0, 6).join(' ') === '5 4 3 2 1 Go' && bt.label === 'Round 1 of 5 · Race' && Number(bt.text) > 0 && Number(bt.text) <= 30, `countdown ${r.countdownSeen.join(' ')}, then at Go "${bt.label}" (${bt.text} s left now)`);
 
+    // the broadcast camera from Go (follow-a-racer plan): a shot holds at least 3 s unless the car leaves the frame
+    const camGo = await page.evaluate(() => window.__race!.cam().mode);
+    await page.waitForFunction(() => (window.__race?.t ?? 0) >= 10, null, { timeout: 120_000, polling: 200 });
+    const cuts = await page.evaluate(() => window.__race!.cam().cuts);
+    const quick = cuts.filter((c, i) => i > 0 && c.why === 'spot' && c.t - cuts[i - 1].t < 3 - 1e-6);
+    check(camGo === 'tv' && cuts.length >= 1 && quick.length === 0,
+      `the race camera is broadcast after Go; ${cuts.length} shots in the first 10 s, cut ${cuts.map((c) => `${c.why}@${c.t.toFixed(1)}`).join(' ')}: none sooner than 3 s after the last unless the car left the frame`);
+    await page.screenshot({ path: `${OUT}/broadcast.png` });
+
     // 4. mid-race: every car where Node has it, the sidebar, the brain card
     await page.evaluate(() => window.__race!.seek(20));
     await frames(page, 2);
@@ -228,6 +237,35 @@ async function main() {
     check(side.brain, 'your live brain in the camera\'s bottom-right corner');
     check(side.lap === 'Distance' && /km$/.test(side.dist) && (await page.locator('#rcListH').innerText()) === 'STANDINGS' && [...r.listed].sort().join() === [...r.names].sort().join(), `a timed race shows your distance (${side.dist}) and the standings`);
     await page.screenshot({ path: `${OUT}/race-20s.png` });
+
+    // following a CPU racer (follow-a-racer plan): its row, then the keyboard, then Back to my car
+    await page.evaluate(() => { window.__race!.hold = true; });
+    const fr = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('#rcList li:not(.gap):not(.you) button')].map((b) => Number(b.dataset.k)));
+    const fk = fr[0], fk2 = fr[1];
+    await page.click(`#rcList button[data-k="${fk}"]`);
+    await frames(page, 3);
+    const fol = async () => page.evaluate(`(() => { const r = window.__race, t = r.t; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), own: r.ownVals(), look: r.lookOff(), main: r.drawn()[0], t,
+      outlined: [...document.querySelectorAll('#rcList li.followed span')].map((e) => e.textContent), you: document.querySelector('#rcList li.you span')?.textContent ?? '', mine: !document.getElementById('rcMine').hidden,
+      card: !document.getElementById('rcBrainC').hidden, pos: document.getElementById('rcPos').textContent }; })()`) as Promise<{ k: number; title: string; vals: number[] | null; own: number[] | null; look: number; main: number[]; t: number; outlined: string[]; you: string; mine: boolean; card: boolean; pos: string }>;
+    const f1 = await fol();
+    // the card's values this frame = Node's replay of that car alone at the same tick
+    const replay = (k: number, t: number) => { const rec = recordCar(k === 0 ? trained : cpu1[k - 1], node.track, node.cars[k].slot, ROUND_RACE), nN = compile(k === 0 ? trained : cpu1[k - 1]).nNodes, b = Math.min(Math.floor(t * HZ - 1) + 1, rec.ticks - 1); return Array.from(rec.act.subarray(b * nN, (b + 1) * nN)); };
+    const close = (a: number[] | null, b: number[]) => !!a && a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
+    check(f1.k === fk && f1.title === `Brain · ${NAMES[fk]}` && close(f1.vals, replay(fk, f1.t)) && JSON.stringify(f1.vals) !== JSON.stringify(f1.own) && f1.main[4] === fk && f1.look < 3
+      && JSON.stringify(f1.outlined) === JSON.stringify([NAMES[fk]]) && f1.you === 'You' && f1.mine && f1.card && /^\d+(st|nd|rd|th) of 10$/.test(f1.pos),
+      `click ${NAMES[fk]}'s row: the camera follows that car (aim ${f1.look.toFixed(2)} m off it), the card reads "${f1.title}" with its brain firing as Node's replay of it, not yours; its row outlined, yours still marked; "Back to my car" shows; Position stays yours (${f1.pos})`);
+    await page.screenshot({ path: `${OUT}/follow-cpu.png` });
+    await page.focus(`#rcList button[data-k="${fk2}"]`);
+    await page.keyboard.press('Space');
+    await frames(page, 2);
+    const f2 = await fol();
+    check(f2.k === fk2 && f2.title === `Brain · ${NAMES[fk2]}`, `keyboard: Space on ${NAMES[fk2]}'s row follows them ("${f2.title}")`);
+    await page.click('#rcMine');
+    await frames(page, 3);
+    const f3 = await fol();
+    check(f3.k === 0 && f3.title === 'Brain · live' && close(f3.vals, f3.own ?? []) && f3.main[4] === 0 && !f3.mine && f3.outlined.length === 0 && f3.look < 3,
+      '"Back to my car": the camera and the card are yours again, and the button goes');
+    await page.evaluate(() => { window.__race!.hold = false; });
     const pr = await page.evaluate(() => window.__race!.probe!());
     check(pr.mean > 20 && pr.sd > 8, `render smoke: mean ${pr.mean.toFixed(1)}, spread ${pr.sd.toFixed(1)}`);
     for (const t of [10, 25]) {

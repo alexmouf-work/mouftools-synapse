@@ -36,6 +36,8 @@ const NEAR_CAM = 8;
 const WHEEL_SPIN = 18; // rad/s at output ±1: readable on screen, direction and rate follow the output
 const RANGE = CONFIG.senses.boundary.rangeM;
 const MAX_BEAMS = CONFIG.senses.boundary.max;
+/** The broadcast camera: a shot holds at least this long (s), and frames about this much car and road (m, half). */
+const TV_HOLD = 3, TV_FRAME = 11;
 
 export class DriveRig {
   readonly car: CarModel;
@@ -52,6 +54,14 @@ export class DriveRig {
   private snap = true;
   private swing = 0;
   private tvIdx = -1;
+  /** The broadcast shot's age (s): a new spot only after TV_HOLD, unless the car has left the frame. */
+  private tvHeld = 0;
+  /** The camera's own clock (s of frames drawn), and every cut with why (checks). */
+  private clock = 0;
+  readonly cuts: { t: number; why: 'snap' | 'spot' | 'out' }[] = [];
+  /** A chase camera's glide to another car: time left and its length (s). */
+  private glideLeft = 0;
+  private glideLen = 0;
   private tvSpots: { i: number; p: THREE.Vector3 }[] = [];
   private track: Track | null = null;
   readonly rayDist = new Float64Array(MAX_BEAMS);
@@ -81,6 +91,19 @@ export class DriveRig {
 
   /** Put the camera exactly where it wants to be on the next update (no easing). */
   snapNow(): void { this.snap = true; this.tvIdx = -1; this.swing = 0; }
+
+  /**
+   * The camera turns to follow another car (follow-a-racer plan): the chase camera eases there over `sec` (smooth, no
+   * snap); the broadcast camera cuts to the best spot for it at once.
+   */
+  glide(sec: number): void {
+    if (this.mode === 'tv') { this.tvIdx = -1; return; }
+    this.glideLeft = this.glideLen = sec;
+  }
+  /** The car the camera follows takes that car's colour (yours is yellow). */
+  setCarColor(c: string): void { this.car.setColor(c); }
+  /** How far the camera's aim is from the followed car (m), for the checks. */
+  lookOff(): number { return this.look.distanceTo(this.v.copy(this.car.car.position)); }
 
   /** World unit direction of each boundary cell's beam as drawn (for the beam-direction check). */
   beamDirs(): number[][] {
@@ -150,7 +173,7 @@ export class DriveRig {
       this.camera.position.copy(this.car.car.position).add(new THREE.Vector3(7, 3.2, 9));
       this.controls.autoRotate = !reduceMotion;
     }
-    this.snap = true; this.tvIdx = -1;
+    this.snap = true; this.tvIdx = -1; this.glideLeft = 0; this.cuts.length = 0;
   }
 
   update(p: DrivePose, dt: number, time: number, reduceMotion: boolean): void {
@@ -189,14 +212,23 @@ export class DriveRig {
   private updateCamera(p: DrivePose, dt: number, reduceMotion: boolean): void {
     const car = this.car.car, cam = this.camera;
     this.fwd.set(0, 0, 1).applyQuaternion(car.quaternion);
-    const k = this.snap ? 1 : 1 - Math.exp(-dt * 5);
+    this.clock += dt;
+    let k = this.snap ? 1 : 1 - Math.exp(-dt * 5);
+    const gliding = this.glideLeft > 0 && !this.snap;
+    if (gliding) {
+      // an eased glide to the new car, done in glideLen s: the share of what is left to go, this frame
+      const ease = (u: number) => u * u * (3 - 2 * u), u0 = 1 - this.glideLeft / this.glideLen;
+      this.glideLeft = Math.max(0, this.glideLeft - dt);
+      const u1 = 1 - this.glideLeft / this.glideLen;
+      k = u0 >= 1 ? 1 : (ease(u1) - ease(u0)) / (1 - ease(u0));
+    }
     if (this.mode === 'chase') {
       // stuck: swing slowly round the car so the pinned car (wheels still turning) never looks like a frozen frame
       this.swing = p.stuck && !reduceMotion ? this.swing + dt * 0.35 : this.swing * Math.exp(-dt * 2);
       const back = this.v.copy(this.fwd).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.swing).multiplyScalar(-10.5);
       this.pos.copy(car.position).add(back); this.pos.y = car.position.y + 3.9;
       cam.position.lerp(this.pos, k);
-      this.look.lerp(this.v.copy(car.position).addScaledVector(this.fwd, p.stuck ? 0 : 6).setY(car.position.y + 1.2), this.snap ? 1 : 1 - Math.exp(-dt * 8));
+      this.look.lerp(this.v.copy(car.position).addScaledVector(this.fwd, p.stuck ? 0 : 6).setY(car.position.y + 1.2), this.snap ? 1 : gliding ? k : 1 - Math.exp(-dt * 8));
       cam.lookAt(this.look);
       const fov = 60 + Math.abs(p.v) * 0.1;
       if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * k; cam.updateProjectionMatrix(); }
@@ -204,11 +236,18 @@ export class DriveRig {
       const n = this.track ? this.track.n : 1;
       let best = 0, bv = Infinity;
       this.tvSpots.forEach((sp, j) => { let rel = ((p.idx - sp.i) % n + n) % n; if (rel > n / 2) rel -= n; const score = Math.abs(rel + 12); if (score < bv) { bv = score; best = j; } });
-      if (best !== this.tvIdx) { this.tvIdx = best; this.snap = true; cam.position.copy(this.tvSpots[best].p); }
+      this.tvHeld += dt;
+      // a shot holds at least TV_HOLD s (follow-a-racer plan, broadcast in matches), unless the car has left the frame
+      const out = this.tvIdx >= 0 && !this.inFrame(car.position);
+      if (best !== this.tvIdx && (this.tvIdx < 0 || this.tvHeld >= TV_HOLD || out)) {
+        this.cuts.push({ t: this.clock, why: this.tvIdx < 0 ? 'snap' : out && this.tvHeld < TV_HOLD ? 'out' : 'spot' });
+        if (this.cuts.length > 200) this.cuts.shift();
+        this.tvIdx = best; this.tvHeld = 0; this.snap = true; cam.position.copy(this.tvSpots[best].p);
+      }
       this.look.lerp(this.v.copy(car.position).setY(car.position.y + 0.8), this.snap ? 1 : 1 - Math.exp(-dt * 7));
       cam.lookAt(this.look);
       const dist = cam.position.distanceTo(car.position);
-      cam.fov = Math.min(55, Math.max(9, 2 * Math.atan(8 / dist) * 180 / Math.PI)); cam.updateProjectionMatrix();
+      cam.fov = Math.min(55, Math.max(9, 2 * Math.atan(TV_FRAME / dist) * 180 / Math.PI)); cam.updateProjectionMatrix();
     } else {
       this.v.copy(car.position).sub(this.controls.target);
       cam.position.add(this.v); this.controls.target.copy(car.position);
@@ -217,6 +256,12 @@ export class DriveRig {
     }
     this.snap = false;
     assertFiniteArray(cam.matrixWorld.elements, 'drive camera');
+  }
+
+  /** A point in the camera's view (inside the frame and in front). */
+  private inFrame(q: THREE.Vector3): boolean {
+    const v = this.v.copy(q).project(this.camera);
+    return Number.isFinite(v.x) && Number.isFinite(v.y) && v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
   }
 
   dispose(): void {
