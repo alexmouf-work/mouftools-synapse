@@ -302,3 +302,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   → `docs/plans/2026-11-05-tracks-v2-and-match-settings.md` (T1 tracks, T2 choice/settings/names/host).
 - "don't offer building of a brain before the match starts. building is only available when the match has started."
   (2026-11-05) → tracks-v2 plan, "No building before the match" (T2).
+- "make sure that when the player starts a game, the brain starts off randomly initiated and fresh." (2026-11-05) →
+  tracks-v2 plan, "A fresh random brain at the start of every game" (T2).

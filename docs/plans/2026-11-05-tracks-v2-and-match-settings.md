@@ -71,3 +71,14 @@ started."
 - **Between matches:** the final standings offer Play again and Main menu, and nothing else. Play again goes back to
   the lobby (Multiplayer) or the settings screen (vs CPU), not to a designer.
 - The server stops reporting `ready` in the lobby state before a match; brains exist only per round.
+
+## A fresh random brain at the start of every game (2026-11-05, part of T2)
+Principal: "make sure that when the player starts a game, the brain starts off randomly initiated and fresh."
+- When a vs CPU or Multiplayer match starts, including Play again, round 1's build opens on a new random starter:
+  `starterSpec` (2–6 inputs, always one boundary vector cell, 3 tanh, 4 wheels), drawn from a fresh crypto seed. It is
+  no longer the fixed `defaultSpec()`. Its weights, biases and fields are freshly initialised at random, and nothing
+  carries over from the sandbox brain or an earlier match.
+- The starter must fit round 1's budget. If a draw doesn't, draw again with the next seed. checks: 2000 seeds all
+  fit, or the redraw finds one within a few tries.
+- The checks keep using `defaultSpec()` through their fixture hook, so goldens don't move. check:race asserts that
+  two match starts give different, valid starters within the budget, and that the sandbox brain is untouched.
