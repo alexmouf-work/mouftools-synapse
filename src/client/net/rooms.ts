@@ -4,16 +4,22 @@
 // read by the build). Nothing is stored in the browser: your player's secret token lives in memory for the tab.
 // The server's clock (`now` in each reply) sets when every phase of a match starts (common/schedule.ts), so every
 // client builds, trains and counts down to Go at the same moments.
+import { validMap, type MapSetting } from '../../common/sim/match';
 
-export interface RoomPlayer { id: string; name: string; ready: boolean; host: boolean; /** When they joined (server ms). */ joined: number }
+export interface RoomPlayer { id: string; name: string; host: boolean; /** When they joined (server ms). */ joined: number }
 export interface RoomState {
   code: string; race_no: number; race_seed: number | null; start_at: number | null;
+  /** The host's settings (tracks-v2 T2): how many may be in (2–100) and the map (match.ts MapSetting, as stored). */
+  max_players: number; map_mode: string; map_family: string | null; map_seed: number | null;
   /** The room's match (match-flow v2 §M2): its number (0: none yet), seed, and start (server ms; round 1's build). */
   match_no: number; match_seed: number | null; match_at: number | null;
   now: number; players: RoomPlayer[];
 }
 export interface Entry { id: string; name: string; brain: string }
-/** You in a room; `joined` is when (server ms): a match already under way is yours from the next round's build. */
+/**
+ * You in a room; `joined` is when (server ms): a match already under way is yours from the next round's build. `host`
+ * follows the room's state (the server hands the host on to the player who joined earliest when the host leaves).
+ */
 export interface Me { code: string; player: string; token: string; name: string; host: boolean; joined: number }
 
 const URL_ = __SUPABASE_URL__.replace(/\/+$/, ''), KEY = __SUPABASE_ANON_KEY__;
@@ -69,6 +75,11 @@ export const removePlayer = (me: Me, player: string): Promise<void> => rpc('syna
 export const roomState = (code: string): Promise<RoomState | null> => rpc('synapse_room_state', { p_code: code });
 /** The host starts a match: round 1's build from now, on every client. */
 export const startMatch = (me: Me): Promise<{ match_no: number; match_seed: number; match_at: number }> => rpc('synapse_start_match', { p_code: me.code, p_token: me.token });
+/** The host's settings (tracks-v2 T2): max players (2–100, not below the number in) and the map; refused mid-match. */
+export const setSettings = (me: Me, maxPlayers: number, map: MapSetting): Promise<void> =>
+  rpc('synapse_set_settings', { p_code: me.code, p_token: me.token, p_max: maxPlayers, p_mode: map.mode, p_family: map.family, p_seed: map.seed });
+/** A room's map as its state has it. */
+export const mapOfState = (s: RoomState): MapSetting => validMap({ mode: s.map_mode as MapSetting['mode'], family: (s.map_family ?? undefined) as MapSetting['family'], seed: s.map_seed ?? undefined });
 /** Hand in your brain for a round (until its entries freeze, as the race's countdown begins). */
 export const submitRoundBrain = (me: Me, matchNo: number, round: number, brain: string): Promise<void> =>
   rpc('synapse_submit_round_brain', { p_player: me.player, p_token: me.token, p_match_no: matchNo, p_round: round, p_brain: brain });

@@ -1,7 +1,8 @@
 // App entry: styles (one font site-wide: Arial, 400 and 700), then the title screen, which the page opens on (B2c).
 // Sandbox opens the brain designer. Train opens the training view and Drive the drive view, all in the same page (no
-// reload) over one shared 3-D stage. vs CPU is a 5-round match (ui/rounds/rounds.ts: build → train → race each round,
-// then the standings). Multiplayer (B8, B9) opens its own screen: the room code, your name, then the room's lobby;
+// reload) over one shared 3-D stage. vs CPU opens its settings screen (ui/cpuSettings: your name and the map; tracks-v2
+// T2), then a 5-round match (ui/rounds/rounds.ts: build → train → race each round, then the standings; Play again
+// back to the settings). Multiplayer (B8, B9) opens its own screen: the room code, your name, then the room's lobby;
 // when the host starts a match, every client plays the same 5 timed rounds from the server's clock
 // (ui/rounds/roomRounds.ts, match-flow v2 §M2). Every screen but the title has a Main menu button (sidebar plan 2026-11-05): back to the title,
 // asking first mid-match or in a room. Landscape only (B9): an upright phone gets "Turn your phone sideways" over
@@ -17,15 +18,18 @@ import { leaveDrive, openDrive } from './ui/drive/driveView';
 import { leaveTraining, openTraining } from './ui/training/trainingView';
 import { currentSaved, replaceSaved, setActive, setDesignerMode, start, timeUp, useMatchBrain } from './ui/designer/designer';
 import { leaveRace } from './ui/race/raceView';
-import { inRoom, leaveCurrentRoom, playAgain, roomPlayers, showLobby, startLobby, watchMatch } from './ui/lobby/lobby';
+import { inRoom, leaveCurrentRoom, roomPlayers, showLobby, startLobby, watchMatch } from './ui/lobby/lobby';
 import { abortMatch, inMatch, matchTrain, startMatch, type MatchViews } from './ui/rounds/rounds';
 import { abortRoomMatch, inRoomMatch, roomTrain, startRoomMatch, type RoomViews } from './ui/rounds/roomRounds';
 import { hideArena } from './ui/arena';
 import { startLandscape } from './ui/landscape';
 import { showTitle, startTitle } from './ui/title/title';
+import { cpuSettingsShown, showCpuSettings, startCpuSettings } from './ui/cpuSettings/cpuSettings';
+import { loadName } from './ui/tracks/tracks';
 import { liveSfx } from './audio/sfx';
 import { level } from './audio/audio';
 import type { Saved } from './ui/designer/store';
+import type { MapSetting } from '../common/sim/match';
 import { CONFIG } from '../common/config';
 import { stopPhaseTimer } from './ui/phaseTimer';
 import { validTemperature } from '../common/train/trainer';
@@ -39,10 +43,11 @@ const designerOff = () => { setActive(false); app!.hidden = true; showTitle(fals
 function sandbox() { stopPhaseTimer(); document.body.classList.remove('rounds'); where = 'sandbox'; useMatchBrain(null); setDesignerMode('sandbox'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
 /** vs CPU's views: each round's build in the designer (its own brain, the round's budget), training and the race. */
 const matchViews: MatchViews = {
-  build: (g, limit) => { where = 'cpu'; document.body.classList.add('rounds'); useMatchBrain(g); setDesignerMode('match', limit); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); },
+  build: (g, limit) => { where = 'cpu'; document.body.classList.add('rounds'); useMatchBrain(g); setDesignerMode('match', limit); showLobby(false); showCpuSettings(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); },
   away: () => { designerOff(); setMode('race'); },
   timeUp,
   title: () => title(),
+  again: () => cpu(),
 };
 /** A room's match: the same views on the room's timed rounds; between them the lobby (watching, joined mid-match). */
 const roomViews: RoomViews = {
@@ -52,10 +57,21 @@ const roomViews: RoomViews = {
   watch: (text) => { where = 'room'; setActive(false); app!.hidden = true; leaveRace(); hideArena(); watchMatch(text); setMode('build'); },
   players: roomPlayers,
   menu: () => menu(),
-  again: playAgain,
+  // the final standings' Play again: the lobby, where the host can change the settings and start the next match
+  again: () => { abortRoomMatch(); hideArena(); useMatchBrain(null); document.body.classList.remove('rounds'); lobby(); },
 };
-/** vs CPU from the title. `?race=` (checks) fixes the match seed, so its tracks. */
-function cpu() { const q = new URLSearchParams(location.search).get('race'); startMatch(matchViews, { seed: q !== null && /^\d+$/.test(q) ? Number(q) : undefined }); }
+/** vs CPU from the title (and Play again): its settings screen; no designer until the match starts. */
+function cpu() {
+  abortMatch(); leaveTraining(); leaveRace(); hideArena(); stopPhaseTimer();
+  if (where === 'cpu') { useMatchBrain(null); where = 'sandbox'; }
+  document.body.classList.remove('rounds');
+  showLobby(false); setActive(false); app!.hidden = true; showTitle(false); showCpuSettings(true); setMode('build');
+}
+/** The settings screen's Start match. `?race=` (checks) fixes the match seed, so its race seeds. */
+function cpuStart(name: string, map: MapSetting) {
+  const q = new URLSearchParams(location.search).get('race');
+  startMatch(matchViews, { seed: q !== null && /^\d+$/.test(q) ? Number(q) : undefined, name, map });
+}
 /** The room's lobby (or, if the host removed you meanwhile, Multiplayer's code screen saying so). */
 function lobby() { stopPhaseTimer(); where = 'room'; showLobby(true); setMode('build'); }
 const back = () => (where === 'room' ? lobby() : sandbox());
@@ -64,7 +80,7 @@ function title() {
   abortMatch(); abortRoomMatch(); leaveTraining(); leaveRace(); leaveDrive(); hideArena(); stopPhaseTimer();
   if (where === 'cpu' || where === 'room') { useMatchBrain(null); where = 'sandbox'; }
   document.body.classList.remove('rounds');
-  showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('lounge');
+  showLobby(false); showCpuSettings(false); setActive(false); app!.hidden = true; showTitle(true); setMode('lounge');
 }
 /** Main menu (every screen but the title): mid-match or in a room it asks first, in the page. */
 function menu() {
@@ -76,6 +92,7 @@ function menu() {
     d.showModal();
   };
   if (where === 'cpu' && inMatch()) ask('Leave the match?', title);
+  else if (cpuSettingsShown()) title();
   else if (where === 'room' && inRoom()) ask('Leave the room?', () => { leaveTraining(); leaveRace(); hideArena(); leaveCurrentRoom(); });
   else title();
 }
@@ -104,6 +121,7 @@ startLandscape();
 initAudio();
 start({ onTrain: train });
 startTitle({ onSandbox: sandbox, onCpu: () => cpu() });
+startCpuSettings({ start: cpuStart, menu: () => title() });
 startLobby({
   show: (on) => { if (on) { stopPhaseTimer(); setActive(false); app!.hidden = true; showTitle(false); setMode('build'); } else title(); },
   match: (info) => { where = 'room'; startRoomMatch(roomViews, info); },
@@ -150,6 +168,6 @@ else if (view === 'race') {
   // a round's race with the saved brain (checks): `race` fixes the match seed (so the track), `round` which round
   const q = new URLSearchParams(location.search), num = (k: string) => (/^\d+$/.test(q.get(k) ?? '') ? Number(q.get(k)) : undefined);
   where = 'cpu';
-  startMatch(matchViews, { seed: num('race'), round: num('round') ?? 1, raceWith: currentSaved() });
+  startMatch(matchViews, { seed: num('race'), round: num('round') ?? 1, raceWith: currentSaved(), name: loadName() || undefined });
 }
 else title();

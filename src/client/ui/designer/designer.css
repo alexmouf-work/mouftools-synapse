@@ -111,6 +111,8 @@ dialog#confirm { width: 260px; }
 .btn.sound[aria-pressed="false"] { color: var(--muted); }
 /* vs CPU (match-flow v2 §1): only the timers move a match on, so the designer has no Train button there */
 body.rounds #train { display: none; }
+/* the sandbox's Track button (tracks-v2 T2): a match's tracks are its settings' */
+body.match #trackBtn { display: none; }
 /* the phase countdown (ui/phaseTimer.ts; the vs CPU build timer, plan 2026-11-05): big, top centre of its host, vs CPU
    yellow; red near the end. In the designer the rule strip grows to hold it. */
 body.timed .app { grid-template-rows: 36px 48px 1fr; }

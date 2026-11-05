@@ -10,6 +10,9 @@
 // - Reset asks first; Train asks how many generations (100 by default) and Cancel leaves the brain alone.
 // - Saved after every change; reload keeps it; a corrupt save gives the starting brain and says so; a save from before
 //   brain v2 is reset with a note.
+// - The sandbox's Track button (tracks-v2 T2): the picker (Random and the seven families as map previews, each with
+//   Shuffle), the chosen track's length and features = Node's, synapse.track remembered across a reload, the tracks
+//   Drive and training use; it fits at 844×390; no Track button in a match.
 // - Overlap audit across brain sizes up to 8 × 8 (and every sense full), light and dark, desktop and 844×390: no cell,
 //   button or layer header overlaps another, all on the board; no horizontal scroll. Portrait phones get the card.
 // Screenshots → out/s2/.
@@ -22,6 +25,8 @@ import { defaultGenome, genomeHash, restRate, weightCount, zeroGenome } from '..
 import { layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
 import { biasIndex, defaultSpec, fieldIndex, paramCount, type BrainSpec, type Genome } from '../../src/common/sim/spec';
 import { parse, SAVE_KEY, serialize, startSaved } from '../../src/client/ui/designer/store';
+import { FAMILIES, familyOf, generateTrack, seedOfFamily, type Track } from '../../src/common/sim/track';
+import { chosenTrainTracks } from '../../src/common/train/phase';
 import { fixtureBrain, isStarter } from './fixture';
 
 const OUT = 'out/s2';
@@ -31,6 +36,14 @@ let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 
 const fmtE = (v: number) => `${Math.round(v * 10) / 10}%`;
+/** A track's features as the picker words them (written out here, not taken from the app). */
+function featuresOf(t: Track): string {
+  const n = new Map<string, number>();
+  for (const f of t.features) n.set(f.kind, (n.get(f.kind) ?? 0) + 1);
+  const parts = [...n].map(([k, c]) => (c > 1 ? `${c} ${k === 'esses' ? 'esses' : `${k}s`}` : k));
+  if (t.crossing) parts.push('a bridge over the crossing');
+  return parts.join(' · ');
+}
 function allocText(s: BrainSpec): { brain: string; speed: string } {
   const top = maxLoad(s), lo = restLoad(s, restRate), f = (v: number) => Math.round(Math.max(0, v)), sp = (l: number) => Math.round(speedCap(l) * 100);
   return { brain: f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`, speed: sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%` };
@@ -90,7 +103,7 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
-    await page.evaluate(([k, v]) => { localStorage.setItem('synapse.notice', '2'); if (v !== null) localStorage.setItem(k, v); }, [SAVE_KEY, o.save ?? null] as const);
+    await page.evaluate(([k, v]) => { localStorage.setItem('synapse.notice', '3'); if (v !== null) localStorage.setItem(k, v); }, [SAVE_KEY, o.save ?? null] as const);
     await page.goto(`${base}?view=sandbox`); // the page opens on the title; the checks go straight to the designer
     await page.waitForSelector('#net g.cell');
     return page;
@@ -236,6 +249,63 @@ async function main() {
     await page.waitForSelector('#net g.cell');
     check(genomeHash((await saved(page)).genome) === h && (await spec(page)).senses.grid === grids + 1, 'reload keeps the brain');
     await page.context().close();
+
+    // 8b. the sandbox's track (tracks-v2 T2): the Track button in the top bar, any time; the families as map previews and
+    //     Random; Shuffle; the big preview's length and features = Node's track; synapse.track; Drive and training use it
+    for (const [w, hgt] of [[1440, 900], [844, 390]] as const) {
+      page = await open({ w, h: hgt, mobile: w < 900 });
+      const bar = await page.evaluate(`(() => { const t = document.querySelector('.app .top'), cs = [...t.children].filter((c) => c.offsetWidth > 0).map((c) => c.getBoundingClientRect());
+        const apart = cs.every((a, i) => cs.every((b, j) => j <= i || a.right <= b.left + 0.5 || b.right <= a.left + 0.5));
+        const clipped = [...document.querySelectorAll('.alloc > span')].some((e) => e.scrollWidth > e.clientWidth + 1);
+        const b = document.getElementById('trackBtn'); return { apart, clipped, fits: t.scrollWidth <= t.clientWidth + 1, text: b.textContent, label: b.getAttribute('aria-label') }; })()`) as { apart: boolean; clipped: boolean; fits: boolean; text: string; label: string };
+      check(bar.apart && !bar.clipped && bar.fits && bar.text === 'Track' && bar.label === 'Track: Random', `${w}×${hgt}: the Track button in the top bar ("${bar.label}"), nothing in the bar overlapping or clipped`);
+      await page.click('#trackBtn');
+      await page.waitForSelector('#trackDlg[open]');
+      await page.waitForTimeout(200);
+      const pk = await page.evaluate(`(() => { const d = document.getElementById('trackDlg'), r = d.getBoundingClientRect();
+        const cards = [...d.querySelectorAll('.tp-card')].map((c) => { const cv = c.querySelector('canvas'); let ink = 0;
+          if (cv) { const g = cv.getContext('2d'), px = g.getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < px.length; i += 4) if (px[i] > 0) ink++; }
+          return { f: c.dataset.f, name: c.querySelector('b').textContent, on: c.getAttribute('aria-checked') === 'true', ink, shuf: !!d.querySelector('.tp-shuf[data-f="' + c.dataset.f + '"]:not([hidden])') }; });
+        return { cards, onScreen: r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5, scrolls: d.scrollHeight > d.clientHeight + 1 }; })()`) as { cards: { f: string; name: string; on: boolean; ink: number; shuf: boolean }[]; onScreen: boolean; scrolls: boolean };
+      const fams = pk.cards.slice(1);
+      check(pk.cards.length === 8 && pk.cards[0].f === 'random' && pk.cards[0].on && JSON.stringify(fams.map((c) => c.f)) === JSON.stringify(FAMILIES) && fams.every((c) => c.ink > 200 && c.shuf && !c.on),
+        `${w}×${hgt}: the picker shows Random (chosen) and the seven families as map previews, each with Shuffle (${fams.map((c) => `${c.name} ${c.ink} px`).join(', ')})`);
+      check(pk.onScreen && !pk.scrolls, `${w}×${hgt}: the picker fits on screen without scrolling`);
+      if (w === 1440) {
+        // pick the clover: its first preview, stored; the big preview = Node's track
+        await page.click('#trackPick .tp-card[data-f="clover"]');
+        const s1 = seedOfFamily('clover', FAMILIES.indexOf('clover') + 1), t1 = generateTrack(s1);
+        const big = () => page.evaluate(() => ({ name: document.querySelector('#trackPick .tp-name')!.textContent, len: document.querySelector('#trackPick .tp-len')!.textContent, feat: document.querySelector('#trackPick .tp-feat')!.textContent, stored: localStorage.getItem('synapse.track') }));
+        let bg = await big();
+        check(bg.name === 'Clover' && bg.len === `${(t1.len / 1000).toFixed(2)} km` && bg.feat === featuresOf(t1) && bg.stored === JSON.stringify({ family: 'clover', seed: s1 }),
+          `Clover picked: the big preview "${bg.name} · ${bg.len} · ${bg.feat}" = Node's track of seed ${s1}; remembered as synapse.track ${bg.stored}`);
+        await page.click('#trackPick .tp-shuf[data-f="clover"]');
+        bg = await big();
+        const s2 = (JSON.parse(bg.stored!) as { seed: number }).seed, t2 = generateTrack(s2);
+        check(s2 !== s1 && familyOf(s2) === 'clover' && t2.family === 'clover' && bg.len === `${(t2.len / 1000).toFixed(2)} km` && bg.feat === featuresOf(t2),
+          `Shuffle draws another clover (seed ${s2}: ${bg.len}, ${bg.feat}), stored at once`);
+        await page.screenshot({ path: `${OUT}/track-picker.png` });
+        const use = await page.evaluate(() => ({ train: window.__tracks!.trainTracks(5, 2), drive: window.__tracks!.drive!() }));
+        check(JSON.stringify(use.train) === JSON.stringify(chosenTrainTracks(s2, 'clover', 5, 2)) && use.train![0] === s2 && use.train!.slice(1).every((x) => familyOf(x) === 'clover' && x !== s2) && use.drive === s2,
+          `Drive opens on it (${use.drive}); training starts on it, then another clover (${use.train!.join(', ')}), = Node's chosenTrainTracks`);
+        await page.click('#tkDone');
+        check(!(await page.locator('#trackDlg').isVisible()) && (await page.locator('#trackBtn').getAttribute('aria-label')) === `Track: Clover, ${(t2.len / 1000).toFixed(2)} km`, `Done closes it; the button says "${await page.locator('#trackBtn').getAttribute('aria-label')}"`);
+        await page.reload();
+        await page.waitForSelector('#net g.cell');
+        await page.click('#trackBtn');
+        await page.waitForSelector('#trackDlg[open]');
+        const kept = await page.evaluate(() => ({ on: document.querySelector('#trackPick .tp-card[aria-checked="true"]')!.getAttribute('data-f'), seed: window.__tracks!.picker()!.seed }));
+        check(kept.on === 'clover' && kept.seed === s2, `after a reload the choice is remembered (${kept.on}, seed ${kept.seed})`);
+        await page.click('#trackPick .tp-card[data-f="random"]');
+        const rnd = await page.evaluate(() => ({ stored: localStorage.getItem('synapse.track'), train: window.__tracks!.trainTracks(5, 0) }));
+        check(rnd.stored === '{"family":"random"}' && rnd.train === null, `Random: remembered as ${rnd.stored}; training and Drive draw their own tracks again`);
+        await page.click('#tkDone');
+        await page.evaluate(() => document.body.classList.add('match'));
+        check(await page.locator('#trackBtn').isHidden(), 'in a match (vs CPU, Multiplayer) the designer has no Track button: the match settings choose the tracks');
+        await page.evaluate(() => document.body.classList.remove('match'));
+      } else await page.screenshot({ path: `${OUT}/track-picker-844x390.png` });
+      await page.context().close();
+    }
 
     // 9. a corrupt save, and a save from before brain v2
     page = await open({ w: 1440, h: 900, save: '{"v":3,' });

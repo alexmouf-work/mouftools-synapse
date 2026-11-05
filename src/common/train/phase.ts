@@ -5,6 +5,7 @@ import { Hasher } from '../hash';
 import { derive, TAG } from '../rng';
 import { genomeHash, zeroGenome } from '../sim/brain';
 import type { BrainSpec, Genome } from '../sim/spec';
+import { seedOfFamily, type Family } from '../sim/track';
 import type { Executor } from './episodes';
 import { MeteredEnv, type Env } from './env';
 import { createTrainer, type TrainerEvent, type TrainerOptions } from './trainer';
@@ -28,6 +29,14 @@ export function phaseSeeds(seed: number, phase = 0): PhaseSeeds {
     unseenTrack: derive(seed, TAG.unseenTrack, phase),
     trainer: phase === 0 ? seed : derive(seed, TAG.trainer, phase),
   };
+}
+
+/**
+ * Training tracks for a track chosen in the sandbox (tracks-v2 T2): the chosen track first, then other tracks of its
+ * family drawn from the phase's seeds, so a brain doesn't learn one lap by heart.
+ */
+export function chosenTrainTracks(track: number, family: Family, seed: number, phase = 0): number[] {
+  return Array.from({ length: CONFIG.train.trainTracks }, (_, i) => (i === 0 ? track >>> 0 : seedOfFamily(family, derive(seed, TAG.trainTrack, phase, i), track)));
 }
 
 /** The budget for a sandbox Train of `generations` generations: that many of evolution's worst case (else T). */
@@ -60,6 +69,8 @@ export interface PhaseOptions {
   /** Temperature (see TrainerOptions.temperature); a run input like the seed, so it changes the hash. */
   temperature?: number;
   phase?: number;
+  /** The training tracks' seeds, if not the phase's own (the sandbox's chosen track: chosenTrainTracks). */
+  tracks?: number[];
   /** A clock for timing only (sim code never reads time); defaults to no timing. */
   now?: () => number;
   /** Car-ticks per trainer.step call (default: all of T at once). The training view steps one generation at a time. */
@@ -91,7 +102,7 @@ export function bestSoFar(gens: GenStat[], start: Genome): Genome {
 
 export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o: PhaseOptions = {}): Promise<PhaseResult> {
   const seeds = phaseSeeds(seed, o.phase ?? 0);
-  const setup = { spec, trackSeeds: seeds.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
+  const setup = { spec, trackSeeds: o.tracks ?? seeds.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
   // the view's Stop aborts the pool; whenever that lands (even while the workers are still setting up), the run
   // ends as stopped rather than failing
   const aborted = (e: unknown): boolean => !!o.stop?.() && e instanceof Error && e.name === 'AbortError';

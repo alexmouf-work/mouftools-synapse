@@ -2,16 +2,21 @@
 // PostgREST shape (POST /rest/v1/rpc/<name>, JSON arguments, the anon key in `apikey` and `Authorization: Bearer`),
 // in memory. The multiplayer check runs the app against it; the real service is first tried on the preview.
 // `skew` lets a check move the server's time; `seed` makes race and match seeds reproducible. A match's rounds follow
-// the same schedule as the schema's synapse_round_start / synapse_round_freeze (src/common/schedule.ts).
+// the same schedule as the schema's synapse_round_start / synapse_round_freeze (src/common/schedule.ts). Tracks-v2 T2:
+// the room's settings (max players, enforced on join; the map), set by the host with synapse_set_settings and locked
+// while a match is on; the host handed on to the player who joined earliest when the host leaves.
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { CONFIG } from '../../src/common/config';
+import { FAMILIES, type Family } from '../../src/common/sim/track';
 import { matchOverMs, roundTimes } from '../../src/common/schedule';
 
 interface Player { id: string; room: string; name: string; tokenHash: string; brain: string | null; result: string | null; joined: number; joinedAt: number }
 interface Room {
   code: string; hostHash: string; created: number; raceNo: number; raceSeed: number | null; startAt: number | null; entries: string | null;
   matchNo: number; matchSeed: number | null; matchAt: number | null;
+  /** The host's settings (tracks-v2 T2). */
+  maxPlayers: number; mapMode: string; mapFamily: string | null; mapSeed: number | null;
   /** Round brains of the current match, by round then player id; frozen entries by round. */
   brains: Map<number, Map<string, string>>; frozen: Map<number, string>;
 }
@@ -51,7 +56,16 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
     if (!p) return;
     players.splice(players.indexOf(p), 1);
     for (const b of rooms.get(p.room)?.brains.values() ?? []) b.delete(p.id);
+    rehost(p.room);
   };
+  // synapse_rehost: the host gone, the player who joined earliest is host ('' with nobody in: the next to join is)
+  const rehost = (code: string) => {
+    const r = rooms.get(code);
+    if (!r) return;
+    const ps = inRoom(code);
+    if (!ps.some((p) => p.tokenHash === r.hostHash)) r.hostHash = ps[0]?.tokenHash ?? '';
+  };
+  const matchOn = (r: Room) => r.matchAt !== null && now() < r.matchAt + matchOverMs();
   const roundOk = (r: Room, matchNo: unknown, round: unknown): number => {
     const n = Number(round);
     if (r.matchAt === null || r.matchNo !== matchNo || !Number.isInteger(n) || n < 1 || n > CONFIG.rounds.count) fail('no such round');
@@ -64,15 +78,18 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
       token(a.p_token);
       let code = '';
       do code = Array.from({ length: 4 }, () => String.fromCharCode(65 + Math.floor(rnd() * 26))).join(''); while (rooms.has(code));
-      rooms.set(code, { code, hostHash: hash(String(a.p_token)), created: now(), raceNo: 0, raceSeed: null, startAt: null, entries: null, matchNo: 0, matchSeed: null, matchAt: null, brains: new Map(), frozen: new Map() });
+      rooms.set(code, { code, hostHash: hash(String(a.p_token)), created: now(), raceNo: 0, raceSeed: null, startAt: null, entries: null, matchNo: 0, matchSeed: null, matchAt: null,
+        maxPlayers: MAX_PLAYERS, mapMode: 'each', mapFamily: null, mapSeed: null, brains: new Map(), frozen: new Map() });
       return { code, now: now() };
     },
     synapse_join_room: (a) => {
       const code = String(a.p_code ?? '').toUpperCase();
       token(a.p_token); name(a.p_name);
       if (!rooms.has(code)) fail('no such room');
-      if (inRoom(code).length >= MAX_PLAYERS) fail('room full');
+      if (inRoom(code).length >= rooms.get(code)!.maxPlayers) fail('room full');
       const p = join(code, a.p_name, a.p_token);
+      const r = rooms.get(code)!;
+      if (r.hostHash === '') r.hostHash = p.tokenHash;
       return { code, player: p.id, name: p.name, joined: p.joinedAt, now: now() };
     },
     synapse_leave_room: (a) => { drop(players.find((p) => p.id === a.p_player && p.tokenHash === hash(String(a.p_token)))); return undefined; },
@@ -85,7 +102,7 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
     synapse_room_state: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, match_no: r.matchNo, match_seed: r.matchSeed, match_at: r.matchAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null, host: p.tokenHash === r.hostHash, joined: p.joinedAt })) };
+      return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, max_players: r.maxPlayers, map_mode: r.mapMode, map_family: r.mapFamily, map_seed: r.mapSeed, match_no: r.matchNo, match_seed: r.matchSeed, match_at: r.matchAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null, host: p.tokenHash === r.hostHash, joined: p.joinedAt })) };
     },
     synapse_submit_brain: (a) => {
       const b = String(a.p_brain ?? '');
@@ -100,10 +117,22 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
       r.entries = JSON.stringify(inRoom(r.code).filter((p) => p.brain !== null).map((p) => ({ id: p.id, name: p.name, brain: p.brain })));
       return { race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now() };
     },
+    synapse_set_settings: (a) => {
+      const r = rooms.get(String(a.p_code ?? '').toUpperCase());
+      if (!r || r.hostHash !== hash(String(a.p_token))) return fail('not the host');
+      if (matchOn(r)) return fail('match on');
+      const max = Number(a.p_max), mode = String(a.p_mode ?? ''), fam = a.p_family === null || a.p_family === undefined ? null : String(a.p_family), seed = a.p_seed === null || a.p_seed === undefined ? null : Number(a.p_seed);
+      if (!Number.isInteger(max) || max < 2 || max > MAX_PLAYERS || max < inRoom(r.code).length) return fail('max players');
+      if (!['each', 'family', 'track'].includes(mode)) return fail('map');
+      if (mode !== 'each' && (fam === null || !FAMILIES.includes(fam as Family))) return fail('map');
+      if (mode === 'track' && (seed === null || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff)) return fail('map');
+      r.maxPlayers = max; r.mapMode = mode; r.mapFamily = fam; r.mapSeed = seed;
+      return undefined;
+    },
     synapse_start_match: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase());
       if (!r || r.hostHash !== hash(String(a.p_token))) return fail('not the host');
-      if (r.matchAt !== null && now() < r.matchAt + matchOverMs()) return fail('match on');
+      if (matchOn(r)) return fail('match on');
       r.matchNo++; r.matchSeed = Math.floor(rnd() * 4294967296); r.matchAt = now(); r.brains = new Map(); r.frozen = new Map();
       return { match_no: r.matchNo, match_seed: r.matchSeed, match_at: r.matchAt, now: now() };
     },

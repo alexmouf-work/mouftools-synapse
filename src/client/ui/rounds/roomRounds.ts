@@ -5,7 +5,9 @@
 // phase's end the brain is handed in; the server freezes the round's entries as the race's countdown begins, 3 s
 // later; every client fetches them, computes the race (deterministic: the same race everywhere) and counts down to
 // the server's Go; the race's 30 s; then 8 s of standings (this round's signed distance and the total, as vs CPU; a
-// player with nothing in has 0 m). After round 5 the final standings stay, with Play again (the host) and Main menu.
+// player with nothing in has 0 m). After round 5 the final standings stay, with Play again (back to the lobby, where
+// the host can change the settings and start the next match) and Main menu. Each round's track follows the room's map
+// setting (tracks-v2 T2), locked while the match is on, so every client derives the same track.
 // A player who joins mid-match watches (the lobby, then the round's race) until the next round's build.
 //
 // One ticker (every 100 ms) compares the server's time (net/rooms.ts serverNow) with the schedule and moves the
@@ -16,7 +18,7 @@ import { derive } from '../../../common/rng';
 import { firstRound, phaseAt, roundTimes } from '../../../common/schedule';
 import { defaultGenome, genomeToJSON, zeroGenome } from '../../../common/sim/brain';
 import { energyRefusal } from '../../../common/sim/energy';
-import { ROUND_RACE, runRace, type RaceResult } from '../../../common/sim/match';
+import { NEW_EACH_ROUND, ROUND_RACE, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../../common/sim/match';
 import { validateGenome, type Genome } from '../../../common/sim/spec';
 import { win } from '../../audio/music';
 import { roundEntries, serverNow, shiftClock, submitResult, submitRoundBrain, type Entry, type Me, type RoomPlayer } from '../../net/rooms';
@@ -32,8 +34,8 @@ const TICK_MS = 100;
 /** Entries not frozen yet (a request a moment early): ask again this soon. */
 const RETRY_MS = 300;
 
-/** A match as the lobby saw it start. */
-export interface RoomMatchInfo { me: Me; matchNo: number; seed: number; at: number }
+/** A match as the lobby saw it start, with the room's map (settings are locked while it is on). */
+export interface RoomMatchInfo { me: Me; matchNo: number; seed: number; at: number; map: MapSetting }
 
 /** What a room's match asks of the page (main.ts routes the views; lobby.ts the room). */
 export interface RoomViews {
@@ -49,8 +51,8 @@ export interface RoomViews {
   players(): RoomPlayer[];
   /** Main menu (asks "Leave the room?" first). */
   menu(): void;
-  /** The host's Play again: start the next match. */
-  again(): Promise<void>;
+  /** The final standings' Play again: back to the lobby (the host starts the next match there). */
+  again(): void;
 }
 
 type Step = 'wait' | 'build' | 'train' | 'handIn' | 'race' | 'standings' | 'over';
@@ -218,14 +220,15 @@ export function racing(entries: Entry[], round: number): { ok: Entry[]; genomes:
   }
   return { ok, genomes };
 }
-/** Round n's race track seed (as vs CPU's). */
+/** Round n's race seed (as vs CPU's), and its track under the room's map. */
 export const roomRaceSeed = (matchSeed: number, n: number): number => derive(matchSeed >>> 0, 0x50d5, n);
+export const roomTrackSeed = (matchSeed: number, n: number, map: MapSetting = NEW_EACH_ROUND): number => roundTrackSeed(roomRaceSeed(matchSeed, n), map);
 
 /** Round n's race: compute it from the frozen entries (recording your car), keep each player's distance. */
 function computeRace(m: RM, n: number, entries: Entry[], mine: string | null): RoundRace {
   const { ok, genomes } = racing(entries, n), me = mine === null ? -1 : ok.findIndex((e) => e.id === mine);
   const c0 = performance.now();
-  const result = genomes.length ? runRace(genomes, roomRaceSeed(m.info.seed, n), (k) => k === me, ROUND_RACE) : null;
+  const result = genomes.length ? runRace(genomes, roomRaceSeed(m.info.seed, n), (k) => k === me, ROUND_RACE, roomTrackSeed(m.info.seed, n, m.info.map)) : null;
   m.computeMs[n - 1] = performance.now() - c0;
   const d = new Map<string, number>();
   for (const e of entries) { m.names.set(e.id, e.name); d.set(e.id, 0); }
@@ -304,7 +307,7 @@ function standings(m: RM, n: number): void {
   });
 }
 
-/** After round 5: the final standings stay, with Play again (the host) and Main menu. */
+/** After round 5: the final standings stay, with Play again (back to the lobby) and Main menu, for everyone. */
 function finalStandings(m: RM): void {
   if (m.step === 'over') return;
   const n = R.count;
@@ -312,16 +315,16 @@ function finalStandings(m: RM): void {
   stopPhaseTimer(); leaveTraining();
   void fill(m, n).then(() => {
     if (M !== m) return;
-    const rows = rowsAfter(m, n), you = rows.findIndex((r) => r.id === m.info.me.player) + 1, host = m.info.me.host;
+    const rows = rowsAfter(m, n), you = rows.findIndex((r) => r.id === m.info.me.player) + 1;
     m.standings[n - 1] = rows.map((r) => r.name);
     raceArena();
     const title = you === 0 ? 'Final standings' : you === 1 ? 'You won the match!' : `Final standings: you finished ${ordinal(you)} of ${rows.length}`;
-    showStandings(host ? title : `${title} · the host can play again`, n, rows.map((r) => ({ name: r.name, dist: r.dist, total: r.total, you: r.id === m.info.me.player })));
+    showStandings(title, n, rows.map((r) => ({ name: r.name, dist: r.dist, total: r.total, you: r.id === m.info.me.player })));
     report(m, n, rows);
     const again = $('rcAgain') as HTMLButtonElement, back = $('rcBack');
-    again.textContent = 'Play again'; again.hidden = !host; again.disabled = false;
+    again.textContent = 'Play again'; again.hidden = false; again.disabled = false;
     back.textContent = 'Main menu'; back.hidden = false;
-    again.onclick = () => { again.disabled = true; V.again().catch((e) => { console.warn('room: could not start', e); again.disabled = false; }); };
+    again.onclick = () => V.again();
     back.onclick = () => V.menu();
     if (you === 1) win();
   });
@@ -340,6 +343,8 @@ declare global {
   interface Window {
     __roomMatch?: {
       on: boolean; matchNo: number; seed: number; at: number; first: number; round: number; step: Step | 'none';
+      /** The room's map for this match and each round's track seed (tracks-v2 T2). */
+      map: MapSetting | null; tracks: number[];
       /** The server's clock as this client has it, ms from the match's start. */
       t: number;
       handed: boolean; trained: Genome | null; hashes: string[]; standings: string[][]; computeMs: number[];
@@ -351,10 +356,11 @@ declare global {
 Object.defineProperty(window, '__roomMatch', {
   get: () => {
     const m = M;
-    if (!m) return { on: false, matchNo: 0, seed: 0, at: 0, first: 0, round: 0, step: 'none', t: 0, handed: false, trained: null, hashes: [], standings: [], computeMs: [], dists: [] };
+    if (!m) return { on: false, matchNo: 0, seed: 0, at: 0, first: 0, round: 0, step: 'none', map: null, tracks: [], t: 0, handed: false, trained: null, hashes: [], standings: [], computeMs: [], dists: [] };
     const dists = Array.from({ length: R.count }, (_, k) => Object.fromEntries([...(m.dists.get(k + 1) ?? new Map<string, number>())].map(([id, d]) => [m.names.get(id) ?? id, d])));
     return {
-      on: true, matchNo: m.info.matchNo, seed: m.info.seed, at: m.info.at, first: m.first, round: m.round, step: m.step, t: rel(m), handed: m.handed, trained: m.trained,
+      on: true, matchNo: m.info.matchNo, seed: m.info.seed, at: m.info.at, first: m.first, round: m.round, step: m.step, t: rel(m),
+      map: m.info.map, tracks: Array.from({ length: R.count }, (_, k) => roomTrackSeed(m.info.seed, k + 1, m.info.map)), handed: m.handed, trained: m.trained,
       hashes: Array.from({ length: R.count }, (_, k) => m.races.get(k + 1)?.result?.hash ?? ''), standings: m.standings, computeMs: m.computeMs, dists,
     };
   },

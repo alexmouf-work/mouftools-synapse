@@ -1,5 +1,10 @@
 // vs CPU check (B7; rounds plan and sidebar plan 2026-11-05), headless Chromium on SwiftShader:
-// - Title → vs CPU starts a 5-round match in the designer: "Round 1 of 5 · Build" counting from 60, top centre, in the
+// - The settings screen (tracks-v2 T2): title → vs CPU opens it, with no designer; your name is required (Start waits
+//   for one; 16 characters at most; spaces collapsed), remembered (synapse.name) and filled in next time; Main menu
+//   goes back; the map: "New track each round" (the default: each round's race seed's own track), "One family" (a new
+//   track of it each round) or "One track" (shuffled; the same track all five rounds), each round's track = Node's
+//   roundTrackSeed, and a round's race runs on it. You race under your name.
+// - Start match starts a 5-round match in the designer: "Round 1 of 5 · Build" counting from 60, top centre, in the
 //   vs CPU yellow, at least Train's row tall; the energy bar's full scale is round 1's budget (20%) and a design past it
 //   can't train (says why); red in the last 10 s; a pulse and a tick on the effects bus in the last 5; at 0 "Time's up",
 //   then Train starts itself with the design as it stands (jumped ahead with __phase.skipTo).
@@ -16,7 +21,8 @@
 //   of 5 in" counting 8 and no buttons → round 2's build: 20 s, the budget 28%, the design carried over with fresh
 //   weights (match-flow v2).
 // - The last round (round 5, a race straight from ?view=race with the strongest round-5 CPU brain as yours, on a seed
-//   where you lead): the final standings, "You won the match!", Play again and Back, and the winner music.
+//   where you lead): the final standings, "You won the match!", Play again and Main menu, and the winner music; Play
+//   again goes back to the settings screen.
 // - The wrong-way reset: each round-1 CPU brain alone from pole on ten race tracks with and without it (it never
 //   reverses more than 3 s behind its best point). In the page, a brain that drives backwards: "Wrong way" flashes over
 //   your car, the car jumps back (no glide), and its distance in the standings is signed (≤ 0).
@@ -31,11 +37,11 @@ import { CONFIG } from '../../src/common/config';
 import { compile, defaultGenome, genomeHash, zeroGenome } from '../../src/common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
 import { energyRefusal } from '../../src/common/sim/energy';
-import { gridCar, raceTrackSeed, recordCar, ROUND_RACE, runRace } from '../../src/common/sim/match';
+import { gridCar, raceTrackSeed, recordCar, ROUND_RACE, roundTrackSeed, runRace } from '../../src/common/sim/match';
 import { Runner } from '../../src/common/sim/race';
 import { derive } from '../../src/common/rng';
 import { biasIndex, defaultSpec, OUTPUTS, type BrainSpec, type Genome } from '../../src/common/sim/spec';
-import { generateTrack } from '../../src/common/sim/track';
+import { familyOf, generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { runPhase } from '../../src/common/train/phase';
 import { NO_TRAINING, SAVE_KEY, serialize } from '../../src/client/ui/designer/store';
@@ -54,7 +60,8 @@ const BIG: BrainSpec = { v: 2, senses: { boundary: 4, landmark: 0, hd: 0, grid: 
 /** A round's race seed from the match seed (as ui/rounds draws it). */
 const raceSeedOf = (match: number, round: number) => derive(match >>> 0, 0x50d5, round);
 const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
-const NAMES = ['You', ...CPU_NAMES];
+const NAME = 'Tester';
+const NAMES = [NAME, ...CPU_NAMES];
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
@@ -108,7 +115,7 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
-    await page.evaluate(([k, v]) => { localStorage.setItem('synapse.notice', '2'); if (v) localStorage.setItem(k, v); },
+    await page.evaluate(([k, v]) => { localStorage.setItem('synapse.notice', '3'); if (v) localStorage.setItem(k, v); },
       [SAVE_KEY, save ? serialize({ name: 'Test brain', genome: save, train: NO_TRAINING, trainer: 'evolution' }) : ''] as const);
     await page.goto(base + query);
     return page;
@@ -124,6 +131,21 @@ async function main() {
     const b = document.getElementById('phaseTimer'), q = b.getBoundingClientRect(), cs = getComputedStyle(b);
     return { ...window.__phase, shown: !b.hidden && q.width > 0, cx: (q.left + q.right) / 2, top: q.top, bottom: q.bottom, h: q.height, bg: cs.backgroundColor };
   })()`) as Promise<{ state: string; label: string; left: number; text: string; red: boolean; pulse: boolean; shown: boolean; cx: number; top: number; bottom: number; h: number; bg: string }>;
+  /** Title → vs CPU → the settings screen → (your name if it isn't filled in, a map mode) → Start match → round 1's build. */
+  const startCpu = async (page: Page, o: { mode?: 'family' | 'track'; family?: string; shuffle?: boolean } = {}) => {
+    await page.click('#toCpu');
+    await page.waitForSelector('#cpuSet:not([hidden])');
+    if (!(await page.locator('#csName').inputValue())) await page.locator('#csName').fill(NAME);
+    if (o.mode) {
+      await page.click(`#csMap [data-mode="${o.mode}"]`);
+      if (o.family) await page.click(`#csMap .tp-card[data-f="${o.family}"]`);
+      if (o.shuffle) await page.click(`#csMap .tp-shuf[data-f="${o.family}"]`);
+    }
+    const map = await page.evaluate(() => window.__cpuSet!.map());
+    await page.click('#csStart');
+    await page.waitForFunction(() => window.__match?.phase === 'build', null, { timeout: 15_000 });
+    return map!;
+  };
   const standingsRows = (page: Page) => page.$$eval('#rcRows tr', (trs) => trs.map((t) => [...t.querySelectorAll('td')].map((d) => d.textContent ?? '')));
 
   try {
@@ -134,8 +156,7 @@ async function main() {
       const before = await p0.evaluate((k) => localStorage.getItem(k), SAVE_KEY);
       const starts: Genome[] = [];
       for (let k = 0; k < 4 && (starts.length < 2 || JSON.stringify(starts[0].spec) === JSON.stringify(starts[starts.length - 1].spec)); k++) {
-        await p0.click('#toCpu');
-        await p0.waitForFunction(() => window.__match?.phase === 'build', null, { timeout: 15_000 });
+        await startCpu(p0);
         starts.push(await p0.evaluate(() => window.__designer!.genome()));
         await p0.click('#toTitle'); await p0.waitForSelector('#leaveDlg[open]'); await p0.click('#lvGo');
         await p0.waitForSelector('#title:not([hidden])');
@@ -146,9 +167,75 @@ async function main() {
       await p0.context().close();
     }
 
+    // 0b. the settings screen (tracks-v2 T2): no designer; a name is required, remembered; Main menu; the map modes
+    {
+      const ps = await open(`?race=${MATCH}`, 844, 390);
+      await ps.click('#toCpu');
+      await ps.waitForSelector('#cpuSet:not([hidden])');
+      const st0 = await ps.evaluate(() => ({ app: !(document.querySelector('.app') as HTMLElement).hidden, title: !(document.getElementById('title') as HTMLElement).hidden, phase: window.__match!.phase, name: (document.getElementById('csName') as HTMLInputElement).value,
+        start: (document.getElementById('csStart') as HTMLButtonElement).disabled, map: window.__cpuSet!.map(), modes: [...document.querySelectorAll('#csMap [data-mode]')].map((b) => `${b.textContent}${b.getAttribute('aria-checked') === 'true' ? '*' : ''}`) }));
+      check(!st0.app && !st0.title && st0.phase === 'none' && st0.name === '' && st0.start && st0.map?.mode === 'each' && st0.modes.join(', ') === 'New track each round*, One family, One track',
+        `title → vs CPU: the settings screen, no designer and no match yet; no name yet, so Start match waits; Map: ${st0.modes.join(', ')}`);
+      const fit = await ps.evaluate(`(() => { const on = (q) => { const r = document.querySelector(q).getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5; };
+        return ['#csName', '#csStart', '#csMenu', '#csMap .tp-modes'].every(on) && document.documentElement.scrollWidth <= innerWidth; })()`) as boolean;
+      check(fit, '844×390: the name, Main menu, Start match and the map modes on screen, no sideways scroll');
+      await ps.locator('#csName').fill('   ');
+      const blank = await ps.evaluate(() => ({ v: (document.getElementById('csName') as HTMLInputElement).value, start: (document.getElementById('csStart') as HTMLButtonElement).disabled, why: document.getElementById('csErr')!.textContent }));
+      await ps.locator('#csName').fill('');
+      await ps.locator('#csName').pressSequentially('Ada   Lovelace Byron King');
+      const long = await ps.evaluate(() => ({ v: (document.getElementById('csName') as HTMLInputElement).value, count: document.getElementById('csCount')!.textContent, start: (document.getElementById('csStart') as HTMLButtonElement).disabled }));
+      check(blank.v === '' && blank.start && /Type your name/.test(blank.why ?? '') && long.v === 'Ada Lovelace Byr' && long.count === '16 / 16' && !long.start,
+        `the name is required: spaces alone don't count ("${blank.why}"); spaces collapse and it stops at 16 ("${long.v}", ${long.count}), then Start match is on`);
+      // One family: a new clover each round
+      await ps.click('#csMap [data-mode="family"]');
+      await ps.click('#csMap .tp-card[data-f="clover"]');
+      const fam = await ps.evaluate(() => ({ map: window.__cpuSet!.map()!, shuf: [...document.querySelectorAll('#csMap .tp-shuf')].some((b) => !(b as HTMLElement).hidden), name: document.querySelector('#csMap .tp-name')!.textContent }));
+      await ps.screenshot({ path: `${OUT}/settings-family-844x390.png` });
+      await ps.locator('#csName').fill('Ada');
+      await ps.click('#csStart');
+      await ps.waitForFunction(() => window.__match?.phase === 'build', null, { timeout: 15_000 });
+      const m1 = await ps.evaluate(() => ({ map: window.__match!.map, tracks: window.__match!.tracks, seed: window.__match!.seed, names: window.__match!.names, stored: localStorage.getItem('synapse.name'), app: !(document.querySelector('.app') as HTMLElement).hidden, set: !(document.getElementById('cpuSet') as HTMLElement).hidden }));
+      const want1 = [1, 2, 3, 4, 5].map((n) => roundTrackSeed(raceSeedOf(m1.seed, n), m1.map!));
+      check(fam.map.mode === 'family' && fam.map.family === 'clover' && !fam.shuf && m1.map?.mode === 'family' && JSON.stringify(m1.tracks) === JSON.stringify(want1) && m1.tracks.every((x) => familyOf(x) === 'clover') && new Set(m1.tracks).size === 5,
+        `"One family" (Clover; no Shuffle): Start match → each round a new clover track (= Node roundTrackSeed: ${m1.tracks.join(', ')})`);
+      check(m1.app && !m1.set && m1.names[0] === 'Ada' && m1.stored === 'Ada', `Start match: round 1's build in the designer; you race as "${m1.names[0]}", remembered as synapse.name`);
+      await ps.click('#toTitle'); await ps.waitForSelector('#leaveDlg[open]'); await ps.click('#lvGo');
+      await ps.waitForSelector('#title:not([hidden])');
+      // next time: the name filled in; One track: a shuffled loop for all five rounds; the default's tracks
+      await ps.reload();
+      await ps.waitForSelector('#title:not([hidden])');
+      await ps.click('#toCpu');
+      const again = await ps.evaluate(() => ({ name: (document.getElementById('csName') as HTMLInputElement).value, start: (document.getElementById('csStart') as HTMLButtonElement).disabled }));
+      await ps.click('#csMap [data-mode="track"]');
+      await ps.click('#csMap .tp-card[data-f="loop"]');
+      const before = await ps.evaluate(() => window.__cpuSet!.map()!);
+      await ps.click('#csMap .tp-shuf[data-f="loop"]');
+      const tr = await ps.evaluate(() => ({ map: window.__cpuSet!.map()!, len: document.querySelector('#csMap .tp-len')!.textContent, feat: document.querySelector('#csMap .tp-feat')!.textContent }));
+      const tt = generateTrack(tr.map.seed);
+      check(again.name === 'Ada' && !again.start && tr.map.mode === 'track' && tr.map.seed !== before.seed && familyOf(tr.map.seed) === 'loop' && tr.len === `${(tt.len / 1000).toFixed(2)} km` && (tr.feat ?? '').length > 0,
+        `next visit: "${again.name}" filled in, Start match ready; "One track": Shuffle draws another loop (seed ${tr.map.seed}, ${tr.len}, ${tr.feat})`);
+      await ps.screenshot({ path: `${OUT}/settings-track-844x390.png` });
+      await ps.click('#csStart');
+      await ps.waitForFunction(() => window.__match?.phase === 'build', null, { timeout: 15_000 });
+      const m2 = await ps.evaluate(() => ({ tracks: window.__match!.tracks }));
+      check(m2.tracks.length === 5 && m2.tracks.every((x) => x === tr.map.seed), `"One track": all five rounds on seed ${tr.map.seed}`);
+      await ps.click('#toTitle'); await ps.waitForSelector('#leaveDlg[open]'); await ps.click('#lvGo');
+      await ps.click('#toCpu');
+      await ps.click('#csMap [data-mode="each"]');
+      await ps.click('#csStart');
+      await ps.waitForFunction(() => window.__match?.phase === 'build', null, { timeout: 15_000 });
+      const m3 = await ps.evaluate(() => ({ tracks: window.__match!.tracks, seed: window.__match!.seed }));
+      check(JSON.stringify(m3.tracks) === JSON.stringify([1, 2, 3, 4, 5].map((n) => raceTrackSeed(raceSeedOf(m3.seed, n)))), '"New track each round": each round\'s race seed\'s own track (as before T2)');
+      await ps.click('#toTitle'); await ps.waitForSelector('#leaveDlg[open]'); await ps.click('#lvGo');
+      await ps.click('#toCpu');
+      await ps.click('#csMenu');
+      check(await ps.locator('#title').isVisible() && await ps.locator('#cpuSet').isHidden(), 'the settings screen\'s Main menu: back to the title');
+      await ps.context().close();
+    }
+
     // 1. the round 1 build: the timer, the budget, a design past it
     let page = await open(`?seed=${SEED}&T=${T}&race=${MATCH}&starter=default`); // the fixture brain, as Node's runs
-    await page.click('#toCpu');
+    await startCpu(page);
     const m0 = await page.evaluate(() => window.__match!);
     let bt = await pt(page);
     const lay0 = await page.evaluate(() => { const a = document.querySelector('.app')!.getBoundingClientRect(), t = document.querySelector('.app .top')!.getBoundingClientRect(); return { cx: (a.left + a.right) / 2, topBottom: t.bottom, row: t.height, appTop: a.top, appH: a.height }; });
@@ -272,7 +359,7 @@ async function main() {
     const replay = (k: number, t: number) => { const rec = recordCar(k === 0 ? trained : cpu1[k - 1], node.track, node.cars[k].slot, ROUND_RACE), nN = compile(k === 0 ? trained : cpu1[k - 1]).nNodes, b = Math.min(Math.floor(t * HZ - 1) + 1, rec.ticks - 1); return Array.from(rec.act.subarray(b * nN, (b + 1) * nN)); };
     const close = (a: number[] | null, b: number[]) => !!a && a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
     check(f1.k === fk && f1.title === `Brain · ${NAMES[fk]}` && close(f1.vals, replay(fk, f1.t)) && JSON.stringify(f1.vals) !== JSON.stringify(f1.own) && f1.main[4] === fk && f1.look < 3
-      && JSON.stringify(f1.outlined) === JSON.stringify([NAMES[fk]]) && f1.you === 'You' && f1.mine && f1.card && /^\d+(st|nd|rd|th) of 10$/.test(f1.pos),
+      && JSON.stringify(f1.outlined) === JSON.stringify([NAMES[fk]]) && f1.you === NAME && f1.mine && f1.card && /^\d+(st|nd|rd|th) of 10$/.test(f1.pos),
       `click ${NAMES[fk]}'s row: the camera follows that car (aim ${f1.look.toFixed(2)} m off it), the card reads "${f1.title}" with its brain firing as Node's replay of it, not yours; its row outlined, yours still marked; "Back to my car" shows; Position stays yours (${f1.pos})`);
     await page.screenshot({ path: `${OUT}/follow-cpu.png` });
     await page.focus(`#rcList button[data-k="${fk2}"]`);
@@ -337,7 +424,7 @@ async function main() {
 
     // 5b. without ?T= a round trains on the round's budget: T = the full-skill CPU's (CONFIG.rounds.T), all of it if time allows
     page = await open(`?seed=${SEED}&race=${MATCH}&starter=default`);
-    await page.click('#toCpu');
+    await startCpu(page);
     await page.evaluate(() => window.__phase!.skipTo(0.1));
     await page.waitForFunction(() => window.__training?.state === 'running', null, { timeout: 30_000 });
     const real0 = await page.evaluate(() => ({ T: window.__training!.T, gens: window.__training!.generations }));
@@ -348,15 +435,20 @@ async function main() {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/train-full-T.png` });
     await page.context().close();
-    // 5c. the hard stop: when the train timer reaches 0, training stops where it got to and keeps the best so far
+    // 5c. the hard stop: when the train timer reaches 0, training stops where it got to and keeps the best so far (on
+    //     "One track": the round's race runs on the track chosen)
     page = await open(`?seed=${SEED}&race=${MATCH}&starter=default`);
-    await page.click('#toCpu');
+    const one = await startCpu(page, { mode: 'track', family: 'hairpin', shuffle: true });
     await page.evaluate(() => window.__phase!.skipTo(0.1));
     await page.waitForFunction(() => (window.__training?.gen ?? 0) >= 3, null, { timeout: 120_000 });
     await page.evaluate(() => window.__phase!.skipTo(0.1));
     await page.waitForFunction(() => window.__match?.phase === 'race', null, { timeout: 60_000 });
     const hs = await page.evaluate(() => ({ st: window.__training!.state, saved: window.__training!.savedOnStop, gen: window.__training!.gen, trained: window.__match!.trained }));
     check(hs.st === 'stopped' && hs.saved === true && hs.trained !== null && hs.trained.w.some((x) => x !== 0), `time up mid-training: it stops at gen ${hs.gen} with the best so far, and the race starts on time`);
+    await page.waitForFunction(() => (window.__race?.frames ?? 0) > 0, null, { timeout: 60_000 });
+    const onTrack = await page.evaluate(() => ({ seed: window.__race!.trackSeed, family: window.__race!.family, tracks: window.__match!.tracks }));
+    check(one.mode === 'track' && onTrack.seed === one.seed && onTrack.family === 'hairpin' && onTrack.tracks.every((x) => x === one.seed),
+      `"One track" (a shuffled hairpin, seed ${one.seed}): round 1's race runs on it (${onTrack.seed}, ${onTrack.family}), and so would every round`);
     await page.context().close();
 
     // 6. the last round, which you lead: the final standings and the winner music
@@ -375,8 +467,11 @@ async function main() {
     check(fin.phrase === 'winner', `the winner music plays (${fin.phrase})`);
     await frames(page, 2);
     await page.screenshot({ path: `${OUT}/final.png` });
-    await page.click('#rcBack');
-    check(await page.locator('#title').isVisible(), 'Main menu from the final standings: the title');
+    await page.click('#rcAgain');
+    await page.waitForSelector('#cpuSet:not([hidden])');
+    check(await page.locator('#arena').isHidden() && await page.locator('.app').isHidden() && await page.evaluate(() => window.__match!.phase === 'none'), 'Play again: back to the settings screen (no designer until Start match)');
+    await page.click('#csMenu');
+    check(await page.locator('#title').isVisible(), 'its Main menu: the title');
     await page.context().close();
 
     // 7. the wrong-way reset in the page: your backwards car; its distance is signed

@@ -4,12 +4,14 @@
 // 30 s on a new track. Only the timers move it on (match-flow v2 plan, 2026-11-05): no Train, Skip or Next round. The
 // score is the total signed distance; after each race the standings show this race's distance and the running total
 // for 8 s, then the next build starts. After round 5 the final standings, with Play again or Main menu; the winner
-// music plays if you lead. Every phase has its big countdown (ui/phaseTimer.ts) at the top centre.
+// music plays if you lead (Play again goes back to the settings screen). Every phase has its big countdown
+// (ui/phaseTimer.ts) at the top centre. The settings screen (ui/cpuSettings, tracks-v2 T2) gives your name, which you
+// race under, and the map: each round's track is roundTrackSeed of its race seed under that map.
 import { CONFIG } from '../../../common/config';
 import { defaultGenome } from '../../../common/sim/brain';
 import { energyRefusal } from '../../../common/sim/energy';
 import { CPU_NAMES } from '../../../common/sim/cpu';
-import type { RaceResult } from '../../../common/sim/match';
+import { NEW_EACH_ROUND, roundTrackSeed, type MapSetting, type RaceResult } from '../../../common/sim/match';
 import type { Genome } from '../../../common/sim/spec';
 import { derive } from '../../../common/rng';
 import { win } from '../../audio/music';
@@ -21,7 +23,6 @@ import { leaveTraining, openTraining, stopTraining } from '../training/trainingV
 import { zeroGenome } from '../../../common/sim/brain';
 
 const R = CONFIG.rounds;
-const NAMES = ['You', ...CPU_NAMES];
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
   if (!e) throw new Error(`rounds: #${id} missing`);
@@ -72,13 +73,17 @@ export interface MatchViews {
   away(): void;
   /** The build timer ran out: Train with the design as it stands (designer.timeUp). */
   timeUp(): void;
-  /** Back to the title (the final standings' Back). */
+  /** Back to the title (the final standings' Main menu). */
   title(): void;
+  /** The final standings' Play again: back to the settings screen. */
+  again(): void;
 }
 
 type Phase = 'build' | 'train' | 'race' | 'standings' | 'over';
 interface Match {
   seed: number; trainSeed: number; round: number; phase: Phase;
+  /** The players' names (you first, under the name you gave) and the map (each round's track). */
+  names: string[]; map: MapSetting;
   /** The brain as it stands (built or trained), and the Saved it trains as (the trainer picked). */
   genome: Genome; saved: Saved | null; trained: Genome | null;
   /** dists[r][k]: car k's signed distance in round r + 1's race; total[k] the sum so far. */
@@ -94,18 +99,26 @@ const label = (m: Match, what: string) => `Round ${m.round} of ${R.count} · ${w
 
 /** Order by total distance (then this race's, then entry order): the standings. */
 function order(m: Match): number[] {
-  const last = m.dists[m.dists.length - 1] ?? NAMES.map(() => 0);
-  return NAMES.map((_, k) => k).sort((a, b) => m.total[b] - m.total[a] || last[b] - last[a] || a - b);
+  const last = m.dists[m.dists.length - 1] ?? m.names.map(() => 0);
+  return m.names.map((_, k) => k).sort((a, b) => m.total[b] - m.total[a] || last[b] - last[a] || a - b);
 }
 
-/** Start a match. Checks: `seed` fixes the race tracks; `raceWith` skips straight to round `round`'s race with that brain. */
-export function startMatch(views: MatchViews, o: { seed?: number; round?: number; raceWith?: Saved } = {}): void {
+/** A round's race seed (its grid, and its track under "New track each round"). */
+const raceSeedOf = (m: Match, n: number): number => derive(m.seed >>> 0, 0x50d5, n);
+/** A round's track seed under the match's map. */
+const trackOfRound = (m: Match, n: number): number => roundTrackSeed(raceSeedOf(m, n), m.map);
+
+/**
+ * Start a match: `name` (yours; the settings screen requires one) and `map`. Checks: `seed` fixes the race seeds;
+ * `raceWith` skips straight to round `round`'s race with that brain.
+ */
+export function startMatch(views: MatchViews, o: { seed?: number; round?: number; raceWith?: Saved; name?: string; map?: MapSetting } = {}): void {
   abortMatch();
   V = views;
   const round = Math.max(1, Math.min(R.count, o.round ?? 1));
   M = {
-    seed: o.seed ?? newRaceSeed(), trainSeed: newRaceSeed(), round, phase: 'build', genome: o.raceWith?.genome ?? matchStarter(),
-    saved: o.raceWith ?? null, trained: null, dists: [], total: NAMES.map(() => 0), hash: [],
+    seed: o.seed ?? newRaceSeed(), trainSeed: newRaceSeed(), round, phase: 'build', names: [o.name || 'You', ...CPU_NAMES], map: o.map ?? NEW_EACH_ROUND,
+    genome: o.raceWith?.genome ?? matchStarter(), saved: o.raceWith ?? null, trained: null, dists: [], total: new Array<number>(CPU_NAMES.length + 1).fill(0), hash: [],
   };
   if (o.raceWith) { M.trained = o.raceWith.genome; V.away(); race(); } else build();
 }
@@ -150,8 +163,7 @@ function race(): void {
   stopPhaseTimer();
   leaveTraining();
   const saved: Saved = { ...(m.saved ?? { name: 'vs CPU', train: { seed: null, phases: 0, temps: [] }, trainer: 'evolution' }), genome: m.trained! };
-  const raceSeed = derive(m.seed >>> 0, 0x50d5, m.round);
-  openRace(roundSetup(saved, m.round, raceSeed), {
+  openRace(roundSetup(saved, m.round, raceSeedOf(m, m.round), { name: m.names[0], trackSeed: trackOfRound(m, m.round) }), {
     back: () => undefined,
     go: () => { if (M === m && m.phase === 'race') startPhaseTimer({ label: label(m, 'Race'), seconds: R.raceTicks / CONFIG.tick.hz, red: 10, upText: 'Finish', host: camHost(), onZero: () => undefined }); },
     ended: (res) => { if (M === m) standings(res); },
@@ -166,15 +178,15 @@ function standings(res: RaceResult): void {
   d.forEach((x, k) => { m.total[k] += x; });
   const final = m.round >= R.count, ord0 = order(m), you = ord0.indexOf(0) + 1;
   m.phase = final ? 'over' : 'standings';
-  showStandings(final ? (you === 1 ? 'You won the match!' : `Final standings: you finished ${ord(you)} of ${NAMES.length}`) : `Round ${m.round} of ${R.count} · Standings`,
-    m.round, ord0.map((k) => ({ name: NAMES[k], dist: d[k], total: m.total[k], you: k === 0 })));
+  showStandings(final ? (you === 1 ? 'You won the match!' : `Final standings: you finished ${ord(you)} of ${m.names.length}`) : `Round ${m.round} of ${R.count} · Standings`,
+    m.round, ord0.map((k) => ({ name: m.names[k], dist: d[k], total: m.total[k], you: k === 0 })));
   // only the timers move a match on (match-flow v2 §1): no Next round; after round 5, Play again / Main menu
   const again = $('rcAgain'), back = $('rcBack');
   again.textContent = 'Play again';
   back.textContent = 'Main menu';
   back.hidden = !final; again.hidden = !final;
   if (final) {
-    again.onclick = () => { leaveRace(); hideArena(); startMatch(V); };
+    again.onclick = () => { leaveRace(); hideArena(); M = null; V.again(); };
     back.onclick = () => { leaveRace(); hideArena(); M = null; V.title(); };
     if (you === 1) win();
     return;
@@ -191,11 +203,16 @@ function standings(res: RaceResult): void {
 // for checks (Playwright): the match as it stands
 declare global {
   interface Window {
-    __match?: { phase: Phase | 'none'; round: number; dists: number[][]; total: number[]; hash: string[]; standings: string[]; seed: number; trainSeed: number; trained: Genome | null };
+    __match?: {
+      phase: Phase | 'none'; round: number; dists: number[][]; total: number[]; hash: string[]; standings: string[]; seed: number; trainSeed: number; trained: Genome | null;
+      /** The players' names, the map and each round's track seed (tracks-v2 T2). */
+      names: string[]; map: MapSetting | null; tracks: number[];
+    };
   }
 }
 Object.defineProperty(window, '__match', {
   get: () => (M
-    ? { phase: M.phase, round: M.round, dists: M.dists, total: M.total, hash: M.hash, standings: order(M).map((k) => NAMES[k]), seed: M.seed, trainSeed: M.trainSeed, trained: M.trained }
-    : { phase: 'none', round: 0, dists: [], total: [], hash: [], standings: [], seed: 0, trainSeed: 0, trained: null }),
+    ? { phase: M.phase, round: M.round, dists: M.dists, total: M.total, hash: M.hash, standings: order(M).map((k) => M!.names[k]), seed: M.seed, trainSeed: M.trainSeed, trained: M.trained,
+      names: M.names, map: M.map, tracks: Array.from({ length: R.count }, (_, k) => trackOfRound(M!, k + 1)) }
+    : { phase: 'none', round: 0, dists: [], total: [], hash: [], standings: [], seed: 0, trainSeed: 0, trained: null, names: [], map: null, tracks: [] }),
 });

@@ -5,6 +5,9 @@
 //   collapsed, the counter, the chip preview → Go in → the lobby, you the host. A guest types the code (lower case) →
 //   the name screen (1 player in); the host's name in any case is refused there, and by the server; another name → in.
 //   Both lobbies show both chips (fitting their text, apart; yours marked); only the host has Start match.
+// - The host (tracks-v2 T2): a "Host" tag on the host's chip, "Host: <name>" in both headers; the Settings panel, the
+//   host's to change and read-only for the guest; max players set to 2 → a third is refused on the code screen ("That
+//   room is full (2 players).") and by the server; never below the number in (the server refuses it); back to 100.
 // - A third player on a landscape phone: the lobby fits; the host taps their chip → "Remove Phone" → they are out, on
 //   the code screen saying so (a player's tap on a chip does nothing); the name is free again; Leave room → the title.
 // - 98 more players join the first room from Node, so the room is full at 100; a 101st is refused. 100 chips:
@@ -20,8 +23,12 @@
 // - A latecomer joins in round 2's build (landscape phone): watches from the lobby with the round's countdown, then the
 //   race (no car), standings = everyone's (it ran round 1 from the frozen entries); the server refuses its brain for
 //   round 2; in from round 3's build. Main menu asks "Leave the room?" (Stay). Rounds 3–5 with all three; the final
-//   standings = Node's totals, Play again for the host only, Main menu for all; Play again starts match 2 on every
-//   page; Main menu → Leave: the title, out of the room.
+//   standings = Node's totals, Play again and Main menu for all. The map (tracks-v2 T2): the host set "One track" before
+//   the match, so every round's race on every page runs on it; the settings are locked while the match is on (the
+//   latecomer's lobby says so; the server refuses a change). Play again → the lobby for each; the settings unlock; the
+//   host sets "One family" and starts match 2 on every page (the latecomer from its final standings), on that family.
+//   The host leaves: the server hands the room to the player who joined earliest (the guest); then Main menu →
+//   Leave: the title, out of the room.
 // - The page bundle carries the anon key and the project URL only; the service role key never reaches the browser.
 // Reports the race's compute time in the page (100 brains × 120 s). Console clean. Screenshots → out/multiplayer/.
 //   npx tsx scripts/checks/multiplayer.ts
@@ -35,7 +42,9 @@ import { roundTimes } from '../../src/common/schedule';
 import { compile, genomeToJSON, zeroGenome } from '../../src/common/sim/brain';
 import { energyRefusal } from '../../src/common/sim/energy';
 import { cpuRounds } from '../../src/common/sim/cpu';
-import { recordCar, ROUND_RACE, runRace, type RaceResult } from '../../src/common/sim/match';
+import { recordCar, ROUND_RACE, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../src/common/sim/match';
+import { familyOf } from '../../src/common/sim/track';
+import { createHash } from 'node:crypto';
 import type { BrainSpec, Genome } from '../../src/common/sim/spec';
 import { MAX_RIVALS } from '../../src/client/render/drive';
 import { fixtureBrain, STANDINGS_LAYOUT, standingsClear, type StandingsLayout } from './fixture';
@@ -73,12 +82,28 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); if (m.type() === 'warning' && m.text().startsWith('room:')) console.log(`     page warns: ${m.text()}`); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
-    await page.evaluate(() => localStorage.setItem('synapse.notice', '2'));
+    await page.evaluate(() => localStorage.setItem('synapse.notice', '3'));
     await page.goto(base + query);
     await page.waitForSelector('#title:not([hidden])');
     return page;
   }
-  const room = (p: Page) => p.evaluate(() => JSON.parse(JSON.stringify(window.__room ?? null)) as { me: { code: string; player: string; host: boolean; name: string } | null; state: { players: { id: string; name: string; ready: boolean; host: boolean }[]; race_no: number; race_seed: number | null } | null; shown: boolean; error: string; watching: string; screen: string | null; layout: string; fontPx: number });
+  const room = (p: Page) => p.evaluate(() => JSON.parse(JSON.stringify(window.__room ?? null)) as { me: { code: string; player: string; host: boolean; name: string; token: string } | null; state: { players: { id: string; name: string; host: boolean }[]; race_no: number; race_seed: number | null; max_players: number } | null; shown: boolean; error: string; watching: string; screen: string | null; layout: string; fontPx: number; settings: { max: number; map: MapSetting; locked: boolean; editable: boolean } | null });
+  /** The lobby's host marks and settings panel as a page shows them (a string: no bundler helpers in the page). */
+  const hostView = (p: Page) => p.evaluate(`(() => ({ tags: [...document.querySelectorAll('#lbField .chip')].filter((c) => c.querySelector('b.tag')).map((c) => c.lastChild.textContent),
+    header: document.getElementById('lbHost').getAttribute('aria-label'), headerText: document.getElementById('lbHost').innerText.replace(/\\s+/g, ' ').trim(),
+    maxOn: !document.getElementById('lbMax').disabled, max: document.getElementById('lbMax').value, mapBtn: !document.getElementById('lbMapBtn').hidden && !document.getElementById('lbMapBtn').disabled,
+    state: document.getElementById('lbSetState').textContent, mapText: document.getElementById('lbMapT').textContent, count: document.getElementById('lbCount').textContent }))()`) as Promise<{ tags: string[]; header: string; headerText: string; maxOn: boolean; max: string; mapBtn: boolean; state: string; mapText: string; count: string }>;
+  /** The host's map dialog: a mode, a family card, Shuffle; Done sends it. */
+  const setMap = async (p: Page, mode: string, family: string, shuffle: boolean) => {
+    await p.click('#lbMapBtn'); await p.waitForSelector('#mapDlg[open]');
+    await p.click(`#lbMapPick [data-mode="${mode}"]`);
+    await p.click(`#lbMapPick .tp-card[data-f="${family}"]`);
+    if (shuffle) await p.click(`#lbMapPick .tp-shuf[data-f="${family}"]`);
+    const m = await p.evaluate(`(() => { const e = document.getElementById('lbMapPick'), c = e.querySelector('.tp-card[aria-checked="true"]');
+      return { mode: e.dataset.mode, family: c ? c.dataset.f : 'loop', seed: e.dataset.seed ? Number(e.dataset.seed) : 0 }; })()`) as MapSetting;
+    await p.click('#mdGo');
+    return m;
+  };
   const screenIs = (p: Page, sc: string) => p.waitForFunction((x) => window.__room?.screen === x, sc, { timeout: 10_000 });
   // the chips in the field: name, rectangle, whether the text fits, and the field's rectangle (as a string: no bundler helpers in the page)
   const chipsOf = (p: Page) => p.evaluate(`(() => { const f = document.getElementById('lbField'), fr = f.getBoundingClientRect();
@@ -87,8 +112,8 @@ async function main() {
   const inside = (c: { x: number; y: number; w: number; h: number }, f: { x: number; y: number; w: number; h: number }) => c.x >= f.x - 0.5 && c.y >= f.y - 0.5 && c.x + c.w <= f.x + f.w + 0.5 && c.y + c.h <= f.y + f.h + 0.5;
   const apart = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
   // as a string: the bundler's name helper isn't defined inside the page
-  const race = (p: Page) => p.evaluate(`(() => { const r = window.__race; return r ? { state: r.state, kind: r.kind, me: r.me, hash: r.hash, names: r.names, results: r.results, t: r.t, end: r.end, frames: r.frames, go: r.go, goEpoch: performance.timeOrigin + r.goAt, computeMs: r.computeMs, drawn: r.drawn(), dots: r.dots() } : null; })()`) as Promise<{
-    state: string; kind: string; me: number; hash: string; names: string[]; results: { name: string; place: number }[]; t: number; end: number; frames: number; go: boolean; goEpoch: number; computeMs: number; drawn: number[][]; dots: number;
+  const race = (p: Page) => p.evaluate(`(() => { const r = window.__race; return r ? { state: r.state, kind: r.kind, me: r.me, hash: r.hash, trackSeed: r.trackSeed, names: r.names, results: r.results, t: r.t, end: r.end, frames: r.frames, go: r.go, goEpoch: performance.timeOrigin + r.goAt, computeMs: r.computeMs, drawn: r.drawn(), dots: r.dots() } : null; })()`) as Promise<{
+    state: string; kind: string; me: number; hash: string; trackSeed: number; names: string[]; results: { name: string; place: number }[]; t: number; end: number; frames: number; go: boolean; goEpoch: number; computeMs: number; drawn: number[][]; dots: number;
   } | null>;
 
   try {
@@ -143,9 +168,32 @@ async function main() {
       'only the host has Start match (on with 2 in); the guest sees "You\'re in. Waiting for the host to start"');
     await host.screenshot({ path: `${OUT}/lobby.png` });
 
-    // a third player on a landscape phone; the host removes them; the name is free again; Leave room
+    // the host (tracks-v2 T2): the tag, the header, the settings (the host's; read-only for the guest)
+    await guest.waitForFunction(() => window.__room?.settings !== null && (window.__room?.state?.players.length ?? 0) === 2, null, { timeout: 10_000 });
+    const [hv, gv] = await Promise.all([hostView(host), hostView(guest)]);
+    check(hv.tags.join() === 'Host' && gv.tags.join() === 'Host' && hv.header === 'Host: Host' && gv.header === 'Host: Host' && /^HOST Host$/i.test(gv.headerText),
+      `the host's chip has the "Host" tag on both pages, and both headers say "${gv.header}"`);
+    check(hv.maxOn && hv.mapBtn && hv.max === '100' && !gv.maxOn && !gv.mapBtn && gv.max === '100' && gv.state === 'Set by the host.' && hv.mapText === 'New track each round' && gv.mapText === hv.mapText,
+      `Settings: the host can change max players (${hv.max}) and the map ("${hv.mapText}"); the guest sees them read-only ("${gv.state}")`);
+    await guest.screenshot({ path: `${OUT}/lobby-guest-settings.png` });
+    // max players 2: a third is refused, on the code screen and by the server; never below the number in
+    await host.locator('#lbMax').fill('2'); await host.locator('#lbMax').press('Enter');
+    await guest.waitForFunction(() => window.__room?.settings?.max === 2, null, { timeout: 10_000 });
     const phone = await open('', 844, 390);
-    await phone.click('#toMatch'); await phone.locator('#mpCode').pressSequentially(code); await screenIs(phone, 'name');
+    await phone.click('#toMatch'); await phone.locator('#mpCode').pressSequentially(code);
+    await phone.waitForFunction(() => /full/.test(window.__room?.error ?? ''), null, { timeout: 10_000 }).catch(() => undefined);
+    const fullMsg = await phone.locator('#mpCodeErr').innerText();
+    let full2 = '', below = '';
+    try { si.rpc('synapse_join_room', { p_code: code, p_name: 'Third', p_token: 't'.repeat(32) }); } catch (e) { full2 = (e as Error).message; }
+    const ht = (await room(host)).me!.token;
+    try { si.rpc('synapse_set_settings', { p_code: code, p_token: ht, p_max: 1, p_mode: 'each', p_family: 'loop', p_seed: 0 }); } catch (e) { below = (e as Error).message; }
+    await host.locator('#lbMax').fill('1'); await host.locator('#lbMax').press('Enter');
+    const clamp = await host.locator('#lbMax').inputValue();
+    check(fullMsg === 'That room is full (2 players).' && full2 === 'room full' && (await guest.locator('#lbCount').innerText()) === '2 / 2' && below === 'max players' && clamp === '2' && si.rooms.get(code)!.maxPlayers === 2,
+      `max players 2: a third is refused ("${fullMsg}"; the server: ${full2}); the guest's lobby counts 2 / 2; never below the number in (the field stays at ${clamp}; the server: ${below})`);
+    await host.locator('#lbMax').fill('100'); await host.locator('#lbMax').press('Enter');
+    await host.waitForFunction(() => window.__room?.settings?.max === 100, null, { timeout: 10_000 });
+    await phone.locator('#mpCode').fill(''); await phone.locator('#mpCode').pressSequentially(code); await screenIs(phone, 'name');
     await phone.locator('#mpName').pressSequentially('Phone'); await phone.click('#mpGo'); await screenIs(phone, 'lobby');
     await phone.waitForFunction(() => (window.__room?.state?.players.length ?? 0) === 3, null, { timeout: 10_000 });
     const fit = await phone.evaluate(`(() => { const on = (q) => { const r = (typeof q === 'string' ? document.querySelector(q) : q).getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.left >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5; };
@@ -207,7 +255,7 @@ async function main() {
     // by a vs CPU round's race, left from Main menu (SwiftShader takes many seconds to make one, while the server's
     // clock runs on)
     const lateP = await open(`?T=${T}`, 844, 390);
-    await lateP.click('#toCpu');
+    await lateP.click('#toCpu'); await lateP.locator('#csName').fill('Late'); await lateP.click('#csStart');
     await lateP.waitForFunction(() => window.__match?.phase === 'build' && window.__phase?.state === 'running', null, { timeout: 15_000 });
     await lateP.evaluate(() => window.__phase!.skipTo(0.2));
     await lateP.waitForFunction(() => window.__training?.state === 'done' && window.__phase?.state === 'running', null, { timeout: 60_000 });
@@ -216,7 +264,16 @@ async function main() {
     await lateP.click('#rcMenu'); await lateP.waitForSelector('#leaveDlg[open]'); await lateP.click('#lvGo');
     await lateP.waitForSelector('#title:not([hidden])');
     await lateP.click('#toMatch'); await lateP.locator('#mpCode').pressSequentially(code); await screenIs(lateP, 'name');
-    await lateP.locator('#mpName').pressSequentially('Late');
+    await lateP.locator('#mpName').fill('Late'); // (filled in already: the name it played vs CPU under)
+
+    // the map (tracks-v2 T2): "One track", a shuffled clover, for every round; the guest sees it
+    const MAP = await setMap(host, 'track', 'clover', true);
+    await guest.waitForFunction((sd) => window.__room?.settings?.map.seed === sd, MAP.seed, { timeout: 10_000 });
+    const gm = await hostView(guest);
+    check(MAP.mode === 'track' && MAP.family === 'clover' && familyOf(MAP.seed) === 'clover' && si.rooms.get(code)!.mapMode === 'track' && si.rooms.get(code)!.mapSeed === MAP.seed && gm.mapText.startsWith('One track: Clover'),
+      `the host's map: "One track", a shuffled clover (seed ${MAP.seed}); the guest's panel shows "${gm.mapText}"`);
+    await guest.screenshot({ path: `${OUT}/lobby-guest-map.png` });
+    await host.screenshot({ path: `${OUT}/lobby-host-settings.png` });
 
     // 3. the host's Start match: round 1's build on both, from the server's clock (no buttons that train or skip)
     check((await host.locator('#lbStart').innerText()) === 'Start match' && await host.locator('#lbStart').isEnabled() && await host.locator('#lbBuild').count() === 0,
@@ -261,7 +318,7 @@ async function main() {
       const entries = JSON.parse(si.rooms.get(code)!.frozen.get(n)!) as { id: string; name: string; brain: string }[];
       const ok = entries.filter((e) => energyRefusal((JSON.parse(e.brain) as Genome).spec, CONFIG.rounds.budgets[n - 1]) === null);
       const genomes = ok.map((e) => JSON.parse(e.brain) as Genome);
-      node[n - 1] = runRace(genomes, derive(matchSeed >>> 0, 0x50d5, n), undefined, ROUND_RACE);
+      node[n - 1] = runRace(genomes, derive(matchSeed >>> 0, 0x50d5, n), undefined, ROUND_RACE, roundTrackSeed(derive(matchSeed >>> 0, 0x50d5, n), MAP));
       return { entries, ok, genomes, race: node[n - 1] };
     };
     /** Build → train (no buttons) → hand in → the race (= Node on every page) → standings; returns Node's round. */
@@ -286,7 +343,7 @@ async function main() {
       // this round's race on screen (the last round's may still be there a moment): its hash, drawing
       await Promise.all(all.map((p) => p.waitForFunction((hsh) => window.__race?.hash === hsh && (window.__race?.frames ?? 0) > 1, nr.race.hash, { timeout: 30_000, polling: 100 }).catch(() => undefined)));
       const rs = await Promise.all(all.map((p) => race(p)));
-      check(rs.every((r) => r!.hash === nr.race.hash), `round ${n}: the entries froze as the countdown began; every page's race hash = Node runRace of them (${nr.ok.length} racing of ${nr.entries.length} in): ${nr.race.hash}`);
+      check(rs.every((r) => r!.hash === nr.race.hash && r!.trackSeed === MAP.seed), `round ${n}: the entries froze as the countdown began; every page's race hash = Node runRace of them (${nr.ok.length} racing of ${nr.entries.length} in), on the room's one track (${MAP.seed}): ${nr.race.hash}`);
       const goServer = matchAt + roundTimes(n).go;
       check(rs.every((r) => Math.abs(r!.goEpoch - (goServer - si.skew)) < 250) && Math.max(...rs.map((r) => r!.goEpoch)) - Math.min(...rs.map((r) => r!.goEpoch)) < 200,
         `round ${n}: Go at the server's moment on every page (${rs.map((r) => Math.round(r!.goEpoch - (goServer - si.skew))).join(', ')} ms off)`);
@@ -402,6 +459,11 @@ async function main() {
     const lw = await lateP.evaluate(() => ({ w: window.__room!.watching, first: window.__roomMatch!.first, label: window.__phase!.label, lobby: !(document.getElementById('mpLobby') as HTMLElement).hidden }));
     check(lw.lobby && lw.first === 3 && lw.label === 'Round 2 of 5 · Build' && /You join at round 3's build/.test(lw.w), `a player who joins mid-match watches: the lobby says "${lw.w}", round 2's countdown in its bar ("${lw.label}"; first round ${lw.first}; lobby ${lw.lobby})`);
     await lateP.screenshot({ path: `${OUT}/m-late-watch-844x390.png` });
+    await lateP.waitForFunction(() => window.__room?.settings?.locked === true, null, { timeout: 10_000 }).catch(() => undefined);
+    const lk2 = await hostView(lateP);
+    let onErr = '';
+    try { si.rpc('synapse_set_settings', { p_code: code, p_token: ht, p_max: 50, p_mode: 'each', p_family: 'loop', p_seed: 0 }); } catch (e) { onErr = (e as Error).message; }
+    check(lk2.state === 'Locked while the match is on.' && !lk2.maxOn && onErr === 'match on', `while the match is on the settings are locked ("${lk2.state}"; the server: ${onErr})`);
     // the server agrees: a player who joined after round 2's build began has no brain in it
     const lb = si.rpc('synapse_join_room', { p_code: code, p_name: 'Late bot', p_token: 'l'.repeat(32) }) as { player: string };
     let notIn = '';
@@ -438,16 +500,36 @@ async function main() {
     const fin = await Promise.all(all3.map((p) => p.evaluate(() => ({ s: window.__roomMatch!.standings[4], step: window.__roomMatch!.step, t: document.getElementById('rcResT')!.textContent, again: !(document.getElementById('rcAgain') as HTMLElement).hidden, back: !(document.getElementById('rcBack') as HTMLElement).hidden, backT: document.getElementById('rcBack')!.textContent, timer: window.__phase!.state }))));
     const ids5 = new Map(ids1); ids5.set(si.players.find((p) => p.name === 'Late')!.id, 'Late');
     const s5 = nodeStandings(5, ids5), t5 = await Promise.all(all3.map(tableOf));
-    check(fin.every((f) => f.step === 'over' && f.back && f.backT === 'Main menu' && f.timer === 'off' && JSON.stringify(f.s) === JSON.stringify(s5.map((x) => x.name))) && fin[0].again && !fin[1].again && !fin[2].again
+    check(fin.every((f) => f.step === 'over' && f.back && f.backT === 'Main menu' && f.timer === 'off' && f.again && JSON.stringify(f.s) === JSON.stringify(s5.map((x) => x.name)))
       && ['Host', 'Guest', 'Late'].every((nm, k) => JSON.stringify(t5[k]) === JSON.stringify(shownOf(s5, nm))),
-      `after round 5: the final standings = Node's totals on every page, 10 of the 99 rows by total as the sidebar picks them ("${fin[0].t}": ${t5[0].map((x) => x[0]).join(' ')}; "${fin[1].t}": ${t5[1].map((x) => x[0]).join(' ')}), Play again for the host only, Main menu for all`);
+      `after round 5: the final standings = Node's totals on every page, 10 of the 99 rows by total as the sidebar picks them ("${fin[0].t}": ${t5[0].map((x) => x[0]).join(' ')}; "${fin[1].t}": ${t5[1].map((x) => x[0]).join(' ')}), Play again and Main menu for all`);
     await host.screenshot({ path: `${OUT}/m-final.png` });
     await guest.screenshot({ path: `${OUT}/m-final-guest.png` });
 
-    // Play again: the next match for everyone in the room, the latecomer included from its first build
+    // Play again: back to the lobby (the guest's read-only, the host's unlocking once the match is over); the host sets
+    // "One family" and starts match 2 on every page, the latecomer from its final standings
+    await guest.click('#rcAgain');
+    await screenIs(guest, 'lobby');
     await host.click('#rcAgain');
+    await screenIs(host, 'lobby');
+    await host.waitForFunction(() => window.__room?.settings?.editable === true && !(document.getElementById('lbStart') as HTMLButtonElement).disabled, null, { timeout: 15_000 });
+    const back2 = await Promise.all([hostView(host), hostView(guest)]);
+    check(await host.locator('#arena').isHidden() && back2[0].maxOn && back2[0].mapBtn && !back2[1].maxOn && back2[1].state === 'Set by the host.' && (await room(guest)).watching === '',
+      'Play again: each player back in the lobby; the settings unlock for the host (the guest\'s stay read-only)');
+    const MAP2 = await setMap(host, 'family', 'eight', false);
+    await guest.waitForFunction(() => window.__room?.settings?.map.mode === 'family', null, { timeout: 10_000 });
+    await host.click('#lbStart');
     await Promise.all(all3.map((p) => p.waitForFunction(() => window.__roomMatch?.matchNo === 2 && window.__roomMatch.step === 'build' && window.__phase?.label === 'Round 1 of 5 · Build', null, { timeout: 15_000 })));
-    check(si.rooms.get(code)!.matchNo === 2, 'Play again (host): match 2 begins on every page, round 1\'s build');
+    const m2 = await Promise.all(all3.map((p) => p.evaluate(() => ({ map: window.__roomMatch!.map, tracks: window.__roomMatch!.tracks, seed: window.__roomMatch!.seed }))));
+    const want2 = [1, 2, 3, 4, 5].map((n) => roundTrackSeed(derive(m2[0].seed >>> 0, 0x50d5, n), MAP2));
+    check(si.rooms.get(code)!.matchNo === 2 && m2.every((x) => JSON.stringify(x.tracks) === JSON.stringify(want2) && x.map?.mode === 'family') && want2.every((x) => familyOf(x) === 'eight'),
+      `the host sets "One family" (figure eight) and starts match 2 on every page (the latecomer from its final standings): a new figure eight each round (${want2.join(', ')})`);
+    // the host leaves: the server hands the room to the player who joined earliest (the guest)
+    await host.click('#toTitle'); await host.waitForSelector('#leaveDlg[open]'); await host.click('#lvGo');
+    await guest.waitForFunction(() => window.__room?.me?.host === true, null, { timeout: 10_000 }).catch(() => undefined);
+    const gTok = (await room(guest)).me!.token, after = si.rpc('synapse_room_state', { p_code: code }) as { players: { name: string; host: boolean }[] };
+    check((await room(guest)).me!.host && si.rooms.get(code)!.hostHash === createHash('sha256').update(gTok).digest('hex') && after.players.filter((p) => p.host).map((p) => p.name).join() === 'Guest' && !after.players.some((p) => p.name === 'Host'),
+      'the host leaves: the server makes the guest (who joined earliest of those left) the host, and the guest\'s page knows');
     // Main menu → Leave the room? → Leave: the title, out of the room
     await guest.click('#toTitle');
     await guest.waitForSelector('#leaveDlg[open]');

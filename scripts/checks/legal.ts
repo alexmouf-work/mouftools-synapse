@@ -83,7 +83,17 @@ async function main() {
     check(await page.locator('#notice').count() === 0, 'OK dismisses the notice');
     await page.goto(`${base}/`); await page.waitForTimeout(800);
     check(await page.locator('#notice').count() === 0, 'dismissed notice stays gone on the next visit');
-    check(await page.evaluate(() => localStorage.getItem('synapse.notice')) === '2', 'dismissal remembered in local storage (synapse.notice = 2, the notice version since the sound setting)');
+    check(await page.evaluate(() => localStorage.getItem('synapse.notice')) === '3', 'dismissal remembered in local storage (synapse.notice = 3, the notice version since the name and the chosen track)');
+    // a returning visitor who dismissed the notice before the name and track were stored (version 2) sees it again
+    await page.evaluate(() => localStorage.setItem('synapse.notice', '2'));
+    await page.goto(`${base}/`);
+    check(await page.locator('#notice').count() === 1 && /your name, your chosen track/.test(await page.locator('#notice').innerText()), 'a visitor who dismissed version 2 sees the notice again (it now names the name and the chosen track)');
+    await page.locator('#notice button').click();
+    // the cookie policy's table lists every key the app stores
+    await page.goto(`${base}/cookies`);
+    const keys = await page.$$eval('table tbody td:first-child code', (cs) => cs.map((c) => c.textContent));
+    const want = ['synapse.brain', 'synapse.name', 'synapse.notice', 'synapse.sound', 'synapse.track'];
+    check(JSON.stringify(keys) === JSON.stringify(want), `the cookie policy's table: ${keys.join(', ')}`);
     const r = await page.goto(`${base}/some/unknown/path`);
     check(r?.status() === 200 && await page.locator('.app').count() === 1, 'an unknown path still falls back to the app');
     check((await ctx.cookies()).length === 0, 'no cookies set');

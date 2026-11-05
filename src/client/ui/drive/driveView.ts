@@ -20,6 +20,7 @@ import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import type { Saved } from '../designer/store';
 import { TrackMap } from '../training/map';
+import { loadTrack } from '../tracks/tracks';
 import { BrainPanel } from './brainPanel';
 import { SpikeTrains } from './spikes';
 
@@ -65,13 +66,21 @@ export interface DriveHooks { back(): void }
 
 function newSeed(): number { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0]; }
 
-/** The first track a brain drives: the unseen track of its last training run (reproducible), else a fresh one. */
+/**
+ * The first track a brain drives: the track chosen in the sandbox (tracks-v2 T2), else the unseen track of its last
+ * training run (reproducible), else a fresh one.
+ */
 export function firstTrack(s: Saved): number {
   const q = new URLSearchParams(location.search).get('track');
   if (q !== null && /^\d+$/.test(q)) return Number(q);
+  const chosen = loadTrack();
+  if (chosen) return chosen.seed;
   if (s.train.seed !== null && s.train.phases > 0) return phaseSeeds(s.train.seed, s.train.phases - 1).unseenTrack;
   return newSeed();
 }
+
+// for checks: the track Drive opens on for an untrained brain (the sandbox's chosen one, if any)
+if (window.__tracks) window.__tracks.drive = () => firstTrack({ name: '', genome: null as never, train: { seed: null, phases: 0, temps: [] }, trainer: 'evolution' });
 
 let raf = 0;
 let map: TrackMap | null = null;

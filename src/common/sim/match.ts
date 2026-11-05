@@ -13,12 +13,35 @@ import { compile } from './brain';
 import { newRecording, Runner, type Recording } from './race';
 import type { CarState } from './car';
 import type { Genome } from './spec';
-import { generateTrack, type Track } from './track';
+import { familyOf, FAMILIES, generateTrack, seedOfFamily, type Family, type Track } from './track';
 
 const M = CONFIG.match;
 
 /** The race's track seed (a race track: generateTrack(seed, cars)). */
 export const raceTrackSeed = (raceSeed: number): number => derive(raceSeed >>> 0, TAG.raceTrack);
+
+/**
+ * A match's map (tracks-v2 T2, vs CPU's settings and a room's): a new track each round (any family, the race seed's
+ * own), a new track of one family each round, or one track (a seed of that family) for all five rounds.
+ */
+export type MapMode = 'each' | 'family' | 'track';
+export interface MapSetting { mode: MapMode; family: Family; seed: number }
+export const MAP_MODES: readonly MapMode[] = ['each', 'family', 'track'];
+export const NEW_EACH_ROUND: MapSetting = { mode: 'each', family: 'loop', seed: 0 };
+/** A map setting as stored or sent, made valid: an unknown mode is 'each'; 'track' needs a seed of its family. */
+export function validMap(m: Partial<MapSetting> | null | undefined): MapSetting {
+  const mode = MAP_MODES.includes(m?.mode as MapMode) ? m!.mode! : 'each';
+  const family = FAMILIES.includes(m?.family as Family) ? m!.family! : 'loop';
+  const seed = Number.isInteger(m?.seed) && m!.seed! >= 0 && m!.seed! <= 0xffffffff ? m!.seed! : 0;
+  if (mode === 'track' && familyOf(seed) !== family) return { mode, family, seed: seedOfFamily(family, seed) };
+  return { mode, family, seed };
+}
+/** The track seed of a round's race under a map setting (every client derives the same). */
+export function roundTrackSeed(raceSeed: number, map: MapSetting = NEW_EACH_ROUND): number {
+  if (map.mode === 'track') return map.seed >>> 0;
+  if (map.mode === 'family') return seedOfFamily(map.family, raceTrackSeed(raceSeed));
+  return raceTrackSeed(raceSeed);
+}
 
 /** Grid slot of each car (car k starts in slot order[k]; slot 0 is pole), a seeded shuffle of the race seed. */
 export function gridOrder(raceSeed: number, cars: number): number[] {
@@ -58,6 +81,8 @@ export interface RaceCar {
 
 export interface RaceResult {
   raceSeed: number;
+  /** The track's seed (raceTrackSeed(raceSeed) unless the match's map chose another). */
+  trackSeed: number;
   track: Track;
   cars: RaceCar[];
   /** Car indices from first to last. */
@@ -95,12 +120,12 @@ export function recordCar(genome: Genome, track: Track, slot: number, len: RaceL
 }
 
 /**
- * Run a race: car k is genomes[k]. `act(k)` says which cars keep every node's output per tick (the player's, for its
+ * Run a race: car k is genomes[k]; the track is `trackSeed`'s (the race seed's own unless a map setting chose it). `act(k)` says which cars keep every node's output per tick (the player's, for its
  * live brain); the rest record frames only. Every car has the wrong-way reset. Every car drives the whole cap (after the flag it carries on, as on a
  * cool-down lap), so a race's recordings never depend on the other cars.
  */
-export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: number) => boolean = () => false, len: RaceLength = LAPPED): RaceResult {
-  const track = generateTrack(raceTrackSeed(raceSeed), genomes.length), order = gridOrder(raceSeed, genomes.length);
+export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: number) => boolean = () => false, len: RaceLength = LAPPED, trackSeed = raceTrackSeed(raceSeed)): RaceResult {
+  const track = generateTrack(trackSeed, genomes.length), order = gridOrder(raceSeed, genomes.length);
   const goal = len.laps * track.len, cap = len.ticks, runner = new Runner();
   const cars: RaceCar[] = genomes.map((g, k) => {
     const net = compile(g), rec = newRecording(net, cap, act(k));
@@ -119,5 +144,5 @@ export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: n
   const h = new Hasher().u32(raceSeed >>> 0).u32(track.sub).u32(endTicks);
   for (const c of cars) h.u32(c.slot).f64(c.finish ?? -1).f64(c.prog).f64s(c.rec.x).f64s(c.rec.y).f64s(c.rec.hdg).f64s(c.rec.v);
   for (const k of ranking) h.u32(k);
-  return { raceSeed, track, cars, ranking, endTicks, hash: h.hex() };
+  return { raceSeed, trackSeed, track, cars, ranking, endTicks, hash: h.hex() };
 }

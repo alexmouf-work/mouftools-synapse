@@ -25,6 +25,7 @@ import { NO_TRAINING, type Saved } from '../designer/store';
 import { BrainPanel } from '../drive/brainPanel';
 import { SpikeTrains } from '../drive/spikes';
 import { TrackMap } from './map';
+import { sandboxTrainTracks } from '../tracks/tracks';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -54,6 +55,8 @@ export interface TrainingHooks {
 export interface TrainingStatus {
   state: 'running' | 'done' | 'stopped';
   seed: number; phase: number; start: 'fresh' | 'carry'; workers: number; T: number;
+  /** The training tracks' seeds (the sandbox's chosen track first, if one is chosen). */
+  tracks: number[];
   /** The run's temperature (log2 of the multiplier; 0 for backprop, which has nothing to explore). */
   temperature: number;
   /** Generations asked for, evaluated so far, and the one on screen (0 = none yet). */
@@ -158,6 +161,9 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   // match: the generations the budget allows (evolution's worst case; a gradient trainer's fitness checks)
   if (match) generations = Math.max(1, saved.trainer === 'evolution' ? Math.floor(T / phaseBudget(1)) : Math.floor(T / CONFIG.train.grad.evalEvery) + 1);
   const seeds = phaseSeeds(seed, phase);
+  // the sandbox's chosen track (tracks-v2 T2): training starts on it, then another track of its family; a match's
+  // training keeps the phase's own tracks
+  const tracks = match || round ? seeds.trainTracks : sandboxTrainTracks(seed, phase) ?? seeds.trainTracks;
   lives.clear(); champLive = null;
 
   showArena('train');
@@ -173,14 +179,14 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   // the scene (optional: training runs without WebGL)
   stage = await getStage();
   const webgl = stage !== null;
-  track0 = generateTrack(seeds.trainTracks[0]);
+  track0 = generateTrack(tracks[0]);
   if (stage) await stage.setTrack(track0, 'train');
   map ??= new TrackMap($('tvMap') as HTMLCanvasElement);
   map.setTrack(track0);
   const K = Math.min(p.ghosts ?? ghostsFor(), MAX_GHOSTS);
   const pop = CONFIG.train.population;
   const status: TrainingStatus = {
-    state: 'running', seed, phase, start, workers, T, temperature: temp, generations, gen: 0, ticksUsed: 0, shownGen: 0, finale: false,
+    state: 'running', seed, phase, tracks, start, workers, T, temperature: temp, generations, gen: 0, ticksUsed: 0, shownGen: 0, finale: false,
     shown: stage ? stage.swarm.log : [], ghosts: K, ghostCapacity: stage?.swarm.capacity ?? 0, offered: [], prepMs: 0, switchFrameMs: 0, steadyFrameMs: 0, steadyP95Ms: 0, switchFrames: [],
     flags: stage?.finishFlags ?? 0, frames: 0, frameMs: 0, webgl, quality: stage?.quality,
     probe: stage ? () => (stage as Stage).probe() : undefined, bloomAudit: stage ? (m?: boolean) => (stage as Stage).bloomAudit(m) : undefined,
@@ -196,7 +202,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   let result: PhaseResult;
   try {
     result = await runPhase(thePool, genome.spec, seed, {
-      T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, now: () => performance.now(),
+      T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, now: () => performance.now(),
       stepTicks: (env) => env.worstCase(pop),
       // every generation records its seeded handful (display only)
       beforeStep: () => { if (stage) { const g = gens.length + 1; thePool.record = (count) => showPick(seed, phase, g, K, count); } },

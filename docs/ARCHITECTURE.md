@@ -29,12 +29,12 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs; each cell's default tuning and its learned field (`fieldOf`, `hdOf`, `gridOf`, `speedGainOf`). |
 | `sim/energy.ts` | THE energy rule: per-node coefficients, the flat-out and resting loads, the speed cap (floor 10%), the match refusal, the designer's "at maximum firing rate" figures. |
 | `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
-| `sim/track.ts` | Track families, generator + validation, the figure eight's crossing and decks, wall grid, ray cast (grid DDA, skipping the other deck), nearest-sample search. |
+| `sim/track.ts` | Track families, generator + validation, the figure eight's crossing and decks, wall grid, ray cast (grid DDA, skipping the other deck), nearest-sample search; `seedOfFamily` (a seed whose track is of a given family: the picker's Shuffle, "One family" rounds, training's second track). |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule. |
 | `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, landmark, boundary range. |
 | `sim/race.ts` | `Runner`: one car for N ticks (from the start line, or a given start such as a grid slot), optional recording of frames and activations (or frames only), early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
-| `sim/match.ts` | vs CPU races (B7): the race seed's track (`raceTrackSeed`, a race track) and grid order (`gridOrder`), grid slots two by two behind the line (`gridPlace`, `gridCar`), `runRace` (every car its own run for the 120 s cap; finish time to a fraction of a tick after 2 laps), `rank` (finish time, then progress at the end, then slot) and the race hash. |
+| `sim/match.ts` | vs CPU races (B7): the race seed's track (`raceTrackSeed`, a race track) and grid order (`gridOrder`), grid slots two by two behind the line (`gridPlace`, `gridCar`), `runRace` (every car its own run for the 120 s cap; finish time to a fraction of a tick after 2 laps), `rank` (finish time, then progress at the end, then slot) and the race hash. Tracks-v2 T2: a match's `MapSetting` (new track each round, one family, one track), `roundTrackSeed`, and `runRace`'s optional track seed (default the race seed's own). |
 | `sim/cpu.ts` | The nine CPU brains' names and the check every stored set passes (`cpuBrains`: nine valid genomes within the match energy limit). |
 | `sim/teacher.ts` | The scripted pure-pursuit teacher backprop copies (`teacherWheels`), and `driveTeacher` (the teacher alone, a reference for tests and the bench). |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry with each trainer's label and refusal (`trainerRefusal`). |
@@ -47,7 +47,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `train/gradTrainer.ts` | What every gradient trainer shares: rounds, fitness checks, the update, the `delta` channel. |
 | `train/backprop.ts`, `train/actorCritic.ts`, `train/arp.ts` | Backprop (copy a teacher), actor-critic, A_RP. |
 | `train/probe.ts` | The `signal` probe all trainers share. |
-| `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop). |
+| `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop; optional training tracks: `chosenTrainTracks`, the sandbox's chosen track then others of its family). |
 | `train/contract.suite.ts`, `contract.test.ts`, `contract-ac.test.ts`, `contract-arp.test.ts` | The suite every trainer must pass (evolution and backprop in one file, actor-critic and A_RP one each, so no file holds a test worker for a minute). |
 
 ### Brain (v2, 2026-11-04; plan `docs/plans/2026-11-04-brain-designer-v2.md`)
@@ -254,8 +254,15 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   card ("Synapse", "Build a brain. Train it. Race it.", Multiplayer in blue and vs CPU in yellow, both disabled with
   vs CPU live since B7, Multiplayer since B8, Sandbox plain), a quiet wired brain firing behind it (still under reduced
   motion), and the rail along its foot with Privacy · Terms · Cookies and the music credits (above the storage notice
-  while it shows). Sandbox opens the designer; vs CPU opens it in match mode; the designer's "Synapse" wordmark comes
-  back. `?view=sandbox|cpu|train|drive|race` skip it.
+  while it shows). Sandbox opens the designer; vs CPU opens its settings screen (tracks-v2 T2), then the match; the
+  designer's Main menu comes back. `?view=sandbox|cpu|train|drive|race` skip it.
+- `ui/tracks/` — choosing tracks (tracks-v2 T2): one picker (the families as map previews drawn with `TrackMap`, each
+  with Shuffle; the chosen track's big preview with its length and features), used by the sandbox's Track dialog (top
+  bar; Random first; stored as localStorage `synapse.track`; Drive opens on it and a sandbox Train trains on it, then
+  another of its family), vs CPU's settings and a room's Map dialog (the three map modes). Also `synapse.name` (the
+  name you play under, vs CPU and Multiplayer).
+- `ui/cpuSettings/` — vs CPU's settings screen (`#cpuSet`): your name (required, 1–16), the map; Start match begins round
+  1's build; Main menu; the final standings' Play again comes back here. No designer before the match.
 - vs CPU (B7): the designer in match mode (`setDesignerMode('match')`, body class `match`, the lobby's building
   music): an edit past 100% flat out is refused, and a loaded brain past it says so; Train skips the generations
   popup and trains the design from scratch (every weight, bias and field 0, a fresh seed, phase 0, temperature ×1) on
@@ -425,6 +432,13 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   itself and counts down to Go (`countdown.ts countdownTo`: the same two-beat spacing, blips on the effects bus; it
   can't follow each client's music). A client that is late joins the race where it is. Results go back to the room
   (place, time, distance). Back to room returns to the lobby.
+- Multiplayer since tracks-v2 T2 (the paragraph above predates the timed rounds; see the match-flow v2 and tracks-v2
+  plans): the host's chip has a "Host" tag and the header "Host: <name>"; the server hands the room to the player who
+  joined earliest when the host leaves (`synapse_rehost`), and `Me.host` follows the polled state. A Settings panel
+  beside the chips: max players (2–100, never below the number in; `synapse_join_room` refuses past it) and the map,
+  set by the host with `synapse_set_settings`, read-only for others, locked while a match is on. Each round's track is
+  `roundTrackSeed` of its race seed under the room's map, on every client. The final standings' Play again returns
+  everyone to the lobby, where the host starts the next match.
 
 ## scripts
 - `scripts/sim/cpuBrains.ts` — trains the nine CPU brains (B7) and writes `src/assets/cpu/brains.json` (about 40 s on
@@ -480,7 +494,11 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   strongest CPU brain as yours) plays the winner music as you cross the line; 844×390 layout; screenshots to
   `out/race/`.
 - `scripts/checks/standin.ts` — a local stand-in for the Supabase project: the same functions as `supabase/schema.sql`
-  behind the same PostgREST shape, in memory, checking the anon key.
+  behind the same PostgREST shape, in memory, checking the anon key (with T2's settings, max players and host handover).
+- T2 additions to the checks: check:workbench (the Track picker), check:race (vs CPU's settings screen and the map
+  modes), check:multiplayer (host tag and header, settings, max players, the map on every race, locked mid-match, Play
+  again → lobby, host handover), check:legal (the cookie table's keys, notice version 3), check:title (vs CPU → the
+  settings screen).
 - `scripts/checks/multiplayer.ts` — Multiplayer in headless Chromium against the stand-in: the code screen (the
   fourth letter checks; a code with no room says so and selects the letters), Create a room → the name screen (spaces
   collapsed, counter, preview) → the lobby as host; a guest's code → the name screen, the host's name refused (any

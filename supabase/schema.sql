@@ -6,11 +6,11 @@
 -- Synapse and is named synapse_*:
 --   tables     synapse_rooms, synapse_players, synapse_round_brains, synapse_round_entries
 --   functions  synapse_open_room, synapse_join_room, synapse_leave_room, synapse_remove_player, synapse_room_state,
---              synapse_start_match, synapse_submit_round_brain, synapse_round_entries, synapse_submit_result,
+--              synapse_set_settings, synapse_start_match, synapse_submit_round_brain, synapse_round_entries, synapse_submit_result,
 --              synapse_submit_brain, synapse_start_race, synapse_race_entries (the single race before timed rounds,
 --              kept while a deployed build still calls them)
 --              (helpers: synapse_hash, synapse_ms, synapse_name, synapse_round_start, synapse_round_freeze,
---              synapse_match_over)
+--              synapse_match_over, synapse_rehost)
 --   cron job   synapse-purge
 -- Another product adds its own file with its own prefix (for example `<product>_`) and never edits these objects.
 --
@@ -18,8 +18,10 @@
 -- on an empty project or on one that already has any earlier version of Synapse's objects, leaves the same result
 -- and no errors. It never drops or changes anything that isn't Synapse's.
 --
--- What it holds: rooms with 4-letter codes, up to 100 players each, and the room's match: 5 timed rounds that start
--- when the host starts the match, every phase at a fixed time after that on the server's clock. Each round, every
+-- What it holds: rooms with 4-letter codes, up to 100 players each (the host can set a lower maximum), the host's
+-- settings (max players and the map: a new track each round, one family, or one track), and the room's match: 5 timed
+-- rounds that start when the host starts the match, every phase at a fixed time after that on the server's clock. The
+-- room's creator is its host; when the host leaves, the player who joined earliest becomes host. Each round, every
 -- player's brain for that round, and the round's entries, frozen as its race's countdown begins, so every client
 -- re-runs the same race.
 --
@@ -99,6 +101,15 @@ alter table public.synapse_rooms add column if not exists match_no integer not n
 alter table public.synapse_rooms add column if not exists match_seed bigint;
 alter table public.synapse_rooms add column if not exists match_at timestamptz;
 
+-- The host's settings (tracks-v2 T2): how many may be in the room (2–100; joins past it are refused) and the map for
+-- each round's track: 'each' (a new track each round, any family), 'family' (a new track of map_family each round) or
+-- 'track' (the track of seed map_seed, a track of map_family, for all five rounds). Locked while a match is on.
+alter table public.synapse_rooms add column if not exists max_players integer not null default 100 check (max_players between 2 and 100);
+alter table public.synapse_rooms add column if not exists map_mode text not null default 'each' check (map_mode in ('each', 'family', 'track'));
+alter table public.synapse_rooms add column if not exists map_family text
+  check (map_family is null or map_family in ('loop', 'kidney', 'hairpin', 'chicane', 'dogleg', 'clover', 'eight'));
+alter table public.synapse_rooms add column if not exists map_seed bigint check (map_seed is null or map_seed between 0 and 4294967295);
+
 -- Each player's brain for a round of the room's match (the canonical genome JSON, as the client wrote it). A player
 -- who leaves takes theirs with them until the round's entries are frozen.
 create table if not exists public.synapse_round_brains (
@@ -177,27 +188,44 @@ begin
   return json_build_object('code', c, 'now', synapse_ms(now()));
 end $$;
 
--- Join a room by its code (up to 100 players; a name nobody in the room has, ignoring case).
+-- The host has gone (left, or the room emptied): the player who joined earliest becomes host. With nobody in, the host
+-- is '' (no one) and the next player to join becomes host (synapse_join_room). Call with the room's row locked.
+create or replace function public.synapse_rehost(p_code text) returns void
+  language plpgsql security definer set search_path = public, extensions as $$
+begin
+  update synapse_rooms r set host_hash = coalesce((select p.token_hash from synapse_players p where p.room = r.code order by p.joined_at, p.id limit 1), '')
+    where r.code = p_code
+      and not exists (select 1 from synapse_players p where p.room = r.code and p.token_hash = r.host_hash);
+end $$;
+
+-- Join a room by its code (up to its max players, 100 at most; a name nobody in the room has, ignoring case).
 create or replace function public.synapse_join_room(p_code text, p_name text, p_token text) returns json
   language plpgsql security definer set search_path = public, extensions as $$
-declare pid uuid; joined timestamptz; n text := synapse_name(p_name);
+declare r synapse_rooms; pid uuid; joined timestamptz; n text := synapse_name(p_name);
 begin
   if char_length(p_token) < 32 then raise exception 'token'; end if;
   if char_length(n) not between 1 and 16 then raise exception 'name'; end if;
-  perform 1 from synapse_rooms where code = upper(p_code) for update;
+  select * into r from synapse_rooms where code = upper(p_code) for update;
   if not found then raise exception 'no such room'; end if;
-  if (select count(*) from synapse_players where room = upper(p_code)) >= 100 then raise exception 'room full'; end if;
-  if exists (select 1 from synapse_players where room = upper(p_code) and lower(name) = lower(n)) then raise exception 'name taken'; end if;
-  insert into synapse_players (room, name, token_hash) values (upper(p_code), n, synapse_hash(p_token)) returning id, joined_at into pid, joined;
+  if (select count(*) from synapse_players where room = r.code) >= least(r.max_players, 100) then raise exception 'room full'; end if;
+  if exists (select 1 from synapse_players where room = r.code and lower(name) = lower(n)) then raise exception 'name taken'; end if;
+  insert into synapse_players (room, name, token_hash) values (r.code, n, synapse_hash(p_token)) returning id, joined_at into pid, joined;
+  -- a room nobody hosts (everyone left): the first to join it hosts it
+  if r.host_hash = '' then update synapse_rooms set host_hash = synapse_hash(p_token) where code = r.code; end if;
   -- when you joined: a match already under way is yours from the next round's build
   return json_build_object('code', upper(p_code), 'player', pid, 'name', n, 'joined', synapse_ms(joined), 'now', synapse_ms(now()));
 end $$;
 
--- Leave the room (your name is free again).
+-- Leave the room (your name is free again). The host leaving hands the room to the player who joined earliest.
 create or replace function public.synapse_leave_room(p_player uuid, p_token text) returns void
   language plpgsql security definer set search_path = public, extensions as $$
+declare c text;
 begin
+  select room into c from synapse_players where id = p_player and token_hash = synapse_hash(p_token);
+  if not found then return; end if;
+  perform 1 from synapse_rooms where code = c for update;
   delete from synapse_players where id = p_player and token_hash = synapse_hash(p_token);
+  perform synapse_rehost(c);
 end $$;
 
 -- The host removes another player from the room.
@@ -209,17 +237,38 @@ begin
   delete from synapse_players where id = p_player and room = upper(p_code) and token_hash <> synapse_hash(p_token);
 end $$;
 
--- The room as the lobby shows it: players in join order (with when each joined), whether each has a brain in and which
--- is the host; the current match (and the single race of earlier builds).
+-- The room as the lobby shows it: players in join order (with when each joined) and which is the host; the host's
+-- settings; the current match (and the single race of earlier builds). `ready` (a brain in for that single race) is
+-- kept while a deployed build still reads it; rounds don't use it.
 create or replace function public.synapse_room_state(p_code text) returns json
   language sql security definer set search_path = public, extensions as $$
   select json_build_object(
     'code', r.code, 'race_no', r.race_no, 'race_seed', r.race_seed, 'start_at', synapse_ms(r.start_at),
+    'max_players', r.max_players, 'map_mode', r.map_mode, 'map_family', r.map_family, 'map_seed', r.map_seed,
     'match_no', r.match_no, 'match_seed', r.match_seed, 'match_at', synapse_ms(r.match_at), 'now', synapse_ms(now()),
     'players', coalesce((select json_agg(json_build_object('id', p.id, 'name', p.name, 'ready', p.brain is not null, 'host', p.token_hash = r.host_hash,
                                                            'joined', synapse_ms(p.joined_at)) order by p.joined_at, p.id)
                          from synapse_players p where p.room = r.code), '[]'::json))
   from synapse_rooms r where r.code = upper(p_code) $$;
+
+-- The host's settings (tracks-v2 T2): max players (2–100, not below the number already in) and the map. Not while a
+-- match is on (from its start until round 5's race is over): the settings lock at the start and unlock for Play again.
+create or replace function public.synapse_set_settings(p_code text, p_token text, p_max integer, p_mode text, p_family text, p_seed bigint) returns void
+  language plpgsql security definer set search_path = public, extensions as $$
+declare r synapse_rooms;
+begin
+  select * into r from synapse_rooms where code = upper(p_code) and host_hash = synapse_hash(p_token) for update;
+  if not found then raise exception 'not the host'; end if;
+  if r.match_at is not null and clock_timestamp() < synapse_match_over(r.match_at) then raise exception 'match on'; end if;
+  if p_max is null or p_max not between 2 and 100 or p_max < (select count(*) from synapse_players where room = r.code) then raise exception 'max players'; end if;
+  if p_mode is null or p_mode not in ('each', 'family', 'track')
+     or (p_mode <> 'each' and (p_family is null or p_family not in ('loop', 'kidney', 'hairpin', 'chicane', 'dogleg', 'clover', 'eight')))
+     or (p_mode = 'track' and (p_seed is null or p_seed not between 0 and 4294967295)) then raise exception 'map'; end if;
+  update synapse_rooms set max_players = p_max, map_mode = p_mode,
+    map_family = case when p_family in ('loop', 'kidney', 'hairpin', 'chicane', 'dogleg', 'clover', 'eight') then p_family end,
+    map_seed = case when p_seed between 0 and 4294967295 then p_seed end
+    where code = r.code;
+end $$;
 
 -- The host starts a match: a new number and seed, round 1's build from now. Not while one is still being raced.
 -- The room's earlier matches' brains and entries go.
@@ -310,19 +359,19 @@ begin
   if not found then raise exception 'not your player'; end if;
 end $$;
 
--- Only the twelve room functions are callable from the browser (anon); the helpers are not.
+-- Only the thirteen room functions are callable from the browser (anon); the helpers are not.
 revoke all on function public.synapse_hash(text), public.synapse_ms(timestamptz), public.synapse_name(text),
   public.synapse_round_start(timestamptz, integer), public.synapse_round_freeze(timestamptz, integer),
-  public.synapse_match_over(timestamptz) from public, anon, authenticated;
+  public.synapse_match_over(timestamptz), public.synapse_rehost(text) from public, anon, authenticated;
 revoke all on function public.synapse_open_room(text), public.synapse_join_room(text, text, text),
   public.synapse_leave_room(uuid, text), public.synapse_remove_player(text, text, uuid), public.synapse_room_state(text),
-  public.synapse_start_match(text, text), public.synapse_submit_round_brain(uuid, text, integer, integer, text),
+  public.synapse_set_settings(text, text, integer, text, text, bigint), public.synapse_start_match(text, text), public.synapse_submit_round_brain(uuid, text, integer, integer, text),
   public.synapse_round_entries(text, integer, integer),
   public.synapse_submit_brain(uuid, text, text), public.synapse_start_race(text, text),
   public.synapse_race_entries(text, integer), public.synapse_submit_result(uuid, text, text) from public, authenticated;
 grant execute on function public.synapse_open_room(text), public.synapse_join_room(text, text, text),
   public.synapse_leave_room(uuid, text), public.synapse_remove_player(text, text, uuid), public.synapse_room_state(text),
-  public.synapse_start_match(text, text), public.synapse_submit_round_brain(uuid, text, integer, integer, text),
+  public.synapse_set_settings(text, text, integer, text, text, bigint), public.synapse_start_match(text, text), public.synapse_submit_round_brain(uuid, text, integer, integer, text),
   public.synapse_round_entries(text, integer, integer),
   public.synapse_submit_brain(uuid, text, text), public.synapse_start_race(text, text),
   public.synapse_race_entries(text, integer), public.synapse_submit_result(uuid, text, text) to anon;

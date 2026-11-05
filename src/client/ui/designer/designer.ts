@@ -15,6 +15,7 @@ import { biasIndex, columns, defaultSpec, FIELD_PARAMS, fieldIndex, inputIds, la
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
 import { load, NO_TRAINING, save, starterGenome, type Saved, type TrainerId } from './store';
+import { openTrackDialog, syncTrackButton } from '../tracks/tracks';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -586,6 +587,9 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
   $('tdNo').onclick = () => ($('trainDlg') as HTMLDialogElement).close();
   $('tdGo').onclick = () => { ($('trainDlg') as HTMLDialogElement).close(); onTrain(W.saved, W.gens, W.saved.trainer === 'backprop' ? 0 : W.temp); };
   $('reset').onclick = () => ($('confirm') as HTMLDialogElement).showModal();
+  // the sandbox's track (tracks-v2 T2): any time, from the top bar; Drive and training use it
+  $('trackBtn').onclick = () => openTrackDialog();
+  syncTrackButton();
   $('cfNo').onclick = () => ($('confirm') as HTMLDialogElement).close();
   $('cfYes').onclick = () => {
     // a new random starter (plan §3c); in a vs CPU match the starting brain, which fits round 1's budget

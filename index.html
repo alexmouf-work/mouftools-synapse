@@ -73,13 +73,26 @@
       <div class="mp-roomcode"><span class="mp-lab">Room code</span><b id="lbCode"></b></div>
       <div class="mp-where">Join at synapse.mouftools.com, then Multiplayer.</div>
       <div class="mp-count"><b id="lbCount">0 / 100</b><span id="lbCountSub">players</span></div>
+      <div class="mp-hostname" id="lbHost"></div>
       <div class="mp-spacer"></div>
       <div class="mp-status" id="lbHostSide"><button class="btn primary" type="button" id="lbStart" disabled>Start match</button></div>
       <div class="mp-status" id="lbPlayerSide" hidden><b>You're in</b>Waiting for the host to start</div>
     </header>
-    <div class="mp-field" id="lbField" aria-live="polite" aria-label="Players in the room">
-      <div class="mp-empty" id="lbEmpty">Waiting for players to join…</div>
-      <button class="btn mp-kick" type="button" id="lbKick" hidden></button>
+    <div class="mp-main">
+      <div class="mp-field" id="lbField" aria-live="polite" aria-label="Players in the room">
+        <div class="mp-empty" id="lbEmpty">Waiting for players to join…</div>
+        <button class="btn mp-kick" type="button" id="lbKick" hidden></button>
+      </div>
+      <aside class="mp-set" id="lbSet" aria-label="Settings">
+        <h2>Settings</h2>
+        <p class="mp-setstate" id="lbSetState"></p>
+        <label class="mp-lab" for="lbMax">Max players</label>
+        <div class="mp-maxrow"><input id="lbMax" type="number" min="2" max="100" step="1" inputmode="numeric"><span id="lbMaxHint"></span></div>
+        <div class="mp-lab">Map</div>
+        <canvas class="mp-mapc" id="lbMapC" aria-hidden="true"></canvas>
+        <p class="mp-maptext" id="lbMapT"></p>
+        <button class="btn" type="button" id="lbMapBtn">Change map</button>
+      </aside>
     </div>
     <footer class="mp-foot">
       <span class="mp-note" id="lbNote" aria-live="polite"></span>
@@ -88,6 +101,19 @@
       <button class="btn menu" type="button" id="lbMenu">Main menu</button>
     </footer>
   </section>
+</div>
+<div id="cpuSet" hidden>
+  <!-- vs CPU's settings (tracks-v2 T2): your name and the map, then Start match; no designer before the match -->
+  <form id="csForm" novalidate>
+    <header class="cs-bar">
+      <h1>vs CPU</h1>
+      <div class="cs-name"><label class="cs-lab" for="csName">Your name</label><input id="csName" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="e.g. Priya"><span class="cs-count" id="csCount">0 / 16</span></div>
+      <div class="cs-err" id="csErr" role="alert"></div>
+      <button class="btn menu" type="button" id="csMenu">Main menu</button>
+      <button class="btn primary" type="submit" id="csStart" disabled>Start match</button>
+    </header>
+    <section class="cs-body" aria-label="Map"><h2>Map</h2><div id="csPick"></div></section>
+  </form>
 </div>
 <div class="app" hidden>
   <header class="top">
@@ -98,6 +124,7 @@
       <div class="split"><s id="aRange"></s><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
       <span>Speed <b id="aSpeed"></b></span>
     </div>
+    <button class="btn" type="button" id="trackBtn" aria-haspopup="dialog">Track</button>
     <button class="btn" type="button" id="reset">Reset</button>
     <button class="btn primary" type="button" id="train">Train</button>
     <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicWb" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxWb" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
@@ -116,6 +143,8 @@
 </div>
 <dialog id="rotate" aria-labelledby="rotT"><svg class="rot-icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="22" y="8" width="20" height="34" fill="none" stroke="currentColor" stroke-width="3"/><rect x="14" y="36" width="34" height="20" fill="currentColor" opacity=".25"/><rect x="14" y="36" width="34" height="20" fill="none" stroke="currentColor" stroke-width="3"/><path d="M50 14a14 14 0 0 1 4 18" fill="none" stroke="currentColor" stroke-width="3"/><path d="M57 28l-3 5-4-4" fill="none" stroke="currentColor" stroke-width="3"/></svg><h1 id="rotT">Turn your phone sideways</h1><p class="note">Synapse is played in landscape.</p></dialog>
 <dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><label class="count temp" id="tempRow"><span>Temperature</span><b id="tVal"></b><input id="tSlide" type="range" min="-2" max="2" step="0.25" value="0" aria-label="Temperature"><small id="tHint"></small></label><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
+<dialog id="trackDlg" class="tk-dlg" aria-labelledby="tkT"><div class="tk-hd"><div><h2 id="tkT">Track</h2><p class="tk-sub">Drive uses this track, and training starts on it (then another track of its family).</p></div><button class="btn primary" type="button" id="tkDone">Done</button></div><div id="tdPick"></div></dialog>
+<dialog id="mapDlg" class="tk-dlg" aria-labelledby="mdT"><div class="tk-hd"><div><h2 id="mdT">Map</h2><p class="tk-sub">The track for each of the match's five rounds, for everyone in the room.</p></div><div class="cf"><button class="btn" type="button" id="mdNo">Cancel</button><button class="btn primary" type="button" id="mdGo">Done</button></div></div><div id="mdPick"></div></dialog>
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>

@@ -1,0 +1,40 @@
+/* The track picker (tracks-v2 T2): the map modes, a grid of the families as map previews (each with Shuffle; Random in
+   the sandbox) and the chosen track's big preview with its length and features. Square corners, Arial. Used in the
+   sandbox's Track dialog, vs CPU's settings screen and a room's Settings. */
+.tp { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-family: Arial, Helvetica, sans-serif; }
+.tp-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.tp-modes button { min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); cursor: pointer; font: 700 13px Arial, Helvetica, sans-serif; }
+.tp-modes button[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 38%); gap: 12px; align-items: start; min-width: 0; }
+.tp[data-mode="each"].match .tp-grid { display: none; }
+.tp[data-mode="each"].match .tp-body { grid-template-columns: 1fr; }
+.tp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+.tp-cell { display: flex; flex-direction: column; min-width: 0; }
+.tp-card { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); cursor: pointer; min-width: 0; }
+.tp-card canvas, .tp-rand { display: block; width: 100%; aspect-ratio: 16 / 10; }
+.tp-rand { display: grid; place-items: center; font: 700 26px Arial, Helvetica, sans-serif; color: var(--muted); background: var(--bg); }
+.tp-card b { font: 700 12px Arial, Helvetica, sans-serif; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-card[aria-checked="true"] { border: 2px solid var(--accent); padding: 3px; background: var(--accent-soft); }
+.tp-shuf { margin-top: -1px; min-height: 24px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); cursor: pointer; font: 12px Arial, Helvetica, sans-serif; }
+.tp-shuf[hidden] { display: none; }
+.tp button:disabled { cursor: default; }
+.tp.ro .tp-card:not([aria-checked="true"]), .tp.ro .tp-modes button:not([aria-checked="true"]) { opacity: .55; }
+.tp-big { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tp-bigmap { display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--bg); border: 1px solid var(--line); }
+.tp-bigmap[hidden] { display: none; }
+.tp-info { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.tp-name { font-size: 16px; }
+.tp-len { color: var(--text); }
+.tp-feat { color: var(--muted); }
+.tp-feat:empty { display: none; }
+
+/* the sandbox's Track dialog and a room's Map dialog */
+dialog.tk-dlg { width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 12px 14px; }
+dialog.tk-dlg .tk-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+dialog.tk-dlg h2 { margin: 0; font-size: 15px; }
+dialog.tk-dlg .tk-sub { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+@media (max-height: 520px) {
+  dialog.tk-dlg .tp-body { grid-template-columns: minmax(0, 1fr) minmax(150px, 30%); }
+  dialog.tk-dlg .tp-grid { gap: 4px; }
+  dialog.tk-dlg .tp-card canvas, dialog.tk-dlg .tp-rand { aspect-ratio: 16 / 8; }
+}

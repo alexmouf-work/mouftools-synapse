@@ -1,5 +1,5 @@
 // vs CPU races (B7, tracks plan §4): the grid, pads off it, the ranking rule, determinism, the wrong-way reset, the
-// stored CPU brains.
+// stored CPU brains; choosing tracks (tracks-v2 T2).
 import { describe, expect, it } from 'vitest';
 import data from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
@@ -8,8 +8,9 @@ import { newRecording, putBack, Runner } from '../../src/common/sim/race';
 import { biasIndex, OUTPUTS, type Genome } from '../../src/common/sim/spec';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
 import { maxLoad } from '../../src/common/sim/energy';
-import { gridCar, gridOrder, gridPlace, rank, raceTrackSeed, recordCar, ROUND_RACE, runRace } from '../../src/common/sim/match';
-import { generateTrack, gridDepth } from '../../src/common/sim/track';
+import { gridCar, gridOrder, gridPlace, NEW_EACH_ROUND, rank, raceTrackSeed, recordCar, ROUND_RACE, roundTrackSeed, runRace, validMap } from '../../src/common/sim/match';
+import { FAMILIES, familyOf, generateTrack, gridDepth, seedOfFamily } from '../../src/common/sim/track';
+import { chosenTrainTracks } from '../../src/common/train/phase';
 
 const M = CONFIG.match;
 
@@ -198,5 +199,58 @@ describe('following a racer', () => {
       if (k === 0) expect(Array.from(rec.act)).toEqual(Array.from(c.rec.act));
       expect(rec.act.every(Number.isFinite)).toBe(true);
     }
+  });
+});
+
+// tracks-v2 T2: choosing tracks (the sandbox's picker, vs CPU's and a room's map setting)
+describe('choosing tracks', () => {
+  it('seedOfFamily: a seed whose own track is of that family, the same for the same base, avoiding one seed', () => {
+    for (const f of FAMILIES) for (let b = 1; b <= 30; b++) {
+      const s = seedOfFamily(f, b);
+      expect(familyOf(s)).toBe(f);
+      expect(seedOfFamily(f, b)).toBe(s);
+      expect(seedOfFamily(f, b, s)).not.toBe(s);
+    }
+    expect(generateTrack(seedOfFamily('eight', 5)).family).toBe('eight');
+  });
+  it('a round\'s track: the race seed\'s own (each), a new one of a family (family), or the one chosen (track)', () => {
+    const fam = new Set<number>();
+    for (let r = 1; r <= 20; r++) {
+      expect(roundTrackSeed(r)).toBe(raceTrackSeed(r));
+      expect(roundTrackSeed(r, { mode: 'each', family: 'clover', seed: 9 })).toBe(raceTrackSeed(r));
+      const s = roundTrackSeed(r, { mode: 'family', family: 'hairpin', seed: 0 });
+      expect(familyOf(s)).toBe('hairpin');
+      fam.add(s);
+      expect(roundTrackSeed(r, { mode: 'track', family: 'loop', seed: 4242 })).toBe(4242);
+    }
+    expect(fam.size).toBe(20); // a new track each round
+  });
+  it('validMap: unknown modes and families fall back; a track seed of another family is replaced by one of the family', () => {
+    expect(validMap(null)).toEqual(NEW_EACH_ROUND);
+    expect(validMap({ mode: 'nope' as never, family: 'nope' as never, seed: -1 })).toEqual(NEW_EACH_ROUND);
+    const other = seedOfFamily('loop', 3), m = validMap({ mode: 'track', family: 'clover', seed: other });
+    expect(m.family).toBe('clover');
+    expect(familyOf(m.seed)).toBe('clover');
+    const ok = seedOfFamily('kidney', 8);
+    expect(validMap({ mode: 'track', family: 'kidney', seed: ok })).toEqual({ mode: 'track', family: 'kidney', seed: ok });
+  });
+  it('runRace on a chosen track: the default is the race seed\'s own (unchanged), another seed races there', () => {
+    const g = [defaultGenome(), defaultGenome()], len = { ticks: 200, laps: 0 };
+    const a = runRace(g, 11, undefined, len), b = runRace(g, 11, undefined, len, raceTrackSeed(11)), c = runRace(g, 11, undefined, len, seedOfFamily('eight', 1));
+    expect(a.trackSeed).toBe(raceTrackSeed(11));
+    expect(b.hash).toBe(a.hash);
+    expect(c.track.family).toBe('eight');
+    expect(c.hash).not.toBe(a.hash);
+  });
+  it('training on a chosen track: it first, then other tracks of its family from the phase\'s seed', () => {
+    const t = seedOfFamily('dogleg', 77);
+    for (let seed = 1; seed <= 10; seed++) for (const phase of [0, 1, 2]) {
+      const ts = chosenTrainTracks(t, 'dogleg', seed, phase);
+      expect(ts.length).toBe(CONFIG.train.trainTracks);
+      expect(ts[0]).toBe(t);
+      for (const s of ts.slice(1)) { expect(familyOf(s)).toBe('dogleg'); expect(s).not.toBe(t); }
+      expect(chosenTrainTracks(t, 'dogleg', seed, phase)).toEqual(ts);
+    }
+    expect(chosenTrainTracks(t, 'dogleg', 1, 0)[1]).not.toBe(chosenTrainTracks(t, 'dogleg', 2, 0)[1]);
   });
 });

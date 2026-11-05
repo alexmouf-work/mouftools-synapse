@@ -1,0 +1,30 @@
+/* vs CPU's settings screen (tracks-v2 T2): a header band with the screen's name, your name, Main menu and Start match,
+   then the map. The page's tokens come from the designer's stylesheet. Square corners, Arial. */
+#cpuSet { position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 15px/1.4 Arial, Helvetica, sans-serif; }
+#cpuSet[hidden] { display: none; }
+#cpuSet form { display: contents; }
+#cpuSet .cs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding-block: max(10px, env(safe-area-inset-top, 0px)) 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+#cpuSet h1 { margin: 0; font-size: 24px; }
+#cpuSet .cs-name { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 2px 10px; }
+#cpuSet .cs-lab { grid-column: 1 / -1; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#cpuSet input { font: 700 18px Arial, Helvetica, sans-serif; padding: 7px 10px; width: 15ch; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); }
+#cpuSet input:focus-visible, #cpuSet button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#cpuSet .cs-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#cpuSet .cs-err { font-size: 13px; color: var(--muted); min-height: 18px; flex: 1; min-width: 14ch; }
+#cpuSet .tp { max-width: 1040px; }
+#cpuSet .btn { min-height: 0; font: 700 15px Arial, Helvetica, sans-serif; padding: 10px 16px; color: var(--text); box-shadow: none; }
+#cpuSet .btn.primary { background: #ffc21a; border-color: #ffc21a; color: #1d2330; }
+#cpuSet .cs-body { flex: 1; min-height: 0; overflow: auto; padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); }
+#cpuSet h2 { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+@media (max-height: 540px) {
+  #cpuSet h1 { font-size: 20px; }
+  #cpuSet .cs-bar { padding-block: max(6px, env(safe-area-inset-top, 0px)) 6px; gap: 6px 14px; }
+  #cpuSet input { font-size: 16px; padding: 5px 8px; }
+  #cpuSet .btn { padding: 7px 12px; }
+  #cpuSet .cs-body { padding-block: 8px; }
+  #cpuSet .tp { gap: 6px; }
+  #cpuSet .tp-modes button { min-height: 28px; }
+  #cpuSet .tp-card canvas { aspect-ratio: 16 / 8; }
+  #cpuSet .tp-body { grid-template-columns: minmax(0, 1fr) minmax(150px, 30%); }
+}

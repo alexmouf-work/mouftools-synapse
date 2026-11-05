@@ -99,7 +99,7 @@ async function main() {
     page.on('pageerror', (e) => errors.push(String(e)));
     const at = `${base}?seed=${SEED}&T=${T}`;
     await page.goto(at);
-    await page.evaluate(() => localStorage.setItem('synapse.notice', '2'));
+    await page.evaluate(() => localStorage.setItem('synapse.notice', '3'));
     await page.goto(at);
     await page.waitForTimeout(500);
     check((await au(page)).state === 'locked' && await page.locator('#title').isVisible(), 'the page opens on the title; before any tap or key, audio is locked');

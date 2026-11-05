@@ -76,6 +76,19 @@ export const FAMILIES: readonly Family[] = ['loop', 'kidney', 'hairpin', 'chican
 /** The family a seed's track belongs to (every sub-seed keeps it). */
 export const familyOf = (seed: number): Family => FAMILIES[new Rng(derive(seed >>> 0, TAG.family)).int(FAMILIES.length)];
 
+/**
+ * A track seed of a given family (tracks-v2 T2: the picker's Shuffle, "One family" rounds, training's second track):
+ * the first of base's derived seeds whose own family is that family, skipping `avoid`. generateTrack(seed) is then that
+ * family's track, so a chosen track is a plain seed everywhere a seed is taken. About 7 draws on average.
+ */
+export function seedOfFamily(family: Family, base: number, avoid = -1): number {
+  for (let k = 0; k < 4096; k++) {
+    const s = derive(base >>> 0, TAG.familySeed, k);
+    if (familyOf(s) === family && s !== avoid) return s;
+  }
+  throw new Error(`track: no ${family} seed from ${base}`);
+}
+
 /** Metres from the line back to the last row of a race grid of `cars` cars (rows of two, CONFIG.match; match.ts). */
 export const gridDepth = (cars: number): number => CONFIG.match.firstRow + Math.floor((Math.max(cars, 1) - 1) / 2) * CONFIG.match.rowGap;
 

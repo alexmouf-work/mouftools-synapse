@@ -113,6 +113,64 @@ and map."
   check:multiplayer (host tag, settings, max players enforced, host handover), check:legal (cookie table and
   notice version), types and unit.
 
+- **Built: T2 (2026-11-05).**
+  - **Tracks as seeds.** A chosen track is a plain seed whose own family is the family: `track.ts seedOfFamily(family,
+    base, avoid)` (the first of base's derived seeds, new `TAG.familySeed`, of that family; ~7 draws). So Drive,
+    training and races take a chosen track unchanged. `match.ts`: `MapSetting {mode: 'each' | 'family' | 'track',
+    family, seed}`, `validMap`, `roundTrackSeed(raceSeed, map)` ('each': the race seed's own track, as before; 'family':
+    `seedOfFamily(family, raceTrackSeed(raceSeed))`, a new one each round; 'track': the seed), and `runRace(…, len,
+    trackSeed)` (default the race seed's own: every hash and golden unchanged). `phase.ts`: `chosenTrainTracks(track,
+    family, seed, phase)` (the track, then other tracks of its family from the phase's seeds) and `PhaseOptions.tracks`.
+  - **The picker** (`ui/tracks/tracks.ts` + `tracks.css`), one component in three places: the families as map previews
+    (the training map's `TrackMap`), each with Shuffle, and the chosen track's big preview with its length and the T1
+    validator's features ("2 hairpins · chicane"; the eight: "a bridge over the crossing"). Each family's preview starts
+    on the same seed every visit; Shuffle draws from a crypto base (display only).
+  - **Sandbox:** a Track button in the designer's top bar (hidden in a match) opens it with Random first. **Call:** the
+    button reads just "Track" (its tooltip and label name the choice), because "Track: Figure eight" pushed the energy
+    split's figures off the 860 px bar. Every pick is stored at once in `synapse.track` (`{family, seed}`, or `{family:
+    "random"}`). Drive opens on the chosen track (`firstTrack`); a sandbox Train trains on `chosenTrainTracks`; Random
+    keeps the old tracks (the unseen track of the last run for Drive; the phase's own for training).
+  - **vs CPU settings** (`ui/cpuSettings/`): title → vs CPU (and `?view=cpu`) opens it; no designer. Your name (1–16,
+    spaces collapsed; Start match waits for one) is stored in `synapse.name` and filled in next time; you race and
+    stand under it (the rows said "You" before). Map: the three modes, the families in "One family" and "One track",
+    Shuffle in "One track"; the mode is kept for the visit (Play again), not stored. Start match → round 1's build;
+    Main menu → the title; the final standings' Play again → back to this screen. `?view=race` (checks) races under
+    the stored name, else "You".
+  - **Multiplayer:** the host's chip carries a "Host" tag and the header "Host: <name>"; `Me.host` follows the room's
+    state (the host can change). A Settings panel beside the field: max players (a number field, 2–100 and never
+    below the number in; sent on Enter or leaving it) and the map (a summary with a small map; the host's Change map
+    opens the picker in a dialog; Done sends it), read-only for everyone else ("Set by the host."), locked while a
+    match is on ("Locked while the match is on."; Start match waits too). The code and name screens refuse a full room
+    with its own maximum ("That room is full (n players)."). The name screen fills in `synapse.name`, and going in
+    stores it. Every client derives each round's track from the room's map (`roomTrackSeed`), passed in with the
+    match (`RoomMatchInfo.map`; the settings are locked meanwhile). The final standings offer Play again (everyone:
+    back to the lobby) and Main menu.
+  - **Schema** (`supabase/schema.sql`, idempotent): `synapse_rooms` gains `max_players` (2–100, default 100), `map_mode`
+    ('each' | 'family' | 'track'), `map_family`, `map_seed`; `synapse_join_room` refuses past `max_players`;
+    `synapse_set_settings(code, token, max, mode, family, seed)` (the host; not mid-match: 'match on'; not below the
+    number in: 'max players'; a bad map: 'map'); host handover: `synapse_leave_room` locks the room and calls the helper
+    `synapse_rehost` (the player who joined earliest becomes host; with nobody in, no host until the next to join);
+    `synapse_room_state` reports the settings. **Departure:** `room_state` still reports `ready` because the deployed
+    main build reads it; development's client ignores it. Tested on local Postgres 16: the previous version (749d9f5)
+    with a room in it, then this file three times (no errors; 20 functions, the room kept as host Ann with max 100),
+    then the functions as anon (guest refused; max below the count, 1, 101, bad maps refused; one track set; a fourth
+    refused at max 3; settings refused mid-match; the host leaves → Bob hosts; the old host can't start; Bob sets one
+    family after the match and starts match 2; the room empties → the next to join hosts; tables and the helper not
+    callable). `scripts/checks/standin.ts` implements the same.
+  - **Storage:** `synapse.name` and `synapse.track` in the cookie policy's table (and a line in the privacy policy);
+    NOTICE_VERSION 3, so returning visitors see the notice again; the notice names them.
+  - **Checked:** types, purity, unit (seedOfFamily, roundTrackSeed per mode, validMap, runRace's default track and a
+    chosen one, chosenTrainTracks), determinism, check:workbench (the picker at 1440×900 and 844×390, previews drawn,
+    the big preview = Node's track, Shuffle, stored and reloaded, Drive's and training's tracks, Random), check:race
+    (the settings screen: no designer, the name required and capped, remembered; each map mode's five tracks = Node; a
+    round's race on "One track"; Play again → the screen), check:multiplayer (tag and header on both pages; settings
+    editable for the host, read-only for the guest; max 2 refuses a third on the code screen and the server; below the
+    count refused; "One track" on every round's race on every page; locked mid-match; Play again → the lobby; "One
+    family" for match 2 on every page; the host leaves → the guest hosts), check:legal (the table's five keys, version
+    3, a version-2 visitor sees the notice again), check:title (vs CPU → the settings screen → Start match). Not run
+    (unaffected; only the notice version literal changed in its script): audio. Built but not checked in a browser:
+    the training view passing the chosen tracks to the workers (the function it calls is checked in the workbench).
+
 ## No building before the match (2026-11-05, part of T2)
 Principal: "don't offer building of a brain before the match starts. building is only available when the match has
 started."

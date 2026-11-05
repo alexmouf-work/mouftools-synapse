@@ -4,17 +4,24 @@
 // "What should we call you?", 1–16 characters (spaces collapsed), a name already in the room refused (the server
 // checks too), a preview of your chip, Go in. 3. The lobby: the code, how many are in, the host's Start match (2 or
 // more in); a field of name chips that fit their text and pop in, scattered where they overlap least (rows on a short
-// screen once more than 60 are in); the host taps a name to remove that player; Leave room. While you are in a room it
-// is polled every 1.5 s; when the host starts a match, every client follows its 5 timed rounds from the server's
-// clock (ui/rounds/roomRounds.ts, match-flow v2 §M2): no buttons until the final standings. Joined mid-match, you
-// watch from here until the next round's build. Nothing is kept in the browser's storage: closing the tab leaves the
-// room.
+// screen once more than 60 are in); the host taps a name to remove that player; Leave room. The host (tracks-v2 T2):
+// a "Host" tag on their chip and "Host: <name>" in the header; when the host leaves, the server hands the room to the
+// player who joined earliest. The Settings panel: max players (2–100, never below the number in; the server refuses a
+// join past it) and the map (the same three modes as vs CPU), set by the host, read-only for the others, locked while
+// a match is on. While you are in a room it is polled every 1.5 s; when the host starts a match, every client follows
+// its 5 timed rounds from the server's clock (ui/rounds/roomRounds.ts, match-flow v2 §M2): no buttons until the final
+// standings, whose Play again comes back here. Joined mid-match, you watch from here until the next round's build. Your
+// name is remembered on the device (`synapse.name`, as vs CPU's); closing the tab leaves the room.
 import './lobby.css';
 import { matchOverMs } from '../../../common/schedule';
 import {
-  cleanName, joinRoom, leaveRoom, online, openRoom, removePlayer, roomState, serverNow, startMatch,
+  cleanName, joinRoom, leaveRoom, mapOfState, online, openRoom, removePlayer, roomState, serverNow, setSettings, startMatch,
   ticketFor, validCode, type Me, type RoomPlayer, type RoomState, type Ticket,
 } from '../../net/rooms';
+import { seedOfFamily, FAMILIES } from '../../../common/sim/track';
+import type { MapSetting } from '../../../common/sim/match';
+import { createPicker, loadName, mapText, saveName, trackOf, type Picker } from '../tracks/tracks';
+import { TrackMap } from '../training/map';
 import { RACE_COLORS } from '../race/raceView';
 import type { RoomMatchInfo } from '../rounds/roomRounds';
 
@@ -33,7 +40,7 @@ const TRIES = 80, ROWS_PAST = 60, PAD = 10;
 const SHORT = '(max-height: 540px)';
 
 export const NO_ROOM = 'No room with that code. Check it with the host.';
-export const FULL = `That room is full (${MAX} players).`;
+export const full = (n: number): string => `That room is full (${n} players).`;
 export const REMOVED = 'The host removed you from the room.';
 const taken = (n: string) => `Someone in this room is already called ${n}. Try another name.`;
 
@@ -77,10 +84,12 @@ declare global {
     __room?: {
       me: Me | null; state: RoomState | null; shown: boolean; error: string; watching: string;
       screen: Screen | null; layout: 'scatter' | 'rows'; fontPx: number;
+      /** The room's settings as the panel shows them, and whether you may change them now. */
+      settings: { max: number; map: MapSetting; locked: boolean; editable: boolean } | null;
     };
   }
 }
-const status = { me: null as Me | null, state: null as RoomState | null, shown: false, error: '', watching: '', screen: null as Screen | null, layout: layout as 'scatter' | 'rows', fontPx };
+const status = { me: null as Me | null, state: null as RoomState | null, shown: false, error: '', watching: '', screen: null as Screen | null, layout: layout as 'scatter' | 'rows', fontPx, settings: null as { max: number; map: MapSetting; locked: boolean; editable: boolean } | null };
 window.__room = status;
 
 function show(s: Screen | null): void {
@@ -132,7 +141,17 @@ export function startLobby(h: LobbyHooks): void {
     if (!me) return;
     starting = true;
     render();
-    playAgain().catch((e) => { note(`Couldn’t start: ${msgOf(e)}`); starting = false; render(); });
+    hostStart().catch((e) => { note(`Couldn’t start: ${msgOf(e)}`); starting = false; render(); });
+  };
+  // the host's settings: max players as typed (Enter or leaving the field), the map from its dialog
+  const max = $<HTMLInputElement>('lbMax');
+  max.addEventListener('change', () => sendMax());
+  max.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMax(); } });
+  $('lbMapBtn').onclick = () => openMapDialog();
+  $('mdNo').onclick = () => ($('mapDlg') as HTMLDialogElement).close();
+  $('mdGo').onclick = () => {
+    ($('mapDlg') as HTMLDialogElement).close();
+    if (mapPicker && st) send(st.max_players, mapPicker.get());
   };
   $('lbKick').onclick = (e) => {
     e.stopPropagation();
@@ -159,7 +178,7 @@ async function tryCode(): Promise<void> {
   code.classList.remove('checking'); code.readOnly = false;
   if (screen !== 'join' || code.value !== c) return;
   if (!err && !s) err = NO_ROOM;
-  else if (!err && s && s.players.length >= MAX) err = FULL;
+  else if (!err && s && s.players.length >= (s.max_players ?? MAX)) err = full(s.max_players ?? MAX);
   if (err) { codeError(err); code.focus(); code.select(); return; }
   ticket = ticketFor(c); peek = s;
   nameScreen(false);
@@ -180,7 +199,8 @@ function nameScreen(isNew: boolean): void {
   if (!ticket) return;
   $('mpNameCode').textContent = ticket.code;
   $('mpNameT').textContent = isNew ? 'Your room is ready. What should we call you?' : 'What should we call you?';
-  $<HTMLInputElement>('mpName').value = $<HTMLInputElement>('mpName').value.trim();
+  const nm = $<HTMLInputElement>('mpName');
+  nm.value = nm.value.trim() || loadName(); // your name from last time (vs CPU's too)
   $('mpNameErr').textContent = '';
   peekCount();
   $('mpPreview').style.setProperty('--c', YOU);
@@ -223,15 +243,16 @@ async function goIn(): Promise<void> {
   } catch (e) {
     const m = msgOf(e);
     if (m === 'no such room') { ticket = null; openMultiplayer(NO_ROOM); return; }
-    $('mpNameErr').textContent = m === 'name taken' ? taken(n) : m === 'room full' ? FULL : `Couldn’t go in: ${m}`;
+    if (m === 'name taken' || m === 'room full') await refreshPeek();
+    $('mpNameErr').textContent = m === 'name taken' ? taken(n) : m === 'room full' ? full(peek?.max_players ?? MAX) : `Couldn’t go in: ${m}`;
     status.error = $('mpNameErr').textContent!;
-    if (m === 'name taken') await refreshPeek();
     go.disabled = false;
     syncName();
   }
 }
 
 function enter(m: Me): void {
+  saveName(m.name);
   me = m; status.me = m; st = null; seenMatch = 0; watching = ''; status.watching = ''; gone = ''; starting = false;
   ticket = null; peek = null;
   for (const c of chips.values()) c.el.remove();
@@ -271,11 +292,70 @@ export function watchMatch(text: string): void {
 }
 /** The room's players as last polled. */
 export const roomPlayers = (): RoomPlayer[] => st?.players ?? [];
-/** The host's Start match (and the final standings' Play again): the match starts on every client from the next poll. */
-export async function playAgain(): Promise<void> {
+/** The host's Start match: the match starts on every client from the next poll. */
+async function hostStart(): Promise<void> {
   if (!me) return;
   await startMatch(me);
   await poll();
+}
+/** A match is on (from its start until round 5's race is over): the settings are locked, and Start match waits. */
+const locked = (s: RoomState | null): boolean => !!s && s.match_at !== null && serverNow() - s.match_at < matchOverMs();
+
+// ---- the host's settings (tracks-v2 T2) ----
+let mapPicker: Picker | null = null;
+let mapMap: TrackMap | null = null;
+let mapShown = '';
+/** Send the host's settings; the next poll shows them (refused mid-match, or below the number in: says why). */
+function send(maxPlayers: number, map: MapSetting): void {
+  if (!me || !me.host) return;
+  setSettings(me, maxPlayers, map).then(() => poll()).catch((e) => {
+    const m = msgOf(e);
+    note(m === 'match on' ? 'The settings are locked while a match is on.' : m === 'max players' ? 'Max players can’t be below the number in the room.' : `Couldn’t change the settings: ${m}`);
+    render();
+  });
+}
+function sendMax(): void {
+  const input = $<HTMLInputElement>('lbMax');
+  if (!st || !me?.host || input.disabled) return;
+  const lo = Math.max(2, st.players.length), v = Math.round(Number(input.value));
+  const n = Number.isFinite(v) ? Math.max(lo, Math.min(MAX, v)) : st.max_players;
+  input.value = String(n);
+  if (n !== st.max_players) send(n, mapOfState(st));
+}
+function openMapDialog(): void {
+  if (!st || !me?.host || locked(st)) return;
+  if (!mapPicker) {
+    mapPicker = createPicker({ kind: 'match', value: mapOfState(st), id: 'lbMapPick' });
+    $('mdPick').appendChild(mapPicker.el);
+  } else mapPicker.set(mapOfState(st));
+  ($('mapDlg') as HTMLDialogElement).showModal();
+  requestAnimationFrame(() => mapPicker?.redraw());
+}
+/** The Settings panel: editable for the host (unless a match is on), read-only for everyone else. */
+function renderSettings(s: RoomState): void {
+  const host = !!me?.host, lock = locked(s), n = s.players.length;
+  $('lbSet').classList.toggle('ro', !host || lock);
+  $('lbSetState').textContent = lock ? 'Locked while the match is on.' : host ? 'You’re the host: these are yours to set.' : 'Set by the host.';
+  const max = $<HTMLInputElement>('lbMax');
+  max.min = String(Math.max(2, n)); max.max = String(MAX);
+  max.disabled = !host || lock;
+  if (document.activeElement !== max) max.value = String(s.max_players);
+  $('lbMaxHint').textContent = host && !lock ? `${Math.max(2, n)}–${MAX}` : '';
+  const map = mapOfState(s), key = JSON.stringify(map);
+  $('lbMapT').textContent = mapText(map);
+  const btn = $<HTMLButtonElement>('lbMapBtn');
+  btn.hidden = !host; btn.disabled = lock;
+  const c = $<HTMLCanvasElement>('lbMapC');
+  c.hidden = map.mode === 'each';
+  if (key !== mapShown || !c.hidden) {
+    mapShown = key;
+    if (!c.hidden) {
+      mapMap ??= new TrackMap(c);
+      mapMap.setTrack(trackOf(map.mode === 'track' ? map.seed : seedOfFamily(map.family, FAMILIES.indexOf(map.family) + 1)));
+      mapMap.draw([]);
+    }
+  }
+  status.settings = { max: s.max_players, map, locked: lock, editable: host && !lock };
 }
 
 function note(t: string): void { $('lbNote').textContent = t; }
@@ -286,13 +366,18 @@ function render(): void {
   if (!me || screen !== 'lobby') return;
   $('lbCode').textContent = me.code;
   const ps = st?.players ?? [];
-  $('lbCount').textContent = `${ps.length} / ${MAX}`;
+  $('lbCount').textContent = `${ps.length} / ${st?.max_players ?? MAX}`;
   $('lbCountSub').textContent = ps.length === 1 ? 'player' : 'players';
+  const hostP = ps.find((p) => p.host);
+  $('lbHost').innerHTML = hostP ? `<span>Host</span><b></b>` : '';
+  if (hostP) $('lbHost').querySelector('b')!.textContent = hostP.name;
+  $('lbHost').setAttribute('aria-label', hostP ? `Host: ${hostP.name}` : '');
   $('lbHostSide').hidden = !me.host || !!watching;
   $('lbPlayerSide').hidden = me.host && !watching;
   $('lbPlayerSide').innerHTML = watching ? '<b>Watching</b>A match is on' : '<b>You\'re in</b>Waiting for the host to start';
   const start = $<HTMLButtonElement>('lbStart');
-  start.disabled = starting || ps.length < 2;
+  start.disabled = starting || ps.length < 2 || locked(st);
+  if (st) renderSettings(st);
   start.textContent = starting ? 'Starting…' : 'Start match';
   note(watching || (me.host && ps.length < 2 ? `${BASE_NOTE} Start when someone else is in.` : BASE_NOTE));
   $('lbEmpty').hidden = ps.length > 0;
@@ -319,7 +404,7 @@ function chipsOf(ps: RoomPlayer[]): void {
     c.el.classList.add('leaving');
     setTimeout(() => c.el.remove(), 230);
   }
-  const fresh: Chip[] = [];
+  const fresh: Chip[] = [], moved: Chip[] = [];
   ps.forEach((p, k) => {
     let c = chips.get(p.id);
     if (!c) {
@@ -338,7 +423,11 @@ function chipsOf(ps: RoomPlayer[]): void {
       fresh.push(c);
     }
     const mine = p.id === me?.player;
-    c.el.className = `chip${mine ? ' me' : ''}${host && !mine ? ' tap' : ''}${kickFor === p.id ? ' picked' : ''}`;
+    c.el.className = `chip${mine ? ' me' : ''}${p.host ? ' host' : ''}${host && !mine ? ' tap' : ''}${kickFor === p.id ? ' picked' : ''}`;
+    // the host's tag, before the name (the name stays the chip's last part); it moves with the host
+    const tag = c.el.querySelector('b.tag');
+    if (p.host && !tag) { const b = document.createElement('b'); b.className = 'tag'; b.textContent = 'Host'; c.el.insertBefore(b, c.el.lastChild); if (layout === 'scatter' && c.fx >= 0) moved.push(c); }
+    else if (!p.host && tag) tag.remove();
     c.el.style.setProperty('--c', col.get(p.id)!);
     c.el.style.zIndex = String(k + 1);
     c.el.title = `${p.name}${p.host ? ' (host)' : ''}`;
@@ -346,7 +435,7 @@ function chipsOf(ps: RoomPlayer[]): void {
   const before = fontPx, mode = layout;
   fit(ps.length);
   if (layout !== mode || Math.abs(fontPx - before) > 0.4) relayout();
-  else if (layout === 'scatter') for (const c of fresh) place(c);
+  else if (layout === 'scatter') { for (const c of fresh) place(c); for (const c of moved) apply(c); }
 }
 
 /** Font size follows how full the room is; rows instead of scattered on a short screen once more than 60 are in. */
@@ -429,12 +518,15 @@ async function poll(first = false): Promise<void> {
     return;
   }
   st = s; status.state = s;
+  // the host can change (the server hands the room on when the host leaves)
+  const host = s.players.find((p) => p.id === me!.player)!.host;
+  if (host !== me.host) { me.host = host; hideKick(); }
   // a match already over as you come in is not yours; one under way is (you watch until the next round's build)
   if (first && s.match_at !== null && serverNow() - s.match_at >= matchOverMs()) seenMatch = s.match_no;
   if (screen === 'lobby') render();
   if (s.match_no > seenMatch && s.match_at !== null && s.match_seed !== null) {
     seenMatch = s.match_no;
     starting = false; watching = ''; status.watching = '';
-    hooks.match({ me: me, matchNo: s.match_no, seed: s.match_seed, at: s.match_at });
+    hooks.match({ me: me, matchNo: s.match_no, seed: s.match_seed, at: s.match_at, map: mapOfState(s) });
   }
 }

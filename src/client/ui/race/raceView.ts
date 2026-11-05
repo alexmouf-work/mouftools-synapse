@@ -14,7 +14,7 @@ import cpuData from '../../../assets/cpu/brains.json';
 import { CONFIG } from '../../../common/config';
 import { compile, nodeRate, type Net } from '../../../common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../../common/sim/cpu';
-import { gridCar, LAPPED, raceTrackSeed, rank, recordCar, ROUND_RACE, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
+import { gridCar, LAPPED, rank, recordCar, ROUND_RACE, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
 import type { Recording } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { MAX_RIVALS, type DrivePose, type RivalPose } from '../../render/drive';
@@ -78,6 +78,8 @@ export interface RaceSetup {
   genomes: Genome[];
   me: number;
   raceSeed: number;
+  /** The track's seed, if the match's map chose it (else the race seed's own). */
+  trackSeed?: number;
   /** A room's Go (performance.now() ms), the same moment on every client; vs CPU counts down on the music. */
   goAt?: number;
   /** A room's race number (its result is reported with it). */
@@ -145,10 +147,13 @@ export function firstSeed(): number {
   const q = new URLSearchParams(location.search).get('race');
   return q !== null && /^\d+$/.test(q) ? Number(q) : newSeed();
 }
-/** A vs CPU round's race (round 1–5): you (car 0) and the nine CPU players' brains for that round, 30 s. */
-export function roundSetup(saved: Saved, round: number, raceSeed: number): RaceSetup {
+/**
+ * A vs CPU round's race (round 1–5): you (car 0, under your name) and the nine CPU players' brains for that round, 30 s,
+ * on the track the match's map gives (tracks-v2 T2; the race seed's own by default).
+ */
+export function roundSetup(saved: Saved, round: number, raceSeed: number, o: { name?: string; trackSeed?: number } = {}): RaceSetup {
   const cpu = cpuRounds(cpuData)[round - 1];
-  return { kind: 'cpu', title: `Round ${round} of ${CONFIG.rounds.count}`, names: ['You', ...CPU_NAMES], genomes: [saved.genome, ...cpu.map((b) => b.genome)], me: 0, raceSeed, len: ROUND_RACE };
+  return { kind: 'cpu', title: `Round ${round} of ${CONFIG.rounds.count}`, names: [o.name ?? 'You', ...CPU_NAMES], genomes: [saved.genome, ...cpu.map((b) => b.genome)], me: 0, raceSeed, trackSeed: o.trackSeed, len: ROUND_RACE };
 }
 export const newRaceSeed = newSeed;
 
@@ -164,7 +169,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const { names, genomes, me, raceSeed } = setup, n = genomes.length;
   const c0 = performance.now();
   const len = setup.len ?? LAPPED, timed = len.laps === 0;
-  const race: RaceResult = setup.result ?? runRace(genomes, raceSeed, (k) => k === me, len);
+  const race: RaceResult = setup.result ?? runRace(genomes, raceSeed, (k) => k === me, len, setup.trackSeed);
   const computeMs = performance.now() - c0;
   const { track, cars } = race;
   // the car the camera and the brain card follow (follow-a-racer plan): yours (watching: the first) until you pick
@@ -282,7 +287,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const standings = (pt: number) => rank(cars.map((c, k) => ({ slot: c.slot, finish: c.finish !== null && c.finish <= pt * HZ ? c.finish : null, prog: timed ? progNow[k] - grid[k].prog : progNow[k] })));
   const listOrder = () => (playT > 0 ? standings(Math.min(playT, end)) : cars.map((_, k) => k).sort((a, b) => cars[a].slot - cars[b].slot));
   const status: RaceStatus = {
-    state: 'grid', kind: setup.kind, me, raceSeed, trackSeed: raceTrackSeed(raceSeed), family: track.family, hash: race.hash, names, slots: cars.map((c) => c.slot),
+    state: 'grid', kind: setup.kind, me, raceSeed, trackSeed: race.trackSeed, family: track.family, hash: race.hash, names, slots: cars.map((c) => c.slot),
     results, place, won: false, computeMs, t: 0, end, frames: 0, go: false, webgl: !!stage, goAt: cd.go, countdown: '', countdownSeen: [], countdownMusic: cd.music, wrongWay: false,
     listed: () => listOrder().map((k) => names[k]),
     shown: () => { const o = listOrder(), r = listRows(n, o.indexOf(follow)); return r.idx.flatMap((i, j) => (r.gap && j === 3 ? ['⋯', names[o[i]]] : [names[o[i]]])); },

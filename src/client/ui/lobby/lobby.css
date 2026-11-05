@@ -55,6 +55,31 @@ body.timed #mp .mp-where { visibility: hidden; }
 #mp .mp-status { font-size: 14px; color: var(--muted); text-align: right; }
 #mp .mp-status b { color: var(--text); display: block; font-size: 16px; }
 
+/* the host (tracks-v2 T2): "Host: <name>" in the header, a tag on their chip */
+#mp .mp-hostname { display: flex; flex-direction: column; min-width: 0; max-width: 18ch; }
+#mp .mp-hostname:empty { display: none; }
+#mp .mp-hostname span { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#mp .mp-hostname b { font-size: 18px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mp .chip b.tag { font-size: .62em; letter-spacing: .08em; text-transform: uppercase; padding: .12em .4em; background: var(--text); color: var(--panel); }
+
+/* the field beside the Settings panel (tracks-v2 T2: max players and the map; the host's to set, read-only for others) */
+#mp .mp-main { flex: 1; min-height: 0; display: flex; }
+#mp .mp-main .mp-field { flex: 1; min-width: 0; }
+#mp .mp-set { flex: none; width: 230px; overflow: auto; background: var(--panel); border-left: 1px solid var(--line); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 6px; padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+#mp .mp-set h2 { margin: 0; font-size: 16px; }
+#mp .mp-setstate { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+#mp .mp-maxrow { display: flex; align-items: center; gap: 8px; }
+#mp .mp-maxrow input { width: 7ch; font: 700 18px Arial, Helvetica, sans-serif; padding: 5px 8px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); }
+#mp .mp-maxrow input:disabled { background: transparent; border-color: transparent; padding-left: 0; color: var(--text); opacity: 1; -moz-appearance: textfield; }
+#mp .mp-maxrow input:disabled::-webkit-inner-spin-button { display: none; }
+#mp .mp-maxrow span { font-size: 13px; color: var(--muted); }
+#mp .mp-mapc { display: block; width: 100%; aspect-ratio: 16 / 10; background: var(--bg); border: 1px solid var(--line); }
+#mp .mp-mapc[hidden] { display: none; }
+#mp .mp-maptext { margin: 0; font-size: 14px; font-weight: 700; }
+#mp .mp-set .btn { align-self: flex-start; font-size: 14px; padding: 7px 12px; }
+#mp .mp-set .btn[hidden] { display: none; }
+
 /* the field the chips fill: scattered (each chip placed where it overlaps least), or rows on a short, busy screen */
 #mp .mp-field { position: relative; flex: 1; min-height: 0; background: var(--field); overflow: hidden; --fs: 16px; }
 #mp .mp-field.rows { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 8px; padding: 16px; overflow: auto; }
@@ -86,6 +111,12 @@ body.timed #mp .mp-where { visibility: hidden; }
   #mp .mp-bar { gap: 8px 16px; }
 }
 @media (max-height: 540px) {
+  #mp .mp-set { width: 200px; padding-block: 8px; gap: 4px; }
+  #mp .mp-set h2 { font-size: 14px; }
+  #mp .mp-setstate { font-size: 12px; margin: 0; }
+  #mp .mp-mapc { aspect-ratio: 16 / 8; }
+  #mp .mp-maxrow input { font-size: 16px; padding: 3px 6px; }
+  #mp .mp-hostname b { font-size: 16px; }
   #mp .mp-roomcode b { font-size: 28px; }
   #mp .mp-count b { font-size: 22px; }
   #mp .mp-where { display: none; }

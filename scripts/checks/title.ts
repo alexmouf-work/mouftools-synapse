@@ -1,6 +1,7 @@
 // Title screen check (B2c, B7, B8), headless Chromium: the page opens on the title; Multiplayer (blue) is live (its
-// card and rooms: check:multiplayer); vs CPU (yellow) opens the designer in match mode and Sandbox (plain) in sandbox mode, and the designer's
-// Main menu comes back (asking first mid-match: Stay / Leave); the rail along
+// card and rooms: check:multiplayer); vs CPU (yellow) opens its settings screen (tracks-v2 T2; no designer: its Main
+// menu goes straight back), whose Start match opens the designer in match mode; Sandbox (plain) opens it in sandbox
+// mode, and the designer's Main menu comes back (asking first mid-match: Stay / Leave); the rail along
 // the foot carries Privacy · Terms · Cookies (resolving) and the music credits, and the designer's rule strip no longer
 // does; the storage notice sits below the rail, never over it; an overlap audit of the card, its buttons and the rail
 // at 1440×900 and 844×390, light and dark. Landscape only (B9): an upright phone gets "Turn your phone sideways" over
@@ -33,7 +34,7 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
-    if (!notice) { await page.evaluate(() => localStorage.setItem('synapse.notice', '2')); await page.goto(base); }
+    if (!notice) { await page.evaluate(() => localStorage.setItem('synapse.notice', '3')); await page.goto(base); }
     await page.waitForSelector('#title:not([hidden])');
     await page.waitForTimeout(300);
     return page;
@@ -65,10 +66,18 @@ async function main() {
     }
     check(await page.locator('.rulebar .legal-links').count() === 0, 'the Learning Rule strip has no legal line any more');
 
-    // 3. vs CPU → the designer in match mode → Main menu asks first (Stay keeps the match, Leave goes to the title);
-    //    Sandbox → the designer in sandbox mode → Main menu goes straight back (sidebar plan 2026-11-05 §2)
+    // 3. vs CPU → its settings screen (no designer; Main menu straight back) → Start match → the designer in match mode
+    //    → Main menu asks first (Stay keeps the match, Leave goes to the title); Sandbox → the designer in sandbox mode →
+    //    Main menu goes straight back (sidebar plan 2026-11-05 §2)
     await page.click('#toCpu');
-    check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.evaluate(() => document.body.classList.contains('match')), 'vs CPU opens the designer in match mode');
+    check(await page.locator('#cpuSet').isVisible() && !(await page.locator('.app').isVisible()) && !(await page.locator('#title').isVisible()) && await page.evaluate(() => window.__match!.phase === 'none'),
+      'vs CPU opens its settings screen first (no designer, no match yet)');
+    await page.click('#csMenu');
+    check(await page.locator('#title').isVisible() && await page.locator('#cpuSet').isHidden() && !(await page.evaluate(() => (document.getElementById('leaveDlg') as HTMLDialogElement).open)), 'its Main menu goes straight back to the title');
+    await page.click('#toCpu');
+    await page.locator('#csName').fill('Tester');
+    await page.click('#csStart');
+    check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.evaluate(() => document.body.classList.contains('match')), 'Start match opens the designer in match mode');
     check((await page.locator('#toTitle').innerText()) === 'Main menu' && await page.locator('.app .word').count() === 0, 'the designer\'s top bar has a Main menu button in place of the wordmark');
     await page.click('#toTitle');
     const asked = await page.evaluate(() => ({ open: (document.getElementById('leaveDlg') as HTMLDialogElement).open, q: document.getElementById('lvQ')!.textContent }));
