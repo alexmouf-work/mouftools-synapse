@@ -269,3 +269,8 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "add a small minus symbol in a bubble on the top right corner of the neuron that's currently selected, without showing any
   if no neurons are selected." · "I don't see the timer for the build phase anywhere (I'm playing vs CPU on the latest dev
   build). please make that extremely obvious, and count down from 30." (2026-11-05) → `docs/plans/2026-11-05-build-timer-and-cell-minus.md`.
+- 2026-11-05: "make the speed cell return a negative output if moving in a negative direction. count negative distance as
+  being negative." · "build the 5 rounds that we planned, with their appropriate timers. each race should be 1 minute." ·
+  "energy budget starts really small, allowing for maybe 8-10 neurons total including inputs." → asked: round 1 build
+  "60s build for first round, followed by 10s train and 30s race, then 20s build, 10s train with 30s race for each round
+  following that."; scoring "Total distance". → `docs/plans/2026-11-05-rounds.md`.
