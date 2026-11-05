@@ -280,3 +280,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   total of 10 racers shown). Make the sidebar take up 1/4 of the width rather than 1/5." → `docs/plans/2026-11-05-sidebar-and-main-menu.md`.
 - "name racers after the scientists who invented the various computational methods that are part of neural network
   development." (2026-11-05) → McCulloch, Pitts, Hebb, Rosenblatt, Holland, Werbos, Barto, Sutton, Hopfield.
+- "looks good. push to main" (2026-11-05) → main fast-forwarded to development (rounds, sidebar, Main menu, lobby,
+  landscape only, wrong-way reset, synapse_ schema, CPU racers renamed).
