@@ -530,7 +530,6 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
     W.saved = { ...W.saved, genome: starterGenome(), train: NO_TRAINING }; // a new random starter (plan §3c)
     W.sel = null; persist(); ($('confirm') as HTMLDialogElement).close(); buildTray(); render();
   };
-  $('stay').onclick = () => { document.body.classList.add('portrait-ok'); render(); };
   addEventListener('resize', () => { fit(); render(); });
   fit(); buildTray(); buildTrainers(); render();
   if (loaded.status === 'corrupt') { console.warn(`designer: saved brain unreadable (${loaded.why}); starting from a new brain`); toast('Your saved brain couldn’t be read, so this is the starting brain.'); persist(); }

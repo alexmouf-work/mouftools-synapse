@@ -245,11 +245,10 @@ async function main() {
       await page.context().close();
     }
 
-    // 11. portrait phones get the card
+    // 11. landscape only (B9): an upright phone gets the card over the designer, with no way to stay in portrait
     page = await open({ w: 390, h: 844, mobile: true });
-    check(await page.evaluate(() => getComputedStyle(document.getElementById('rotate')!).display) !== 'none', '390×844 portrait shows "Turn your phone sideways"');
-    await page.click('#stay');
-    check(await page.evaluate(() => getComputedStyle(document.getElementById('rotate')!).display) === 'none', '"Continue in portrait" dismisses the card');
+    const rot = await page.evaluate(() => { const d = document.getElementById('rotate') as HTMLDialogElement; return { open: d.open, modal: d.matches(':modal'), stay: !!document.getElementById('stay') }; });
+    check(rot.open && rot.modal && !rot.stay, '390×844 portrait: "Turn your phone sideways" over the designer (modal), no "Continue in portrait"');
     await page.context().close();
 
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);

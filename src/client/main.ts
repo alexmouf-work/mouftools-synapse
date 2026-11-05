@@ -2,8 +2,9 @@
 // Sandbox opens the brain designer; the designer's wordmark goes back to the title. Train opens the training view and
 // Drive the drive view, all in the same page (no reload) over one shared 3-D stage. vs CPU (B7) opens the designer in
 // match mode: Train spends the fixed budget T, then Race → the race view → results → Race again or Back to the
-// designer. Multiplayer (B8) opens its card, then the room's lobby on the title screen: Build and train (the match
-// designer; training ends with Hand in), and when the host starts, the race on every client; Back to room. `?view=sandbox`, `?view=train`, `?view=drive`, `?view=cpu` and `?view=race` open those on load (checks). Music plays from the first tap or key on: the race track's quiet
+// designer. Multiplayer (B8, B9) opens its own screen: the room code, your name, then the room's lobby: Build your brain
+// (the match designer; training ends with Hand in), and when the host starts, the race on every client; Back to room.
+// Landscape only (B9): an upright phone gets "Turn your phone sideways" over everything (ui/landscape.ts). `?view=sandbox`, `?view=train`, `?view=drive`, `?view=cpu` and `?view=race` open those on load (checks). Music plays from the first tap or key on: the race track's quiet
 // pool on the title, the lounge in the sandbox, the race sections while training and driving; it never stops after.
 import './ui/designer/designer.css';
 import './ui/training/training.css';
@@ -15,6 +16,7 @@ import { openTraining } from './ui/training/trainingView';
 import { currentSaved, replaceSaved, setActive, setDesignerMode, start } from './ui/designer/designer';
 import { cpuSetup, firstSeed, openRace } from './ui/race/raceView';
 import { handIn, inRoom, reportResult, showLobby, startLobby } from './ui/lobby/lobby';
+import { startLandscape } from './ui/landscape';
 import { showTitle, startTitle } from './ui/title/title';
 import { liveSfx } from './audio/sfx';
 import { level } from './audio/audio';
@@ -27,12 +29,12 @@ if (!app) throw new Error('main: .app missing');
 /** Which way the designer was opened: Sandbox, vs CPU or a room (both match mode). */
 let where: 'sandbox' | 'cpu' | 'room' = 'sandbox';
 /** The sandbox designer: from the title, and back from training or driving. */
-function sandbox() { where = 'sandbox'; setDesignerMode('sandbox'); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
+function sandbox() { where = 'sandbox'; setDesignerMode('sandbox'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
 /** vs CPU (and a room's Build and train): the designer in match mode, with the lobby's building music (sound plan). */
-function cpu(w: 'cpu' | 'room' = 'cpu') { where = w; setDesignerMode('match'); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); }
-/** The room's lobby, on the title screen. */
+function cpu(w: 'cpu' | 'room' = 'cpu') { where = w; setDesignerMode('match'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); }
+/** The room's lobby (or, if the host removed you meanwhile, Multiplayer's code screen saying so). */
 function lobby() { where = 'room'; showLobby(true); setMode('build'); }
-const back = () => (where === 'room' && inRoom() ? lobby() : where === 'cpu' ? cpu() : sandbox());
+const back = () => (where === 'room' ? lobby() : where === 'cpu' ? cpu() : sandbox());
 function title() { showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('build'); }
 
 function train(s: Saved, generations: number, temperature = 0) {
@@ -61,11 +63,12 @@ function drive(s: Saved) {
   openDrive(s, { back }).catch((e) => { console.error(e); });
 }
 
+startLandscape();
 initAudio();
 start({ onTrain: train });
 startTitle({ onSandbox: sandbox, onCpu: () => cpu() });
 startLobby({
-  show: (on) => { if (on) { setActive(false); app!.hidden = true; showTitle(true); } else title(); },
+  show: (on) => { if (on) { setActive(false); app!.hidden = true; showTitle(false); setMode('build'); } else title(); },
   build: () => cpu('room'),
   race: (setup) => {
     showTitle(false); setActive(false); app!.hidden = true;

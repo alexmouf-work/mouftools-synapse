@@ -1,7 +1,7 @@
 // The title screen (B2c), ported from reference/title-screen-mockup.html: the card ("Synapse", one line, Multiplayer in
 // blue, vs CPU in yellow, Sandbox plain), a quiet fully wired brain firing behind it (still under reduced motion), and
 // a rail along the foot with the legal links and the music credits. The page opens here. vs CPU (B7) opens the designer
-// in match mode; Multiplayer (B8) opens its card and then the room's lobby here (ui/lobby). Sandbox opens the designer.
+// in match mode; Multiplayer opens its own screen (ui/lobby: the code, your name, the lobby). Sandbox opens the designer.
 import './title.css';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {

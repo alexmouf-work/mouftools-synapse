@@ -103,11 +103,11 @@ async function main() {
     await page.goto(at);
     await page.waitForTimeout(500);
     check((await au(page)).state === 'locked' && await page.locator('#title').isVisible(), 'the page opens on the title; before any tap or key, audio is locked');
-    const pairs = ['Ti', 'Wb', 'Tv', 'Dv', 'Rc'];
+    const pairs = ['Ti', 'Wb', 'Tv', 'Dv', 'Rc', 'Lb'];
     const labels = await page.evaluate((ps) => ps.map((k) => [document.getElementById(`music${k}`)?.getAttribute('aria-label'), document.getElementById(`sfx${k}`)?.getAttribute('aria-label')].join('|')), pairs);
-    check(await page.locator('button.sound').count() === 10 && labels.every((l) => l === 'Music|Sound effects'),
-      'a Music and a Sound effects toggle side by side on the title, in the designer\'s top bar and in the training, drive and race views\' action rows');
-    /** Every toggle's aria-pressed, as "music,sfx" (all five pairs must agree). */
+    check(await page.locator('button.sound').count() === 12 && labels.every((l) => l === 'Music|Sound effects'),
+      'a Music and a Sound effects toggle side by side on the title, in the designer\'s top bar, in the training, drive and race views\' action rows and in the lobby\'s footer');
+    /** Every toggle's aria-pressed, as "music,sfx" (all six pairs must agree). */
     // as a string: the bundler's name helper isn't defined inside the page
     const pressed = () => page.evaluate(`(() => {
       const ps = ${JSON.stringify(pairs)}, v = (id) => document.getElementById(id).getAttribute('aria-pressed');
@@ -209,7 +209,7 @@ async function main() {
     a = await au(page);
     check(a.state === 'running' && a.playing, `tab hidden and unfocused → still running (${a.state}, ${a.phrase})`);
 
-    // 7. the two toggles. Music off: its bus to 0, the effects untouched, all five pairs agree, remembered
+    // 7. the two toggles. Music off: its bus to 0, the effects untouched, all six pairs agree, remembered
     await page.waitForTimeout(600);
     await page.click('#musicWb');
     // the bus eases down (time constant 50 ms on the audio clock, which a loaded headless page can run behind)

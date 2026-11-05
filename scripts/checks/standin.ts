@@ -1,4 +1,4 @@
-// A local stand-in for the Supabase project (B8): the same functions as supabase/schema.sql, behind the same
+// A local stand-in for the Supabase project (B8, B9 lobby): the same functions as supabase/schema.sql, behind the same
 // PostgREST shape (POST /rest/v1/rpc/<name>, JSON arguments, the anon key in `apikey` and `Authorization: Bearer`),
 // in memory. The multiplayer check runs the app against it; the real service is first tried on the preview.
 // `clock` lets a check move the server's time; `seed` makes race seeds reproducible.
@@ -28,33 +28,46 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
   const state: StandIn = { url: '', key, rooms, players, skew: 0, calls: [], close: async () => {}, rpc: () => null };
   const now = () => Date.now() + state.skew;
   const fail = (m: string): never => { throw Object.assign(new Error(m), { status: 400 }); };
-  const name = (n: unknown) => { const v = String(n ?? ''); if (v.length < 1 || v.length > 16) fail('name'); return v; };
+  // synapse_name: spaces collapsed and trimmed, 1–16 characters
+  const name = (n: unknown) => { const v = String(n ?? '').replace(/\s+/g, ' ').trim(); if (v.length < 1 || v.length > 16) fail('name'); return v; };
   const token = (t: unknown) => { const v = String(t ?? ''); if (v.length < 32) fail('token'); return v; };
   const join = (code: string, n: unknown, t: unknown) => {
-    const p: Player = { id: randomUUID(), room: code, name: name(n), tokenHash: hash(token(t)), brain: null, result: null, joined: ++joinClock };
+    const v = name(n);
+    if (inRoom(code).some((p) => p.name.toLowerCase() === v.toLowerCase())) fail('name taken');
+    const p: Player = { id: randomUUID(), room: code, name: v, tokenHash: hash(token(t)), brain: null, result: null, joined: ++joinClock };
     players.push(p);
-    return p.id;
+    return p;
   };
+  const drop = (p: Player | undefined) => { if (p) players.splice(players.indexOf(p), 1); };
   const inRoom = (code: string) => players.filter((p) => p.room === code).sort((a, b) => a.joined - b.joined || (a.id < b.id ? -1 : 1));
   const mine = (id: unknown, t: unknown) => players.find((p) => p.id === id && p.tokenHash === hash(String(t))) ?? fail('not your player');
   const fns: Record<string, (a: Record<string, unknown>) => unknown> = {
-    create_room: (a) => {
-      token(a.p_token); name(a.p_name);
+    open_room: (a) => {
+      token(a.p_token);
       let code = '';
       do code = Array.from({ length: 4 }, () => String.fromCharCode(65 + Math.floor(rnd() * 26))).join(''); while (rooms.has(code));
       rooms.set(code, { code, hostHash: hash(String(a.p_token)), created: now(), raceNo: 0, raceSeed: null, startAt: null, entries: null });
-      return { code, player: join(code, a.p_name, a.p_token), now: now() };
+      return { code, now: now() };
     },
     join_room: (a) => {
       const code = String(a.p_code ?? '').toUpperCase();
+      token(a.p_token); name(a.p_name);
       if (!rooms.has(code)) fail('no such room');
       if (inRoom(code).length >= MAX_PLAYERS) fail('room full');
-      return { code, player: join(code, a.p_name, a.p_token), now: now() };
+      const p = join(code, a.p_name, a.p_token);
+      return { code, player: p.id, name: p.name, now: now() };
+    },
+    leave_room: (a) => { drop(players.find((p) => p.id === a.p_player && p.tokenHash === hash(String(a.p_token)))); return undefined; },
+    remove_player: (a) => {
+      const r = rooms.get(String(a.p_code ?? '').toUpperCase()), h = hash(String(a.p_token));
+      if (!r || r.hostHash !== h) return fail('not the host');
+      drop(players.find((p) => p.id === a.p_player && p.room === r.code && p.tokenHash !== h));
+      return undefined;
     },
     room_state: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null })) };
+      return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null, host: p.tokenHash === r.hostHash })) };
     },
     submit_brain: (a) => {
       const b = String(a.p_brain ?? '');

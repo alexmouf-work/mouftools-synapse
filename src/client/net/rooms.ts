@@ -1,10 +1,10 @@
-// Multiplayer rooms (B8, tracks plan §4–5, legal plan "Supabase keys"): the client side of supabase/schema.sql. Every
+// Multiplayer rooms (B8, B9 lobby; tracks plan §4–5, legal plan "Supabase keys"): the client side of supabase/schema.sql. Every
 // call is one of the database's functions over PostgREST (POST /rest/v1/rpc/<name>) with the anon key, which the build
 // maps in from SUPABASE_PROJECT_URL and SUPABASE_ANON_KEY (vite.config.ts `define`; the service role key is never
 // read by the build). Nothing is stored in the browser: your player's secret token lives in memory for the tab.
 // The server's clock (`now` in each reply) sets when Go is, so every client counts down to the same moment.
 
-export interface RoomPlayer { id: string; name: string; ready: boolean }
+export interface RoomPlayer { id: string; name: string; ready: boolean; host: boolean }
 export interface RoomState { code: string; race_no: number; race_seed: number | null; start_at: number | null; now: number; players: RoomPlayer[] }
 export interface Entry { id: string; name: string; brain: string }
 export interface Me { code: string; player: string; token: string; name: string; host: boolean }
@@ -19,11 +19,11 @@ export const serverNow = (): number => Date.now() + offset;
 /** A server time (ms since 1970) as performance.now() time. */
 export const perfOf = (serverMs: number): number => performance.now() + (serverMs - serverNow());
 
-async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+async function rpc<T>(fn: string, args: Record<string, unknown>, keepalive = false): Promise<T> {
   if (!online()) throw new Error('Multiplayer isn’t set up on this build.');
   const t0 = Date.now();
   const r = await fetch(`${URL_}/rest/v1/rpc/${fn}`, {
-    method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args),
+    method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args), keepalive,
   });
   const text = await r.text();
   if (!r.ok) {
@@ -39,14 +39,24 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
 
 const newToken = (): string => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 
-export async function createRoom(name: string): Promise<Me> {
-  const token = newToken(), r = await rpc<{ code: string; player: string }>('create_room', { p_name: name, p_token: token });
-  return { code: r.code, player: r.player, token, name, host: true };
+/** A name as the room keeps it (the server's synapse_name): spaces collapsed, trimmed; 1–16 characters to be valid. */
+export const cleanName = (n: string): string => n.replace(/\s+/g, ' ').trim();
+/** A room you may join: its code and your secret token (the host's is the one the room was opened with). */
+export interface Ticket { code: string; token: string; host: boolean }
+/** Open a room (B9): the code first, the host's name on the next screen. */
+export async function openRoom(): Promise<Ticket> {
+  const token = newToken(), r = await rpc<{ code: string }>('open_room', { p_token: token });
+  return { code: r.code, token, host: true };
 }
-export async function joinRoom(code: string, name: string): Promise<Me> {
-  const token = newToken(), r = await rpc<{ code: string; player: string }>('join_room', { p_code: code.toUpperCase(), p_name: name, p_token: token });
-  return { code: r.code, player: r.player, token, name, host: false };
+export const ticketFor = (code: string): Ticket => ({ code: code.toUpperCase(), token: newToken(), host: false });
+export async function joinRoom(t: Ticket, name: string): Promise<Me> {
+  const r = await rpc<{ code: string; player: string; name: string }>('join_room', { p_code: t.code, p_name: cleanName(name), p_token: t.token });
+  return { code: r.code, player: r.player, token: t.token, name: r.name, host: t.host };
 }
+/** Leave the room (keepalive: it still goes out as the tab closes). */
+export const leaveRoom = (me: Me, keepalive = false): Promise<void> => rpc('leave_room', { p_player: me.player, p_token: me.token }, keepalive);
+/** The host removes another player. */
+export const removePlayer = (me: Me, player: string): Promise<void> => rpc('remove_player', { p_code: me.code, p_token: me.token, p_player: player });
 export const roomState = (code: string): Promise<RoomState | null> => rpc('room_state', { p_code: code });
 export const submitBrain = (me: Me, brain: string): Promise<void> => rpc('submit_brain', { p_player: me.player, p_token: me.token, p_brain: brain });
 export const startRace = (me: Me): Promise<{ race_no: number; race_seed: number; start_at: number }> => rpc('start_race', { p_code: me.code, p_token: me.token });

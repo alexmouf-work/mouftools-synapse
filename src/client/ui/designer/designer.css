@@ -82,9 +82,6 @@ html, body { overflow: hidden; }
 #insp { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .empty { margin: auto; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.4; }
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 0; z-index: 9; max-width: calc(100% - 32px); }
-#rotate { display: none; }
-#rotate h1 { margin: 0 0 8px; font-size: 20px; }
-#rotate .btn { margin-top: 12px; }
 dialog { border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--text); padding: 14px; box-shadow: var(--shadow); font-size: 12.5px; line-height: 1.4; }
 dialog::backdrop { background: rgba(10, 14, 22, .45); }
 dialog p { margin: 0 0 12px; }
@@ -100,9 +97,6 @@ dialog#confirm { width: 260px; }
 .gens button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .cf { display: flex; justify-content: flex-end; gap: 6px; }
 .btn.red { background: #d9465b; border-color: #d9465b; color: #fff; font-weight: 700; }
-@media (orientation: portrait) and (max-width: 700px) {
-  body:not(.portrait-ok) #rotate { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg); padding: 24px; text-align: center; }
-}
 @media (prefers-reduced-motion: reduce) { .split i { transition: none; } }
 
 /* additions beyond the mock-up: the speaker button in the top bar; the wordmark is a button back to the title */
@@ -115,12 +109,3 @@ dialog#confirm { width: 260px; }
 .btn.sound[aria-pressed="false"] { color: var(--muted); }
 
 
-/* Multiplayer (B8): the card's dialog (name, create, join by code) */
-#mpDlg { width: min(320px, calc(100% - 32px)); }
-#mpDlg .mp-row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
-#mpDlg .mp-row span { flex: none; color: var(--muted); }
-#mpDlg input { flex: 1; min-width: 0; min-height: 30px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); padding: 0 8px; font: inherit; font-size: 13px; }
-#mpCode { text-transform: uppercase; letter-spacing: .2em; font-variant-numeric: tabular-nums; }
-#mpDlg .mp-wide { width: 100%; }
-#mpDlg .mp-or { margin: 10px 0 0; color: var(--muted); text-align: center; }
-#mpDlg .mp-err { margin: 4px 0 0; min-height: 1.3em; color: var(--minus); }

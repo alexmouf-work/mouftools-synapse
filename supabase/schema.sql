@@ -1,4 +1,4 @@
--- Synapse Multiplayer (B8): rooms with 4-letter codes, up to 100 players, every player's brain, and each race's
+-- Synapse Multiplayer (B8, B9 lobby): rooms with 4-letter codes, up to 100 players, every player's brain, and each race's
 -- frozen entries so every client re-runs the same race. Run this once in the Supabase dashboard (SQL editor) of the
 -- project whose URL and anon key are SUPABASE_PROJECT_URL and SUPABASE_ANON_KEY in Vercel. It is safe to run again.
 --
@@ -46,10 +46,17 @@ create or replace function public.synapse_hash(t text) returns text
 create or replace function public.synapse_ms(t timestamptz) returns bigint
   language sql immutable as $$ select (extract(epoch from t) * 1000)::bigint $$;
 
--- Create a room (a fresh code) and join it as its host.
-create or replace function public.create_room(p_name text, p_token text) returns json
+-- A room's name rule (B9): spaces collapsed and trimmed, 1–16 characters, unique in the room ignoring case.
+create or replace function public.synapse_name(n text) returns text
+  language sql immutable as $$ select btrim(regexp_replace(coalesce(n, ''), '\s+', ' ', 'g')) $$;
+
+-- B9: a room is opened before its host picks a name (the name screen shows the code), so create_room is gone.
+drop function if exists public.create_room(text, text);
+
+-- Open a room (a fresh code, no players yet); its host joins it next with the same token.
+create or replace function public.open_room(p_token text) returns json
   language plpgsql security definer set search_path = public as $$
-declare c text; pid uuid;
+declare c text;
 begin
   if char_length(p_token) < 32 then raise exception 'token'; end if;
   loop
@@ -60,29 +67,47 @@ begin
     exception when unique_violation then -- taken: draw another
     end;
   end loop;
-  insert into players (room, name, token_hash) values (c, p_name, synapse_hash(p_token)) returning id into pid;
-  return json_build_object('code', c, 'player', pid, 'now', synapse_ms(now()));
+  return json_build_object('code', c, 'now', synapse_ms(now()));
 end $$;
 
--- Join a room by its code (up to 100 players).
+-- Join a room by its code (up to 100 players; a name nobody in the room has, ignoring case).
 create or replace function public.join_room(p_code text, p_name text, p_token text) returns json
   language plpgsql security definer set search_path = public as $$
-declare pid uuid;
+declare pid uuid; n text := synapse_name(p_name);
 begin
   if char_length(p_token) < 32 then raise exception 'token'; end if;
+  if char_length(n) not between 1 and 16 then raise exception 'name'; end if;
   perform 1 from rooms where code = upper(p_code) for update;
   if not found then raise exception 'no such room'; end if;
   if (select count(*) from players where room = upper(p_code)) >= 100 then raise exception 'room full'; end if;
-  insert into players (room, name, token_hash) values (upper(p_code), p_name, synapse_hash(p_token)) returning id into pid;
-  return json_build_object('code', upper(p_code), 'player', pid, 'now', synapse_ms(now()));
+  if exists (select 1 from players where room = upper(p_code) and lower(name) = lower(n)) then raise exception 'name taken'; end if;
+  insert into players (room, name, token_hash) values (upper(p_code), n, synapse_hash(p_token)) returning id into pid;
+  return json_build_object('code', upper(p_code), 'player', pid, 'name', n, 'now', synapse_ms(now()));
 end $$;
 
--- The room as the lobby shows it: players in join order and whether each has a brain in; the current race.
+-- Leave the room (your name is free again).
+create or replace function public.leave_room(p_player uuid, p_token text) returns void
+  language plpgsql security definer set search_path = public as $$
+begin
+  delete from players where id = p_player and token_hash = synapse_hash(p_token);
+end $$;
+
+-- The host removes another player from the room.
+create or replace function public.remove_player(p_code text, p_token text, p_player uuid) returns void
+  language plpgsql security definer set search_path = public as $$
+begin
+  perform 1 from rooms where code = upper(p_code) and host_hash = synapse_hash(p_token);
+  if not found then raise exception 'not the host'; end if;
+  delete from players where id = p_player and room = upper(p_code) and token_hash <> synapse_hash(p_token);
+end $$;
+
+-- The room as the lobby shows it: players in join order, whether each has a brain in and which is the host; the
+-- current race.
 create or replace function public.room_state(p_code text) returns json
   language sql security definer set search_path = public as $$
   select json_build_object(
     'code', r.code, 'race_no', r.race_no, 'race_seed', r.race_seed, 'start_at', synapse_ms(r.start_at), 'now', synapse_ms(now()),
-    'players', coalesce((select json_agg(json_build_object('id', p.id, 'name', p.name, 'ready', p.brain is not null) order by p.joined_at, p.id)
+    'players', coalesce((select json_agg(json_build_object('id', p.id, 'name', p.name, 'ready', p.brain is not null, 'host', p.token_hash = r.host_hash) order by p.joined_at, p.id)
                          from players p where p.room = r.code), '[]'::json))
   from rooms r where r.code = upper(p_code) $$;
 
@@ -120,12 +145,12 @@ begin
   if not found then raise exception 'not your player'; end if;
 end $$;
 
-revoke all on function public.create_room(text, text), public.join_room(text, text, text), public.room_state(text),
-  public.submit_brain(uuid, text, text), public.start_race(text, text), public.race_entries(text, integer),
-  public.submit_result(uuid, text, text) from public;
-grant execute on function public.create_room(text, text), public.join_room(text, text, text), public.room_state(text),
-  public.submit_brain(uuid, text, text), public.start_race(text, text), public.race_entries(text, integer),
-  public.submit_result(uuid, text, text) to anon;
+revoke all on function public.open_room(text), public.join_room(text, text, text), public.leave_room(uuid, text),
+  public.remove_player(text, text, uuid), public.room_state(text), public.submit_brain(uuid, text, text),
+  public.start_race(text, text), public.race_entries(text, integer), public.submit_result(uuid, text, text) from public;
+grant execute on function public.open_room(text), public.join_room(text, text, text), public.leave_room(uuid, text),
+  public.remove_player(text, text, uuid), public.room_state(text), public.submit_brain(uuid, text, text),
+  public.start_race(text, text), public.race_entries(text, integer), public.submit_result(uuid, text, text) to anon;
 
 -- Delete match data within 30 days: every day at 03:17 UTC, rooms older than 30 days (players cascade).
 select cron.unschedule(jobid) from cron.job where jobname = 'synapse-purge';

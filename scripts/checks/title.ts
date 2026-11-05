@@ -3,7 +3,9 @@
 // wordmark comes back; the rail along
 // the foot carries Privacy · Terms · Cookies (resolving) and the music credits, and the designer's rule strip no longer
 // does; the storage notice sits below the rail, never over it; an overlap audit of the card, its buttons and the rail
-// at 1440×900 and 844×390, light and dark; console clean. Screenshots → out/title/.
+// at 1440×900 and 844×390, light and dark. Landscape only (B9): an upright phone gets "Turn your phone sideways" over
+// everything (nothing under it takes a tap, Escape keeps it), gone when turned sideways and back when upright again; a
+// tall desktop window (shorter side 900 px or more) never gets it. Console clean. Screenshots → out/title/.
 //   npx tsx scripts/checks/title.ts
 import { mkdirSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -102,6 +104,34 @@ async function main() {
     check(rb.y + rb.height <= nb.y + 0.5 && !over(cb, nb) && !over(cb, rb), `with the notice showing: the rail sits on top of it (rail bottom ${Math.round(rb.y + rb.height)} ≤ notice top ${Math.round(nb.y)}), the card clear of both`);
     await page.screenshot({ path: `${OUT}/title-844-notice.png` });
     await page.context().close();
+
+    // 6. landscape only: the card over an upright phone, on the title and wherever you are
+    page = await open(390, 844, false);
+    const card = () => page.evaluate(`(() => { const d = document.getElementById('rotate'), r = d.getBoundingClientRect(), b = document.getElementById('toSandbox').getBoundingClientRect();
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { open: d.open, modal: d.matches(':modal'), full: r.width >= innerWidth - 1 && r.height >= innerHeight - 1, covered: !!hit && d.contains(hit), text: d.innerText, stay: !!document.getElementById('stay') }; })()`) as Promise<{ open: boolean; modal: boolean; full: boolean; covered: boolean; text: string; stay: boolean }>;
+    let rc = await card();
+    check(rc.open && rc.modal && rc.full && rc.covered && /Turn your phone sideways/.test(rc.text) && !rc.stay, `390×844 upright: "Turn your phone sideways" covers the page, modal (the Sandbox button under it gets no tap), no "Continue in portrait"`);
+    await page.screenshot({ path: `${OUT}/portrait-card.png` });
+    await page.keyboard.press('Escape');
+    await page.mouse.click(195, 600);
+    rc = await card();
+    check(rc.open && await page.locator('#title').isVisible() && await page.locator('.app').isHidden(), 'Escape and a tap leave it up, and nothing under it moved');
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForFunction(() => !(document.getElementById('rotate') as HTMLDialogElement).open, null, { timeout: 5000 }).catch(() => undefined);
+    rc = await card();
+    await page.click('#toSandbox');
+    check(!rc.open && await page.locator('.app').isVisible(), 'turned sideways (844×390): the card goes and the page works (Sandbox opens)');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => (document.getElementById('rotate') as HTMLDialogElement).open, null, { timeout: 5000 }).catch(() => undefined);
+    check((await card()).open, 'upright again in the designer: the card is back');
+    await page.context().close();
+    for (const [w, h] of [[1000, 1300], [820, 1180]] as const) {
+      page = await open(w, h, false);
+      const on = await page.evaluate(() => (document.getElementById('rotate') as HTMLDialogElement).open);
+      check(w >= 900 ? !on : on, `${w}×${h} portrait: ${on ? 'the card (shorter side under 900 px: a tablet held upright)' : 'no card (shorter side 900 px or more: a tall desktop window keeps working)'}`);
+      await page.context().close();
+    }
 
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {

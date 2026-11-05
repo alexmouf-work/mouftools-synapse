@@ -50,3 +50,25 @@ Spec: `reference/multiplayer-lobby-mockup.html` (artifact KUvqqqbcXzdEm6noNCuieb
 - Remove the portrait layout rules (for example training.css `(orientation: portrait)`) and the portrait screenshots
   from the checks. Desktop windows narrower than they are tall still get the card only when the shorter side is under
   900 px, so a tall desktop window keeps working.
+
+## Built (B9, 2026-11-05)
+As above, from the mock-up (its bottom strip not built). Calls where the plan is silent (each can be overturned):
+- **The room exists before its host has a name.** Create a room calls a new `open_room` (a code and the host's token,
+  no players), so the name screen can show the code; Go in joins it and the host is recognised by that token.
+  `create_room` is dropped: **the principal needs to run `supabase/schema.sql` again** (it is safe to re-run). A room
+  opened and never joined is purged with the rest after 30 days.
+- **Leaving frees your name.** Leave room, and closing the tab (a keepalive request on `pagehide`), delete your player
+  (`leave_room`); before, players stayed listed after leaving, which unique names would have turned into a trap.
+- **Removed:** the removed client notices on its next poll (≤ 1.5 s) and goes back to the code screen with "The host
+  removed you from the room."; if it was building or racing, it gets there when it comes back. The host can't remove
+  itself. A host who leaves leaves the room without a host (as in B8).
+- **Names** follow one rule on both sides (`synapse_name`): spaces collapsed, trimmed, 1–16 characters; the duplicate
+  test ignores case. The name screen refreshes the room every 1.5 s, so its count and the names taken stay current.
+- **Chip colours:** yours is your car's yellow; the others take the race colours in join order. In a race the colours
+  follow the entries (only players with a brain in), so a chip's colour can differ from that car's.
+- **Rows** replace scattered when the screen is at most 540 px high (the site's phone breakpoint) and more than 60 are
+  in. On a short screen the header drops "Join at…" and the footer note keeps to one line.
+- **Start race** is enabled at 2 or more ready (B8 allowed 1), as the plan says.
+- **The portrait card** is the old `#rotate`, now a modal dialog over everything ("Synapse is played in landscape.");
+  "Continue in portrait" is gone, and so are the portrait rules (designer.css, training.css). The training view no
+  longer hides it.

@@ -271,8 +271,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   every trainer in the picker is live (B4)));
   input cells of radius 16 with their symbols at 1.7× the radius, columns spaced 2R + 6 (B2d), `symbols.ts` (three.js symbols, loaded after first
   paint, one viewport per tray tile and sense cell; build mode is still, so only a gentle idle motion), `store.ts`.
-  One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows); portrait phones get the
-  "turn sideways" card. Additions to the mock-up: the Music and Sound effects toggles in the top bar; the
+  One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows). Additions to the mock-up: the Music and Sound effects toggles in the top bar; the
   wordmark is the way back to the title. No Drive button: the drive view is reached after training.
 - Saving: after every change the brain is written to localStorage `synapse.brain` as `{v: 3, name, trainer, train:
   {seed, phases, temps}, genome}` (canonical genome JSON; a save from before the biases or the fields gets them at 0; `temps` holds each phase's temperature, log2 of the
@@ -371,15 +370,33 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   drive view holds the car on the line until Go and then plays the recorded run from tick
   0 (hashes unchanged); in the training view the highlighted car (then the champion) has a quieter engine.
 
-- Multiplayer (B8): `net/rooms.ts` calls the database's functions (`create_room`, `join_room`, `room_state`,
-  `submit_brain`, `start_race`, `race_entries`, `submit_result`) over PostgREST with the anon key; the build maps
+- Landscape only (B9, `ui/landscape.ts`): an upright phone or tablet (`(orientation: portrait) and (max-width:
+  899.98px)`) gets `#rotate`, "Turn your phone sideways", as a modal dialog over everything (the page under it is
+  inert; Escape doesn't close it); it closes when the screen turns. `screen.orientation.lock('landscape')` is tried at
+  start and on entering fullscreen, a refusal ignored. No portrait layout rules remain; a tall desktop window (shorter
+  side ≥ 900 px) never gets the card.
+- Multiplayer (B8, lobby B9): `net/rooms.ts` calls the database's functions (`open_room`, `join_room`, `leave_room`,
+  `remove_player`, `room_state`, `submit_brain`, `start_race`, `race_entries`, `submit_result`) over PostgREST with the anon key; the build maps
   `SUPABASE_PROJECT_URL` and `SUPABASE_ANON_KEY` in through Vite `define` (`__SUPABASE_URL__`, `__SUPABASE_ANON_KEY__`,
   declared in `env.d.ts`; empty: Multiplayer says it isn't set up); the service role key is read nowhere. Every reply
   carries the server's clock, so Go is the same moment on every client. Nothing is stored in the browser: your player's
-  secret token lives in memory (the database keeps only its SHA-256). `ui/lobby/lobby.ts`: the title's Multiplayer
-  card (your name, Create a room, or join with a 4-letter code; up to 100 players) and the room's lobby on the title
-  screen (the code, every player and whether their brain is in, the host marked; Build and train, Start race for the
-  host, Leave room), polled every 1.5 s while you are in a room. Build and train is the match designer; training ends
+  secret token lives in memory (the database keeps only its SHA-256). `ui/lobby/lobby.ts` (+ `lobby.css`, from
+  `reference/multiplayer-lobby-mockup.html`) is Multiplayer's own screen (`#mp`): (1) one 4-letter code field whose
+  fourth letter checks the room with `room_state` (none: "No room with that code…", full: "That room is full…", the
+  letters selected), or Create a room (`open_room`: a code, no players, the host's token); (2) your name on its own
+  screen (the code and how many are in; 1–16 characters, spaces collapsed; a name already in the room, any case, is
+  refused here and by `join_room`; a chip preview; Go in → `join_room`, the host recognised by the token the room was
+  opened with); (3) the lobby: a header (code, "n / 100", "players · r ready", a legend, the host's Start race (r),
+  enabled at 2 ready, or "You're in"), a field of name chips (`.chip`: the car colour's square, filled once the brain
+  is in; yours in your car's yellow with an accent border; others the race colours in join order), and a footer (Build
+  your brain / "Brain handed in · Edit", a note, the sound toggles, Leave room → `leave_room`). Chips pop in (none
+  under reduced motion) and are scattered: each new chip tries 80 random spots (display only) and keeps the one
+  overlapping least, kept as fractions of the free space so a resize holds the layout; the font is clamp(11,
+  √(field area / max(n, 8)) / 6.2, 17) px; on a short screen (height ≤ 540 px) with more than 60 in, rows instead
+  (the field scrolls). The host taps another chip → "Remove <name>" → `remove_player`; the removed client sees it on
+  its next poll and goes back to the code screen ("The host removed you from the room."), now or when it comes back
+  from building or racing. Closing the tab leaves the room (`leave_room`, keepalive), so names free up. Polled every
+  1.5 s while you are in a room. Build your brain is the match designer; training ends
   with Hand in (your genome's canonical JSON goes to the room). The host's Start race freezes the entries (every player
   with a brain in, in join order) and draws the seed, Go 12 s later; every client fetches the same entries, leaves out
   anything that isn't a valid brain within the match limit (the same rule on every client), computes the race
@@ -402,7 +419,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   layer panel (function, live slider, energy), "+"/"−" and their limits, every edit untrained, Reset and Train
   dialogs, reload, corrupt and pre-v2 saves, a learned field drawn by the inspector and a save from before the fields
   loading quietly, and an overlap audit of cells, buttons and headers for brains up to
-  8 × 8 with every sense full, light and dark, 1440×900 and 844×390; portrait card; screenshots to `out/s2/`.
+  8 × 8 with every sense full, light and dark, 1440×900 and 844×390; the portrait card (modal, no way to stay in
+  portrait); screenshots to `out/s2/`.
 - `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the designer (the
   generations popup),
   phase hash = Node's (actor-critic at ×2 and A_RP too, with their Temperature hints), genome saved and changed, training again = Node's carry run, the same saved brain on 1 and 4
@@ -425,11 +443,13 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   Go on the drop, drive hash = Node; back → the lounge; the music never silent for over 0.8 s from title to back;
   `win()` plays the winner then the lounge again; leaving training, a countdown or a drive leaves no racing effect;
   a hidden tab keeps playing; the toggles are independent (music off: the music bus silent, blips and engine heard;
-  effects off: no blip or engine, the music heard), agree across all five pairs and survive a reload; the old
+  effects off: no blip or engine, the music heard), agree across all six pairs (the lobby footer has one too) and survive a reload; the old
   `off` / `on` migrates; locked, the countdown runs on the plain timer; console clean.
 - `scripts/checks/title.ts` — the title in headless Chromium: it opens first; Multiplayer (blue) and vs CPU (yellow)
   enabled; vs CPU → the match designer → wordmark → title; Sandbox → designer (sandbox mode); the rail's links resolve and carry the credits, the
-  rule strip doesn't; an overlap audit at 1440×900 and 844×390, light and dark; the notice sits below the rail.
+  rule strip doesn't; an overlap audit at 1440×900 and 844×390, light and dark; the notice sits below the rail; landscape
+  only: the card over an upright phone (modal: nothing under it takes a tap; Escape keeps it), gone when turned and back
+  when upright again, on a 820×1180 tablet, never on a 1000×1300 desktop window.
 - `scripts/checks/race.ts` — vs CPU in headless Chromium: the match designer refuses a design past 100% flat out;
   Train skips the popup and trains from scratch on the budget (saved = Node's run); training ends with Race and Back;
   ten cars on the grid where `gridCar` puts them, the players in grid order, the countdown, race hash and ranking =
@@ -439,10 +459,15 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   `out/race/`.
 - `scripts/checks/standin.ts` — a local stand-in for the Supabase project: the same functions as `supabase/schema.sql`
   behind the same PostgREST shape, in memory, checking the anon key.
-- `scripts/checks/multiplayer.ts` — Multiplayer in headless Chromium against the stand-in: the card (a name needed,
-  a code with no room refused), create and join, both lobbies, a room on a landscape phone, Leave; both players train
-  in match mode (= Node) and hand in; 98 more players from Node fill the room to 100 (one with a brain past the limit)
-  and a 101st is refused; Start race: the same race on both clients = Node, Go at the same moment, 99 cars (the
+- `scripts/checks/multiplayer.ts` — Multiplayer in headless Chromium against the stand-in: the code screen (the
+  fourth letter checks; a code with no room says so and selects the letters), Create a room → the name screen (spaces
+  collapsed, counter, preview) → the lobby as host; a guest's code → the name screen, the host's name refused (any
+  case) there and by the server; both chips (fitting, apart, yours marked); only the host can start; a third player on
+  a landscape phone (the lobby fits), removed by the host (back on the code screen saying so; a player's tap does
+  nothing), the name free again, Leave room; both players train
+  in match mode (= Node) and hand in (chips filled, Start race (2)); 98 more players from Node fill the room to 100
+  (one with a brain past the limit) and a 101st is refused; 100 chips scattered inside the field at 1440×900, in rows
+  at 844×390 (the field scrolls); Start race: the same race on both clients = Node, Go at the same moment, 99 cars (the
   over-limit one left out), the 11 drawn in 3-D are the nearest, 99 map dots; results = Node; results reach the room;
   Back to room; the page's defines carry the URL and anon key, never the service role key; prints the page's compute
   time for the race. Screenshots to `out/multiplayer/`.
