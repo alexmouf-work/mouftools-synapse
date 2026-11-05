@@ -248,3 +248,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "please push to main when ready." → main fast-forwarded to development at 4857e43 (B2e, full check green), so
   synapse.mouftools.com serves the title screen, training view, temperature and learned fields; vs CPU and Multiplayer
   still show "soon". Work carries on on development.
+- "let's give the default brain a random assortment of input neurons, including copies of the same, with at least 1
+  boundary vector cell always. it can start with between 2 and 6 inputs, randomly decided." (2026-11-05)

@@ -155,7 +155,17 @@ sparse brains run faster; ReLU idles silent, tanh and sigmoid idle at half rate 
 - Training still rewards distance, so evolution must find the balance. The speed curve is tuned with the benchmark.
 
 ## 3c. The default brain (2026-11-04)
-One boundary cell, one head-direction cell, one hidden layer of three neurons, the four wheels. About 23% brain / 77%
+**Random starter (2026-11-05).** Principal: "let's give the default brain a random assortment of input neurons,
+including copies of the same, with at least 1 boundary vector cell always. it can start with between 2 and 6 inputs,
+randomly decided." A new brain (first visit, Reset, and a v1 save loading as the default) gets 2–6 input cells, the
+count uniform. One is always a boundary vector cell. Each of the rest is drawn uniformly from the five senses
+(boundary vector, landmark, head direction, grid, speed), with repeats allowed. Copies of a sense spread their fields
+evenly, as an untrained added cell does. The hidden layer (3 tanh) and the four wheels are unchanged. The draw is
+`starterSpec(seed)` in src/common, so it is deterministic given its seed. The client seeds it from
+`crypto.getRandomValues` and it never runs inside the sim. `defaultSpec()` stays the fixed brain below: the goldens,
+S1 and the checks use it as their fixture.
+
+Earlier fixed default, still `defaultSpec()`: one boundary cell, one head-direction cell, one hidden layer of three neurons, the four wheels. About 23% brain / 77%
 speed. When v2 is built, the learning benchmark must be re-run on this brain: a two-input brain may not lap, which is
 fine for a starting point but changes what the S1 criterion can promise.
 
