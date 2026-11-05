@@ -2,7 +2,8 @@
 // - The starting brain, the energy split (resting–flat out) as energy.ts computes it, the Learning Rule strip and the
 //   trainer picker (all four trainers live; each one's rule in the strip), the legal line and the two sound toggles.
 // - Tap a sense in the tray to add a cell (it is selected: graph, one-line description, "At maximum firing rate"
-//   energy from energy.ts, bin); the bin removes it. A full sense dims and loses its "+". A trained neuron or wheel
+//   energy from energy.ts, bin); the bin removes it. The selected cell gets its own "−" on its top right where it has
+//   a bin (never with nothing selected, on a wheel or on a layer's last neuron); it and Delete remove it. A full sense dims and loses its "+". A trained neuron or wheel
 //   shows its built-in bias; an untrained one doesn't.
 // - A layer header opens the layer panel: functions, the Neurons slider (live), the layer's energy line, bin.
 // - "+"/"−" add and remove neurons and layers; at 8 neurons and 8 layers the "+"s go.
@@ -131,6 +132,42 @@ async function main() {
     check((await spec(page)).senses.boundary === 1, 'the bin removes the cell');
     for (let k = 0; k < 2; k++) await page.click('#tray [data-s="speed"]', { force: true });
     check((await spec(page)).senses.speed === 1 && await page.locator('#tray [data-s="speed"]').isDisabled() && await page.locator('#tray [data-s="speed"] .plus').count() === 0, 'speed cells: one at most; the full tile dims and loses its "+"');
+
+    // 3a. the selected cell's own "−" (plan 2026-11-05 §1): none with nothing selected, none on a wheel, a layer or a
+    //     layer's last neuron; top right of the cell, ~0.45× its size, a 32 px touch target; it (and Delete) remove it
+    await page.evaluate((g) => window.__designer!.load(g), defaultGenome());
+    const bubbles = () => page.locator('#net [data-rm-cell]').count();
+    check(await bubbles() === 0, 'no cell selected: no "−" on any cell');
+    const bub = async (id: string) => page.evaluate(`(() => {
+      const b = document.querySelector('#net [data-rm-cell]'), c = document.querySelector('#net g.cell[data-id="${id}"]');
+      if (!b || !c) return null;
+      const r = b.firstElementChild.getBoundingClientRect(), t = b.querySelector('.target').getBoundingClientRect(), q = c.firstElementChild.getBoundingClientRect();
+      return { id: b.getAttribute('data-rm-cell'), cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2, d: r.width, target: t.width, ccx: (q.left + q.right) / 2, ccy: (q.top + q.bottom) / 2, cd: q.width, next: b.previousElementSibling === c };
+    })()`) as Promise<{ id: string; cx: number; cy: number; d: number; target: number; ccx: number; ccy: number; cd: number; next: boolean } | null>;
+    for (const id of ['i:boundary:0', 'h0:1']) {
+      await page.evaluate((x) => window.__designer!.select(x), id);
+      const b = await bub(id);
+      check(await bubbles() === 1 && !!b && b.id === id && b.cx > b.ccx + b.cd * 0.25 && b.cy < b.ccy - b.cd * 0.25 && b.d / b.cd > 0.35 && b.d / b.cd < 0.6 && b.target >= 32 && b.next,
+        `${id} selected: one "−", top right of it (${b ? `${(b.d / b.cd).toFixed(2)}× the cell, touch target ${b.target.toFixed(0)} px, focused next` : 'missing'})`);
+    }
+    await page.screenshot({ path: `${OUT}/cell-minus.png` });
+    await page.click('#net [data-rm-cell]');
+    s = await spec(page);
+    check(s.layers[0].n === 2 && (await saved(page)).genome.spec.layers[0].n === 2 && await bubbles() === 0 && (await page.locator('#insp .empty').count()) === 1,
+      'tapping a neuron\'s "−" removes it (3 → 2 neurons, saved); the selection clears');
+    await page.evaluate(() => window.__designer!.select('i:boundary:0'));
+    await page.click('#net [data-rm-cell]');
+    check((await spec(page)).senses.boundary === 0 && await bubbles() === 0 && await page.locator('#tray [data-s="boundary"] .plus').count() === 1, 'tapping a sense cell\'s "−" removes it (the tray follows)');
+    for (const id of ['o:fl', 'layer:0']) {
+      await page.evaluate((x) => window.__designer!.select(x), id);
+      check(await bubbles() === 0, `${id} selected: no "−" (wheels and layers can't be removed that way)`);
+    }
+    await page.evaluate((g) => { window.__designer!.load(g); window.__designer!.select('h0:0'); }, zeroGenome({ v: 2, senses: { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }));
+    check(await bubbles() === 0 && await page.locator('#rmN').count() === 0, 'a layer\'s last neuron: no "−", as no bin');
+    await page.evaluate((g) => { window.__designer!.load(g); window.__designer!.select('h0:2'); }, defaultGenome());
+    await page.keyboard.press('Delete');
+    check((await spec(page)).layers[0].n === 2 && await bubbles() === 0, 'Delete on a selected neuron removes it, as its "−"');
+    await page.evaluate((g) => window.__designer!.load(g), defaultGenome());
 
     // 3b. a neuron's built-in bias: shown once trained (with the curve against Σ w·x), not before
     await page.evaluate(() => window.__designer!.select('h0:0'));

@@ -1,4 +1,6 @@
 // vs CPU check (B7), headless Chromium on SwiftShader:
+// - The build timer: 30 s, top centre, vs CPU yellow, at least Train's row tall; red in the last 10 s; a pulse and a
+//   tick in the last 5; at 0 "Time's up", then Train starts itself; Train pressed earlier or the title cancels it.
 // - Title → vs CPU opens the designer in match mode: a design past 100% flat out can't train (says why); Train goes
 //   straight to training (no generations popup) on the fixed budget (a small ?T= here), from scratch: the saved brain
 //   = Node's run of the same design, seed and budget; training ends with Race and Back (no Drive, no Keep training).
@@ -119,6 +121,40 @@ async function main() {
     const toast = await page.locator('#toast').innerText();
     check(!(await page.locator('#trainDlg').evaluate((d) => (d as HTMLDialogElement).open)) && await page.locator('#arena').isHidden() && /races allow 100%/.test(toast),
       `a design past 100% flat out can't train in vs CPU ("${toast}")`);
+    await page.click('#toTitle');
+    check(await page.evaluate(() => window.__phase!.state === 'off') && await page.locator('#phaseTimer').isHidden(), 'back to the title cancels the build timer');
+    await page.context().close();
+
+    // 1b. the build timer (plan 2026-11-05 §2): 30 s, top centre, vs CPU yellow, big; red in the last 10 s; a pulse and
+    //     a tick each second in the last 5; at 0 "Time's up", then Train starts itself (jumped ahead with __phase.skipTo)
+    page = await open(`?seed=${SEED}&T=${T}&race=${RACE}`);
+    await page.click('#toCpu');
+    const pt = () => page.evaluate(`(() => {
+      const b = document.getElementById('phaseTimer'), q = b.getBoundingClientRect(), top = document.querySelector('.app .top').getBoundingClientRect(), app = document.querySelector('.app').getBoundingClientRect(), cs = getComputedStyle(b);
+      return { ...window.__phase, shown: !b.hidden && q.width > 0, cx: (q.left + q.right) / 2 / innerWidth, top: (q.top - app.top) / app.height, under: q.top >= top.bottom - 0.5, h: q.height, row: top.height, bg: cs.backgroundColor, num: parseFloat(getComputedStyle(b.querySelector('b')).fontSize) * (q.height / b.offsetHeight) };
+    })()`) as Promise<{ state: string; label: string; left: number; text: string; red: boolean; pulse: boolean; shown: boolean; cx: number; top: number; under: boolean; h: number; row: number; bg: string; num: number }>;
+    let bt = await pt();
+    check(bt.state === 'running' && bt.shown && bt.label === 'Build time' && bt.text === '30' && bt.bg === 'rgb(255, 194, 26)' && !bt.red && Math.abs(bt.cx - 0.5) < 0.05 && bt.top < 0.2 && bt.under && bt.h >= bt.row,
+      `vs CPU opens with the build timer: "${bt.label}" ${bt.text}, vs CPU yellow, top centre (${(bt.cx * 100).toFixed(0)}% across, just under the top bar), ${bt.h.toFixed(0)} px tall (Train's row ${bt.row.toFixed(0)} px), figures ${bt.num.toFixed(0)} px`);
+    await page.screenshot({ path: `${OUT}/build-30.png` });
+    await page.evaluate(() => window.__phase!.skipTo(11.5));
+    bt = await pt();
+    check(bt.text === '12' && !bt.red, `12 s left: still yellow (${bt.bg})`);
+    await page.evaluate(() => window.__phase!.skipTo(9.5));
+    bt = await pt();
+    check(bt.text === '10' && bt.red && bt.bg === 'rgb(217, 70, 91)' && !bt.pulse, `the last 10 s: red (${bt.text}, ${bt.bg}), no pulse yet`);
+    await page.screenshot({ path: `${OUT}/build-red.png` });
+    const p5 = await page.evaluate(() => { window.__phase!.skipTo(4.5); return { pulse: window.__phase!.pulse, text: window.__phase!.text, sfx: window.__audio!.liveSfx, audio: window.__audio!.state }; });
+    check(p5.text === '5' && p5.pulse && (p5.audio !== 'running' || p5.sfx > 0), `the last 5 s: pulses, and ticks on the effects bus (audio ${p5.audio}, ${p5.sfx} effect sounding)`);
+    await page.evaluate(() => window.__phase!.skipTo(0.2));
+    await page.waitForFunction(() => window.__phase?.state === 'up', null, { timeout: 5000 });
+    const up = await page.evaluate(() => ({ text: window.__phase!.text, designer: !(document.querySelector('.app') as HTMLElement).hidden }));
+    await page.screenshot({ path: `${OUT}/build-up.png` });
+    check(up.text === 'Time’s up' && up.designer, `at 0: "${up.text}" over the designer`);
+    const designed = await page.evaluate(() => window.__designer!.spec());
+    await page.waitForFunction(() => window.__training?.state === 'running' || window.__training?.state === 'done', null, { timeout: 30_000 });
+    const auto = await page.evaluate(() => ({ phase: window.__phase!.state, popup: (document.getElementById('trainDlg') as HTMLDialogElement).open, arena: !(document.getElementById('arena') as HTMLElement).hidden, T: window.__training!.T, spec: window.__designer!.spec() }));
+    check(auto.phase === 'off' && !auto.popup && auto.arena && auto.T === T && JSON.stringify(auto.spec) === JSON.stringify(designed), `then Train starts itself on the budget (T ${auto.T}), with the design as it stands (no popup; the timer gone)`);
     await page.context().close();
 
     // 2. Train: no popup, the fixed budget, from scratch = Node; ends with Race and Back
@@ -126,7 +162,7 @@ async function main() {
     await page.click('#toCpu');
     await page.click('#train');
     await page.waitForFunction(() => window.__training?.state === 'running' || window.__training?.state === 'done', null, { timeout: 30_000 });
-    check(!(await page.locator('#trainDlg').evaluate((d) => (d as HTMLDialogElement).open)), 'Train opens no generations popup in vs CPU');
+    check(!(await page.locator('#trainDlg').evaluate((d) => (d as HTMLDialogElement).open)) && await page.evaluate(() => window.__phase!.state === 'off'), 'Train opens no generations popup in vs CPU, and pressing it stops the build timer');
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
     const tr = await page.evaluate(() => ({ T: window.__training!.T, start: window.__training!.start, phase: window.__training!.phase, temp: window.__training!.temperature }));
     const sv = parse(await page.evaluate((k) => localStorage.getItem(k), SAVE_KEY)).saved;

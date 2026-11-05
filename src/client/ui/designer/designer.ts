@@ -61,6 +61,8 @@ const trained = (): boolean => W.saved.genome.w.slice(0, weightCount(W.saved.gen
 let onTrain: (s: Saved, generations: number, temperature: number) => void = () => toast('Training isn’t available here.');
 let active = true;
 let saveWarned = false;
+/** The vs CPU build timer ran out while the design was past the limit: train as soon as it is within. */
+let trainWhenValid = false;
 
 function persist(): void {
   if (!save(W.saved) && !saveWarned) { saveWarned = true; toast('This browser won’t keep your brain, so changes last until you close the tab.'); }
@@ -120,6 +122,7 @@ function render(): void {
   if (!active || !board().clientWidth) return; // hidden (the title shows): nothing to lay out
   layout();
   const g0 = svg(), s = spec();
+  const focused = (document.activeElement as Element | null)?.closest?.('#net [data-id]')?.getAttribute('data-id');
   g0.innerHTML = '';
   const isTrained = trained();
   const bg = el('rect', { x: trayW, y: 0, width: box.w - trayW, height: box.h, fill: 'transparent', class: 'hit' }, g0);
@@ -177,6 +180,17 @@ function render(): void {
     }
     el('circle', { cx: p.x, cy: p.y, r: p.kind === 'mid' ? 12 : 13, fill: 'transparent', class: 'target' }, g); // touch target
     g.addEventListener('click', (ev) => { ev.stopPropagation(); W.sel = W.sel === id ? null : id; render(); });
+    // the selected cell's own "−" (plan 2026-11-05 §1): top right on its edge, the board's "−" style, ~0.45× the cell;
+    // only where the inspector has a bin; right after the cell, so it is the next thing focused
+    const rm = sel ? removal(id) : null;
+    if (rm) {
+      const cr = p.kind === 'in' ? R : 11, d = cr * Math.SQRT1_2, bx = p.x + d, by = p.y - d, br = Math.max(5.5, cr * 0.45), a = br * 0.5;
+      const b = el('g', { class: 'hit cell-rm', role: 'button', tabindex: 0, 'data-rm-cell': id, 'aria-label': `Remove ${cellLabel(id)}` }, g0);
+      el('circle', { cx: bx, cy: by, r: br, style: 'fill:var(--panel);stroke:var(--accent)', 'stroke-width': 1.4 }, b);
+      el('path', { d: `M ${bx - a} ${by} H ${bx + a}`, style: 'stroke:var(--accent)', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'pointer-events': 'none' }, b);
+      el('circle', { cx: bx, cy: by, r: 16.5 / Math.min(1, SCALE), fill: 'transparent', class: 'target' }, b); // touch target: 33 px on screen at least
+      b.addEventListener('click', (ev) => { ev.stopPropagation(); rm(); W.sel = null; render(); });
+    }
   }
   // a "+" under each layer's neurons adds one (gone at the limit); a "−" above them removes one
   s.layers.forEach((l, L) => {
@@ -212,6 +226,24 @@ function render(): void {
   showAlloc();
   if (!holdPanel) inspect();
   symbolsDirty = true;
+  if (focused) (g0.querySelector(`g.cell[data-id="${focused}"]`) as SVGGElement | null)?.focus();
+  // time ran out on a design past the limit: training starts as soon as an edit brings it within
+  if (trainWhenValid && MODE === 'match' && !energyRefusal(s, 'match')) { trainWhenValid = false; setTimeout(trainMatch, 0); }
+}
+
+/** What the inspector's bin does for this cell (the selected-cell "−" and Delete do the same), or null where there is
+ * no bin: a wheel, a layer, the last neuron of its layer. Sense cells of a kind are alike: the last one goes. */
+function removal(id: string): (() => void) | null {
+  const s = spec();
+  if (id.startsWith('i:')) {
+    const sid = id.split(':')[1] as SenseId;
+    return s.senses[sid] > 0 ? () => { commit(removeSense(W.saved.genome, sid)); buildTray(); } : null;
+  }
+  if (id.startsWith('h')) {
+    const L = Number(id.slice(1, id.indexOf(':')));
+    return s.layers[L] && s.layers[L].n > 1 ? () => { commit(setLayerSize(W.saved.genome, L, s.layers[L].n - 1)); } : null;
+  }
+  return null;
 }
 
 function cellLabel(id: string): string {
@@ -280,7 +312,7 @@ function inspect(): void {
     if (k >= n) { W.sel = null; inspect(); return; }
     box2.innerHTML = `<h2>${SENSE_INFO[sid as SenseId].name.replace(/s$/, '')}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${SENSE_INFO[sid as SenseId].desc}</p>${fieldLine(sid as SenseId, k, n)}${useLine(senseMax(s, sid as SenseId))}${binBtn('rm', 'Remove this cell')}`;
     graphSense(sid as SenseId, k, n);
-    $('rm').onclick = () => { commit(removeSense(W.saved.genome, sid as SenseId)); W.sel = null; buildTray(); render(); };
+    $('rm').onclick = () => { removal(id)?.(); W.sel = null; render(); };
     return;
   }
   if (id.startsWith('h')) {
@@ -289,7 +321,7 @@ function inspect(): void {
     const b = biasOf(id);
     box2.innerHTML = `<h2>Neuron · layer ${L + 1}</h2><canvas id="graph" aria-label="Activation pattern"></canvas><p class="desc">${DESC.neuron}</p>${biasLine(b)}${useLine(cellMax(s, L + 1))}${s.layers[L].n > 1 ? binBtn('rmN', 'Remove this neuron') : ''}`;
     graphCurve(s.layers[L].fn, 'Σ w·x', 'output', b);
-    if (document.getElementById('rmN')) $('rmN').onclick = () => { commit(setLayerSize(W.saved.genome, L, s.layers[L].n - 1)); W.sel = null; render(); };
+    if (document.getElementById('rmN')) $('rmN').onclick = () => { removal(id)?.(); W.sel = null; render(); };
     return;
   }
   const b = biasOf(id);
@@ -496,6 +528,7 @@ function fit(): void {
 export const currentSaved = (): Saved => W.saved;
 export function setActive(on: boolean): void {
   active = on;
+  trainWhenValid = false;
   if (on) { fit(); buildTray(); buildTrainers(); render(); }
 }
 /** vs CPU opens the designer in match mode, Sandbox in sandbox mode. A brain past the limit says so on entering. */
@@ -506,6 +539,19 @@ export function setDesignerMode(m: Mode): void {
   if (why) toast(`${why} Remove cells to race.`, 4000);
 }
 export const designerMode = (): Mode => MODE;
+/** Match mode's Train: the fixed budget straight away, unless the design is past the limit (then it says why). */
+function trainMatch(): boolean {
+  const why = energyRefusal(spec(), 'match');
+  if (why) { toast(`${why} Remove cells to race.`, 4000); return false; }
+  trainWhenValid = false;
+  onTrain(W.saved, 0, 0);
+  return true;
+}
+/** The vs CPU build timer reached 0: Train with the design as it stands (or, past the limit, once it is within). */
+export function timeUp(): void {
+  if (MODE !== 'match' || !active) return;
+  if (!trainMatch()) trainWhenValid = true;
+}
 export function replaceSaved(s: Saved): void { W.saved = s; persist(); if (active) render(); }
 
 export function start(o: { onTrain: (s: Saved, generations: number, temperature: number) => void }): void {
@@ -514,12 +560,7 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
   sl.min = String(TEMP_MIN); sl.max = String(TEMP_MAX); sl.step = String(TEMP_STEP);
   sl.addEventListener('input', () => { W.temp = Number(sl.value); showTemp(); });
   $('train').onclick = () => {
-    if (MODE === 'match') { // the fixed budget, no popup (temperature ×1)
-      const why = energyRefusal(spec(), 'match');
-      if (why) { toast(`${why} Remove cells to race.`, 4000); return; }
-      onTrain(W.saved, 0, 0);
-      return;
-    }
+    if (MODE === 'match') { trainMatch(); return; } // the fixed budget, no popup (temperature ×1)
     buildGens(); showTemp(); ($('trainDlg') as HTMLDialogElement).showModal();
   };
   $('tdNo').onclick = () => ($('trainDlg') as HTMLDialogElement).close();
@@ -531,6 +572,19 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
     W.sel = null; persist(); ($('confirm') as HTMLDialogElement).close(); buildTray(); render();
   };
   addEventListener('resize', () => { fit(); render(); });
+  // keyboard: Enter or Space presses a focused board button; Delete or Backspace removes the selected cell (as its "−")
+  svg().addEventListener('keydown', (ev) => {
+    const e = ev as KeyboardEvent;
+    const t = (e.target as Element).closest('#net [role="button"]');
+    if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); t.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
+  });
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (!active || (e.key !== 'Delete' && e.key !== 'Backspace') || !W.sel || document.querySelector('dialog[open]')) return;
+    if ((e.target as Element).closest?.('input, textarea, select, [contenteditable]')) return;
+    const rm = removal(W.sel);
+    if (!rm) return;
+    e.preventDefault(); rm(); W.sel = null; render();
+  });
   fit(); buildTray(); buildTrainers(); render();
   if (loaded.status === 'corrupt') { console.warn(`designer: saved brain unreadable (${loaded.why}); starting from a new brain`); toast('Your saved brain couldn’t be read, so this is the starting brain.'); persist(); }
   else if (loaded.status === 'reset') { toast('Synapse has changed how brains work, so your brain was reset to the starting brain.', 6000); persist(); }

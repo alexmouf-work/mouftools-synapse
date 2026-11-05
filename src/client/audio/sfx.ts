@@ -34,6 +34,22 @@ export function blip(t: number, go: boolean): void {
   }
 }
 
+/** The vs CPU build timer's tick (last 5 s): a short, dry C♯6 click, now, on the effects bus. */
+export function tick(): void {
+  const b = audio();
+  if (!b) return;
+  const { ctx, sfx } = b, t = ctx.currentTime + 0.005, len = 0.07;
+  const g = ctx.createGain(), o = ctx.createOscillator();
+  g.connect(sfx);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.35, t + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  o.type = 'triangle'; o.frequency.value = 1108.73;
+  o.connect(g);
+  o.start(t); o.stop(t + len + 0.02);
+  blips.push({ g, osc: [o], end: t + len + 0.05 });
+}
+
 /** Racing effects still sounding or scheduled: live engines plus blips not yet over. */
 export function liveSfx(): number {
   const b = audio();

@@ -13,7 +13,7 @@ import { musicMode, musicPlaying, musicReady, phraseNow, preloadMusic, setMode, 
 import { showNotice } from './legal/notice';
 import { openDrive } from './ui/drive/driveView';
 import { openTraining } from './ui/training/trainingView';
-import { currentSaved, replaceSaved, setActive, setDesignerMode, start } from './ui/designer/designer';
+import { currentSaved, replaceSaved, setActive, setDesignerMode, start, timeUp } from './ui/designer/designer';
 import { cpuSetup, firstSeed, openRace } from './ui/race/raceView';
 import { handIn, inRoom, reportResult, showLobby, startLobby } from './ui/lobby/lobby';
 import { startLandscape } from './ui/landscape';
@@ -22,22 +22,32 @@ import { liveSfx } from './audio/sfx';
 import { level } from './audio/audio';
 import type { Saved } from './ui/designer/store';
 import { CONFIG } from '../common/config';
+import { startPhaseTimer, stopPhaseTimer } from './ui/phaseTimer';
 import { validTemperature } from '../common/train/trainer';
 
 const app = document.querySelector<HTMLElement>('.app');
 if (!app) throw new Error('main: .app missing');
 /** Which way the designer was opened: Sandbox, vs CPU or a room (both match mode). */
 let where: 'sandbox' | 'cpu' | 'room' = 'sandbox';
+/** The vs CPU build timer (plan 2026-11-05 §2): 30 s; at 0 Train starts itself with the design as it stands. */
+const startBuildTimer = () => startPhaseTimer({ label: 'Build time', seconds: 30, red: 10, host: document.querySelector<HTMLElement>('.app .rulebar')!, onZero: timeUp });
+const stopBuildTimer = stopPhaseTimer;
 /** The sandbox designer: from the title, and back from training or driving. */
-function sandbox() { where = 'sandbox'; setDesignerMode('sandbox'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
-/** vs CPU (and a room's Build and train): the designer in match mode, with the lobby's building music (sound plan). */
-function cpu(w: 'cpu' | 'room' = 'cpu') { where = w; setDesignerMode('match'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); }
+function sandbox() { stopBuildTimer(); where = 'sandbox'; setDesignerMode('sandbox'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
+/** vs CPU (and a room's Build and train): the designer in match mode, with the lobby's building music (sound plan).
+ * Each vs CPU build gets the 30 s build timer (at 0, Train starts itself); a room's build waits for the host instead. */
+function cpu(w: 'cpu' | 'room' = 'cpu') {
+  where = w; setDesignerMode('match');
+  if (w === 'cpu') startBuildTimer(); else stopBuildTimer();
+  showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build');
+}
 /** The room's lobby (or, if the host removed you meanwhile, Multiplayer's code screen saying so). */
-function lobby() { where = 'room'; showLobby(true); setMode('build'); }
+function lobby() { stopBuildTimer(); where = 'room'; showLobby(true); setMode('build'); }
 const back = () => (where === 'room' ? lobby() : where === 'cpu' ? cpu() : sandbox());
-function title() { showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('lounge'); }
+function title() { stopBuildTimer(); showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('lounge'); }
 
 function train(s: Saved, generations: number, temperature = 0) {
+  stopBuildTimer();
   setMode('race');
   showTitle(false);
   setActive(false);
@@ -50,6 +60,7 @@ function train(s: Saved, generations: number, temperature = 0) {
 
 /** vs CPU: race the brain; Race again draws a new race. */
 function race(s: Saved, seed = firstSeed()) {
+  stopBuildTimer();
   showTitle(false);
   setActive(false);
   app!.hidden = true;
@@ -57,6 +68,7 @@ function race(s: Saved, seed = firstSeed()) {
 }
 
 function drive(s: Saved) {
+  stopBuildTimer();
   showTitle(false);
   setActive(false);
   app!.hidden = true;
@@ -68,7 +80,7 @@ initAudio();
 start({ onTrain: train });
 startTitle({ onSandbox: sandbox, onCpu: () => cpu() });
 startLobby({
-  show: (on) => { if (on) { setActive(false); app!.hidden = true; showTitle(false); setMode('build'); } else title(); },
+  show: (on) => { if (on) { stopBuildTimer(); setActive(false); app!.hidden = true; showTitle(false); setMode('build'); } else title(); },
   build: () => cpu('room'),
   race: (setup) => {
     showTitle(false); setActive(false); app!.hidden = true;

@@ -26,3 +26,20 @@ latest dev build). please make that extremely obvious, and count down from 30."
   begins (title → vs CPU, and "Race again" when it goes back to building). Back to the title cancels it.
 - Multiplayer and Sandbox: no timer (Sandbox is untimed by ruling; Multiplayer waits for the host). Coordinator call,
   open to change.
+
+## Built (2026-11-05)
+- §1: the selected cell's "−" (`designer.ts` `removal()`, shared with the inspector's bins and the Delete/Backspace
+  key). Radius 0.45× the cell (≥ 5.5 px for neurons), drawn right after its cell so it is the next thing focused; touch
+  target 33 px on screen at least. Enter or Space now presses any focused board button, and focus survives the redraw.
+- §2: built as a reusable phase countdown, `src/client/ui/phaseTimer.ts` (`startPhaseTimer({ label, seconds, red,
+  pulse, upText, host, onZero })`, coordinator 2026-11-05: the rounds stage uses it for every phase). vs CPU's build
+  timer is "Build time", 30 s, hosted in the rule strip (which grows to 48 px while it shows, so it sits top centre
+  between the top bar and the board). Tick: `sfx.ts` `tick()`, a short C♯6 on the effects bus. "Time's up" shows for
+  0.8 s, then Train starts. Check hook: `window.__phase` (state, label, text, red, pulse, `skipTo(s)`).
+- Calls made: the timer starts afresh every time the vs CPU designer opens, including Back from training or from the
+  race (each is a new build); "Race again" still races at once (it doesn't go back to building). If time runs out on a
+  design past the limit (a sandbox brain brought into vs CPU), it says why and Train starts by itself as soon as an
+  edit brings the design within.
+- Checked: check:workbench (the "−" only on a selected removable cell, its place and size, it and Delete remove the
+  cell) and check:race (timer at 30 in yellow top centre, red at 10, pulse and tick at 5, "Time's up", Train starts
+  itself; Train pressed earlier and the title cancel it), plus types, purity, unit, check:audio and check:title.

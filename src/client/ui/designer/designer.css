@@ -107,5 +107,18 @@ dialog#confirm { width: 260px; }
 .btn.sound svg { width: 16px; height: 16px; }
 .btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }
 .btn.sound[aria-pressed="false"] { color: var(--muted); }
-
-
+/* the phase countdown (ui/phaseTimer.ts; the vs CPU build timer, plan 2026-11-05): big, top centre of its host, vs CPU
+   yellow; red near the end. In the designer the rule strip grows to hold it. */
+body.timed .app { grid-template-rows: 36px 48px 1fr; }
+body.timed .rulebar { justify-content: flex-start; padding-left: 12px; }
+.ptimer { position: absolute; left: 50%; top: -1px; bottom: -1px; transform: translateX(-50%); min-width: 150px; padding: 0 14px; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--spike); color: #1d2330;
+  border-radius: 0; box-shadow: var(--shadow); font-family: var(--sans); font-variant-numeric: tabular-nums; line-height: 1; pointer-events: none; }
+.ptimer[hidden] { display: none; }
+.ptimer span { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.ptimer b { font-size: 32px; font-weight: 700; margin-top: 2px; }
+.ptimer.up b { font-size: 22px; }
+.ptimer.red { background: #d9465b; color: #fff; }
+.ptimer.pulse { animation: pt-pulse .5s ease-out; }
+@keyframes pt-pulse { 0% { transform: translateX(-50%) scale(1.14); } 100% { transform: translateX(-50%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .ptimer.pulse { animation: none; } }
