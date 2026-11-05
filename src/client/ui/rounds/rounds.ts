@@ -19,7 +19,7 @@ import { hideArena } from '../arena';
 import { starterGenome, type Saved } from '../designer/store';
 import { startPhaseTimer, stopPhaseTimer } from '../phaseTimer';
 import { fmtKm, leaveRace, newRaceSeed, openRace, roundSetup, tableRows } from '../race/raceView';
-import { leaveTraining, openTraining, stopTraining } from '../training/trainingView';
+import { leaveTraining, openTraining, prewarmTraining, stopTraining } from '../training/trainingView';
 import { zeroGenome } from '../../../common/sim/brain';
 
 const R = CONFIG.rounds;
@@ -129,7 +129,7 @@ export const inMatch = (): boolean => M !== null && M.phase !== 'over';
 export function abortMatch(): void {
   stopPhaseTimer();
   if (!M) return;
-  if (M.phase === 'train') leaveTraining();
+  if (M.phase === 'train' || M.phase === 'build') leaveTraining();
   if (M.phase === 'race' || M.phase === 'standings' || M.phase === 'over') leaveRace();
   M = null;
 }
@@ -139,13 +139,19 @@ function build(): void {
   m.phase = 'build';
   V.build(m.genome, R.budgets[m.round - 1]);
   startPhaseTimer({ label: label(m, 'Build'), seconds: R.build[m.round - 1], red: 10, host: designerHost(), onZero: () => V.timeUp() });
+  // the round's training view gets ready while you build (workers, scene, shaders), once the designer is up
+  setTimeout(() => { if (M === m && m.phase === 'build') prewarmTraining({ n: m.round, seed: m.trainSeed }); }, WARM_AFTER_MS);
 }
+
+/** How long after a build phase starts its round's training view starts getting ready (ms). */
+export const WARM_AFTER_MS = 600;
 
 /** The designer's Train (pressed, or the build timer at 0): 10 s of training from the brain as built. */
 export function matchTrain(saved: Saved): void {
   const m = M;
   if (!m || m.phase !== 'build') return;
   stopPhaseTimer();
+  const startedAt = performance.now();
   m.phase = 'train'; m.genome = saved.genome; m.saved = saved; m.trained = null;
   V.away();
   let up = false;
@@ -153,7 +159,7 @@ export function matchTrain(saved: Saved): void {
   // at 0 training stops where it has got to and keeps the best so far, so a slow device still races on time
   startPhaseTimer({ label: label(m, 'Train'), seconds: R.train, red: 5, host: camHost(), onZero: () => { up = true; if (!m.trained) stopTraining(); go(); } });
   const done = (next: Saved) => { if (M !== m || m.phase !== 'train') return; m.trained = next.genome; go(); };
-  openTraining(saved, 0, 0, { save: () => undefined, back: () => undefined, drive: () => undefined, round: { n: m.round, seed: m.trainSeed, done } }, true)
+  openTraining(saved, 0, 0, { save: () => undefined, back: () => undefined, drive: () => undefined, round: { n: m.round, seed: m.trainSeed, done, startedAt } }, true)
     .catch((e) => { console.error(e); done(saved); });
 }
 

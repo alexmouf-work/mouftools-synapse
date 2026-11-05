@@ -20,6 +20,10 @@ export class BrowserPool implements Executor {
   /** Set before a run to get the picked policies' track-0 paths in lastPaths (display only; results are unaffected). */
   record: ((count: number) => readonly number[]) | null = null;
   lastPaths: Paths | null = null;
+  /** Called once every worker has set up (for the training view's timeline). */
+  onReady: (() => void) | null = null;
+  /** Every worker has set up. */
+  isReady = false;
   private readonly pending = new Set<(e: Error) => void>();
   private aborted = false;
   constructor(readonly workers: number) {
@@ -43,6 +47,8 @@ export class BrowserPool implements Executor {
   async setup(s: EpisodeSetup): Promise<void> {
     this.nW = paramCount(s.spec); this.nT = s.trackSeeds.length; this.samples = pathSamples(s.episodeTicks);
     await Promise.all(this.ws.map((w) => this.ask(w, { type: 'setup', setup: s })));
+    this.isReady = true;
+    this.onReady?.();
   }
   async run(w: Float64Array, count: number): Promise<Float64Array> {
     const parts = splitEven(count, this.ws.length);

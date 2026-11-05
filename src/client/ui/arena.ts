@@ -6,6 +6,8 @@ import { stopRacingSounds } from '../audio/racing';
 
 let stage: Stage | null = null;
 let failed = false;
+/** The stage being made (one at a time: a warm-up and a view can ask at once). */
+let making: Promise<Stage | null> | null = null;
 
 const el = (id: string) => {
   const e = document.getElementById(id);
@@ -14,8 +16,12 @@ const el = (id: string) => {
 };
 
 /** The shared stage, or null if WebGL is unavailable. */
-export async function getStage(): Promise<Stage | null> {
-  if (stage || failed) return stage;
+export function getStage(): Promise<Stage | null> {
+  if (stage || failed) return Promise.resolve(stage);
+  return (making ??= makeStage().finally(() => { making = null; }));
+}
+
+async function makeStage(): Promise<Stage | null> {
   const q = new URLSearchParams(location.search).get('quality');
   try {
     const { Stage } = await import('../render/stage');

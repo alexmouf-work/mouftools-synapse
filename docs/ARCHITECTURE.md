@@ -328,8 +328,21 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   `runPhase` returns the best agent evaluated so far (`bestSoFar`; for evolution the last generation's champion,
   since elites keep their score), which is saved like a finished run (`{seed, phases + 1}`), with Drive and Keep
   training; a Stop before any generation finished keeps the brain as it was. While training, drawing is paced so it
-  cannot starve the pool: a frame costing > 8 ms is kept to a fifth of the main thread, and a software rasteriser
-  (which renders on the workers' CPU cores) draws 4 frames a second.
+  cannot starve the pool: when the typical frame (the median of the last 7; the first 3 always draw) costs > 8 ms,
+  drawing is kept to about a fifth of the main thread, waiting at most 1 s between frames, and a software rasteriser
+  (which renders on the workers' CPU cores) draws 4 frames a second. Pacing on the last frame alone used to stall
+  the view for five times a one-off spike (a 2 s first-frame shader compile left a round's view blank for 10 s).
+  **Ready at once** (principal 2026-11-05, "it takes ages for anything to load in"): a round's build phase calls
+  `prewarmTraining` 0.6 s in (`rounds.ts`, `roomRounds.ts`): it starts the worker pool, makes the stage, builds the
+  round's training track 0 (known from the match's training seed) and compiles its shaders (`Stage.warm`:
+  `compileAsync`, parallel where the browser allows, then one draw for the passes' and the shadow map's). The train
+  phase takes that pool and keeps that scene (`Stage.setTrack` skips a training track already built); without a
+  warm-up the workers still start before the scene is built, and generations that finish first wait for it. The
+  ghost mesh has its per-instance colours from the start, so the first ghosts draw with the shader compiled ahead.
+  `__training.timeline` records each milestone in ms from the phase start (stage, track, scene, frame1 and its
+  cost, workers, ready, gen1, ghosts, dots, brain). Measured at 1920×1080 on SwiftShader, forced to the high-quality
+  path a desktop GPU takes (?quality=high): ghosts at 4.5 s (dev) / 4.8 s (built) before, 0.4–0.7 s after; on the
+  low path 1.9 s before, 0.4–0.8 s after. Display only: no result changes.
 - `render/` — the 3-D port of `reference/look-mockup.html`'s core: `stage.ts` (renderer, ACES, bloom, sky dome, fog,
   sun and shadows, the training camera: a chase angle ~44 m up, following the highlighted car closely (it moves
   at 12×; a new generation cuts instead of flying across), or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `drive.ts`
@@ -491,8 +504,9 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   ten cars on the grid where `gridCar` puts them, the players in grid order, the countdown, race hash and ranking =
   Node `runRace`, every car where Node has it mid-race, ten map dots, standings, render smoke, bloom audits on the grid
   and mid-race, Skip → the results table = Node, Race again (new seed), Back (still vs CPU); a race you win (the
-  strongest CPU brain as yours) plays the winner music as you cross the line; 844×390 layout; screenshots to
-  `out/race/`.
+  strongest CPU brain as yours) plays the winner music as you cross the line; 844×390 layout; a round's training view
+  at 1920×1080 shows its ghosts, map dots and brain card within 2 s of the train phase (readied in the build);
+  screenshots to `out/race/`.
 - `scripts/checks/standin.ts` — a local stand-in for the Supabase project: the same functions as `supabase/schema.sql`
   behind the same PostgREST shape, in memory, checking the anon key (with T2's settings, max players and host handover).
 - T2 additions to the checks: check:workbench (the Track picker), check:race (vs CPU's settings screen and the map

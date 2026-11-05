@@ -91,6 +91,8 @@ export class Swarm {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
+    // the per-instance colours exist from the start: the shader the first ghosts draw with is the one compiled ahead
+    this.mesh.setColorAt(0, new THREE.Color(1, 1, 1));
     car.car.visible = false;
     car.car.rotation.order = 'YXZ';
   }

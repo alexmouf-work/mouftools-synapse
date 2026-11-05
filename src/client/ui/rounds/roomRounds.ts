@@ -26,8 +26,8 @@ import { hideArena, showArena } from '../arena';
 import type { Saved } from '../designer/store';
 import { onPhaseSkip, retimePhase, startPhaseTimer, stopPhaseTimer, type PhaseOptions } from '../phaseTimer';
 import { leaveRace, newRaceSeed, openRace } from '../race/raceView';
-import { leaveTraining, openTraining, stopTraining } from '../training/trainingView';
-import { matchStarter, ordinal, showStandings } from './rounds';
+import { leaveTraining, openTraining, prewarmTraining, stopTraining } from '../training/trainingView';
+import { matchStarter, ordinal, showStandings, WARM_AFTER_MS } from './rounds';
 
 const R = CONFIG.rounds;
 const TICK_MS = 100;
@@ -175,6 +175,8 @@ function enterRound(m: RM, n: number): void {
   m.step = 'build';
   V.build(m.genome, R.budgets[n - 1]);
   countdown(m, t.train, { label: label(n, 'Build'), red: 10, host: designerHost() });
+  // the round's training view gets ready while you build (workers, scene, shaders)
+  setTimeout(() => { if (M === m && m.round === n && m.step === 'build') prewarmTraining({ n, seed: m.trainSeed }); }, WARM_AFTER_MS);
 }
 
 /** The designer's Train (the build timer at 0): training to the end of the train phase, from fresh weights. */

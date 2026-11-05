@@ -11,7 +11,9 @@
 // - Train: no popup and no buttons, "Round 1 of 5 · Train" from 10 (red under 5), the fixed budget (a small ?T= here)
 //   from the starting brain: the trained brain = Node's run of the same design, seed and budget; the generation shows
 //   in the timer as "gen n" (nothing overlaps the timer); the race starts when the 20 s are up. Without ?T= a round
-//   spends the round's budget, T = the full-skill CPU's (all of it; generations and time reported); at 0 a run still
+//   spends the round's budget, T = the full-skill CPU's (all of it; generations and time reported), and at 1920×1080
+//   its view (ghosts, map dots, brain card) is up within VIEW_MS (2 s) of the train phase, readied during the build
+//   (each milestone's time reported, screenshots 1 s and 3 s in); at 0 a run still
 //   going stops where it got to and keeps the best so far. No Train or Skip button anywhere in vs CPU.
 // - Race: ten cars on the grid two by two behind the line where the sim puts them (= Node gridCar), listed in grid
 //   order, the countdown 5…1 Go, then "Round 1 of 5 · Race" from 30; the race hash, the ranking by signed distance and
@@ -51,6 +53,9 @@ const OUT = 'out/race';
 const T = 300_000;
 const SEED = 7;
 const MATCH = 5;
+/** The longest a round's training view may take to show its ghosts, map dots and brain card (ms from the train phase's start;
+ * about 0.4–0.9 s here on SwiftShader, so twice the principal's "about 1 s" leaves room for a slow run). */
+const VIEW_MS = 2000;
 const HZ = CONFIG.tick.hz, R = CONFIG.rounds;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'];
@@ -417,21 +422,43 @@ async function main() {
     const net3 = compile(g3), dirs = [net3.tune[0], net3.tune[4]];
     check(g3.spec.senses.boundary === 2 && g3.w.every((x) => x === 0) && dirs[0] === -30 && dirs[1] === 30, `an upgrade (another wall cell): still untrained; the wall cells re-spread to the table for two (${dirs.join('°, ')}°)`);
     await page.screenshot({ path: `${OUT}/build-round2.png` });
+    // coming back to the designer: the diagram (and the 3-D symbols drawn at its positions) fits the board again
+    await page.waitForTimeout(400);
+    const fitB2 = await page.evaluate(`(() => { const b = document.getElementById('board'); return { vb: document.getElementById('net').getAttribute('viewBox'), size: '0 0 ' + b.clientWidth + ' ' + b.clientHeight }; })()`) as { vb: string; size: string };
+    check(fitB2.vb === fitB2.size, `back in the designer for round 2, the diagram fits the board (viewBox ${fitB2.vb}, board ${fitB2.size})`);
     await page.click('#toTitle');
     await page.click('#lvGo');
     check(await page.locator('#title').isVisible() && await page.evaluate(() => window.__phase!.state === 'off' && window.__match!.phase === 'none'), 'Main menu → Leave: back to the title, the match and its timer gone');
     await page.context().close();
 
     // 5b. without ?T= a round trains on the round's budget: T = the full-skill CPU's (CONFIG.rounds.T), all of it if time allows
-    page = await open(`?seed=${SEED}&race=${MATCH}&starter=default`);
+    //     (at 1920×1080). The view is up at once (principal 2026-11-05, "it takes ages for anything to load in"): the
+    //     build phase readies it (workers, training track 0's scene, shaders), and the ghosts, the map's dots and the
+    //     brain card all show within VIEW_MS of the train phase's start
+    page = await open(`?seed=${SEED}&race=${MATCH}&starter=default`, 1920, 1080);
     await startCpu(page);
-    await page.evaluate(() => window.__phase!.skipTo(0.1));
-    await page.waitForFunction(() => window.__training?.state === 'running', null, { timeout: 30_000 });
+    const warmed = await page.waitForFunction(() => window.__trainWarm?.track != null, null, { timeout: 60_000 }).then(() => true, () => false);
+    await page.evaluate(() => window.__phase!.skipTo(0.05));
+    await page.waitForFunction(() => window.__match?.phase === 'train', null, { timeout: 15_000, polling: 20 });
+    const tTrain = Date.now();
+    await page.waitForFunction(() => { const t = window.__training?.timeline; return !!t && t.ghosts !== undefined && t.dots !== undefined && t.brain !== undefined; }, null, { timeout: 30_000, polling: 50 }).catch(() => undefined);
+    const waitTo = async (ms: number) => { const el = Date.now() - tTrain; if (el < ms) await page.waitForTimeout(ms - el); };
+    await waitTo(1000);
+    await page.screenshot({ path: `${OUT}/train-1s.png` });
+    await waitTo(3000);
+    await page.screenshot({ path: `${OUT}/train-3s.png` });
+    // (SwiftShader screenshots at 1920×1080 take seconds of the CPU the workers use: hold the round's timer so the
+    // whole budget is still spent and checked below)
+    await page.evaluate(() => window.__phase?.state === 'running' && window.__phase.skipTo(600));
+    const tl = await page.evaluate(() => ({ ...window.__training!.timeline, track0: window.__training!.tracks[0], warm: window.__trainWarm!.track }));
+    const fmt = (k: keyof typeof tl) => `${k} ${tl[k] ?? '–'}`;
+    check(warmed && tl.warm === tl.track0 && [tl.ghosts, tl.dots, tl.brain].every((x) => x !== undefined && x <= VIEW_MS),
+      `the training view is up within ${VIEW_MS} ms of the train phase (ms: ${(['workers', 'stage', 'scene', 'frame1', 'frame1Ms', 'ready', 'gen1', 'ghosts', 'dots', 'brain'] as const).map(fmt).join(', ')}); its track's scene and shaders were readied in the build phase (track ${tl.warm})`);
     const real0 = await page.evaluate(() => ({ T: window.__training!.T, gens: window.__training!.generations }));
-    await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
-    const real = await page.evaluate(() => ({ gen: window.__training!.gen, used: window.__training!.ticksUsed, ms: window.__training!.ms ?? 0, workers: window.__training!.workers }));
-    check(real0.T === CONFIG.rounds.T && real0.T === rounds[0][8].budget && real.used >= 0.97 * real0.T && real.gen >= 50,
-      `a round's training (no ?T): T ${real0.T.toLocaleString('en')} = the full-skill CPU's budget; ${real.gen} generations (estimate ${real0.gens}), ${real.used.toLocaleString('en')} car-ticks, ${(real.ms / 1000).toFixed(1)} s on ${real.workers} workers here (SwiftShader container)`);
+    await page.waitForFunction(() => window.__training?.state === 'done' || window.__training?.state === 'stopped', null, { timeout: 300_000 });
+    const real = await page.evaluate(() => ({ state: window.__training!.state, gen: window.__training!.gen, used: window.__training!.ticksUsed, ms: window.__training!.ms ?? 0, workers: window.__training!.workers }));
+    check(real.state === 'done' && real0.T === CONFIG.rounds.T && real0.T === rounds[0][8].budget && real.used >= 0.97 * real0.T && real.gen >= 50,
+      `a round's training (no ?T): T ${real0.T.toLocaleString('en')} = the full-skill CPU's budget; ${real.state}: ${real.gen} generations (estimate ${real0.gens}), ${real.used.toLocaleString('en')} car-ticks, ${(real.ms / 1000).toFixed(1)} s on ${real.workers} workers here (SwiftShader container)`);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/train-full-T.png` });
     await page.context().close();

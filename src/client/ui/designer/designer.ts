@@ -539,10 +539,19 @@ function fit(): void {
 
 // ---- public ----
 export const currentSaved = (): Saved => W.saved;
+let pend = 0;
+/** Re-lay out (next frame) if the board's size differs from the one the diagram was laid out at. */
+function relayoutIfStale(): void {
+  cancelAnimationFrame(pend);
+  pend = requestAnimationFrame(() => {
+    const b = board();
+    if (active && b.clientWidth && (b.clientWidth !== box.w || b.clientHeight !== box.h)) render();
+  });
+}
 export function setActive(on: boolean): void {
   active = on;
   trainWhenValid = false;
-  if (on) { fit(); buildTray(); buildTrainers(); render(); }
+  if (on) { fit(); buildTray(); buildTrainers(); render(); relayoutIfStale(); setTimeout(relayoutIfStale, 250); }
 }
 /** vs CPU opens the designer in match mode, Sandbox in sandbox mode. A brain past the limit says so on entering. */
 export function setDesignerMode(m: Mode, limit?: number): void {
@@ -601,14 +610,10 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
   // notice, the inspector's content). The diagram's positions are in board pixels and the 3-D symbols are drawn at
   // them, so a stale layout put the symbols off their circles until the next edit. Re-lay out whenever the board's
   // size changes.
-  let seen = '', pend = 0;
-  new ResizeObserver(() => {
-    const b = board(), k = `${b.clientWidth}x${b.clientHeight}`;
-    if (k === seen || !b.clientWidth) return;
-    seen = k;
-    cancelAnimationFrame(pend);
-    pend = requestAnimationFrame(() => { if (active) render(); });
-  }).observe(board());
+  // Compare with the size the last layout used, not the last size observed: coming back to the designer, it lays out
+  // before the round timer grows the strip, and the board then returns to a size it had before (a stale "seen" size
+  // skipped that re-layout, so the symbols sat off their circles again).
+  new ResizeObserver(() => relayoutIfStale()).observe(board());
   // keyboard: Enter or Space presses a focused board button; Delete or Backspace removes the selected cell (as its "−")
   svg().addEventListener('keydown', (ev) => {
     const e = ev as KeyboardEvent;

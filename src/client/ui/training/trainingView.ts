@@ -49,7 +49,7 @@ export interface TrainingHooks {
    * match's training seed, no buttons (the round's timer moves on); `done` gets the trained brain (or the brain as it
    * was, if training failed or nothing was evaluated).
    */
-  round?: { n: number; seed: number; done(s: Saved): void };
+  round?: { n: number; seed: number; done(s: Saved): void; startedAt?: number };
 }
 
 export interface TrainingStatus {
@@ -85,6 +85,13 @@ export interface TrainingStatus {
   bloomAudit?: (mask?: boolean) => { over: number; max: number; mask?: string };
   /** Seek what is on screen to t s, snap the camera, audit that frame (deterministic). */
   auditAt?: (t: number) => { over: number; max: number; gen: number; finale: boolean };
+  /** When each part of the view first appeared (ms from the phase start; the round's Train, or opening the view). */
+  timeline: Timeline;
+}
+/** Milestones of a run's view, in ms from its start (absent = not yet). */
+export interface Timeline {
+  stage?: number; track?: number; scene?: number; frame1?: number; frame1Ms?: number; workers?: number; ready?: number; gen1?: number;
+  ghosts?: number; dots?: number; brain?: number;
 }
 declare global { interface Window { __training?: TrainingStatus } }
 
@@ -136,6 +143,10 @@ const engine = new Engine(0.35);
 /** Prepared brains: the newest offered generation's and the one on screen (bounded: older ones are dropped). */
 const lives = new Map<number, Live>();
 let champLive: Live | null = null;
+/** The run's milestones (for the checks) and their origin (performance.now() at the phase start). */
+let timeline: Timeline = {};
+let tOrigin = 0;
+const markT = (k: keyof Timeline) => { if (timeline[k] === undefined) timeline[k] = Math.round(performance.now() - tOrigin); };
 
 /**
  * Open the view and train the given brain; resolves when the run ends (done or stopped). `match` (vs CPU, B7): the
@@ -145,6 +156,10 @@ let champLive: Live | null = null;
 export async function openTraining(saved: Saved, generations: number, temperature: number, hooks: TrainingHooks, match = false): Promise<void> {
   if (running) return;
   running = true;
+  const tl: Timeline = {};
+  tOrigin = hooks.round?.startedAt ?? performance.now();
+  timeline = tl;
+  const mark = (k: keyof Timeline) => { if (tl[k] === undefined) tl[k] = Math.round(performance.now() - tOrigin); };
   stopAsked = false;
   const id = ++runId, round = hooks.round;
   const p = params();
@@ -176,61 +191,80 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   $('tvBig').textContent = '';
   $('tvCars').textContent = '';
 
-  // the scene (optional: training runs without WebGL)
-  stage = await getStage();
-  const webgl = stage !== null;
-  track0 = generateTrack(tracks[0]);
-  if (stage) await stage.setTrack(track0, 'train');
-  map ??= new TrackMap($('tvMap') as HTMLCanvasElement);
-  map.setTrack(track0);
+  // The workers start first, so their start-up overlaps the scene's (ruling 2026-11-05: the view is up within about a
+  // second of the train phase); a round's build phase has usually started them already (prewarmTraining). Generations
+  // that finish before the scene is ready wait for it (only the newest is shown).
+  const thePool = takeWarmPool(workers) ?? new BrowserPool(workers);
+  pool = thePool;
+  mark('workers');
+  if (thePool.isReady) mark('ready'); else thePool.onReady = () => mark('ready');
   const K = Math.min(p.ghosts ?? ghostsFor(), MAX_GHOSTS);
   const pop = CONFIG.train.population;
-  const status: TrainingStatus = {
-    state: 'running', seed, phase, tracks, start, workers, T, temperature: temp, generations, gen: 0, ticksUsed: 0, shownGen: 0, finale: false,
+  const gens: GenStat[] = [];
+  let status: TrainingStatus | null = null, early: { paths: Paths; gen: number } | null = null, noGL = false;
+  const show = (st: TrainingStatus, paths: Paths, gen: number) => {
+    if (!stage) return;
+    st.offered.push(gen);
+    stage.swarm.offer(paths, gen, generations > 1 ? (gen - 1) / (generations - 1) : 0);
+    setTimeout(() => prepare(paths, gen, genome, st), 0);
+  };
+  const run = runPhase(thePool, genome.spec, seed, {
+    T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, now: () => performance.now(),
+    stepTicks: (env) => env.worstCase(pop),
+    // every generation records its seeded handful (display only; not when there is no 3-D view)
+    beforeStep: () => { if (!noGL) { const g = gens.length + 1; thePool.record = (count) => showPick(seed, phase, g, K, count); } },
+    onEvent: (e) => {
+      if (e.type !== 'generation') return;
+      mark('gen1');
+      gens.push({ gen: e.gen, best: e.best, mean: e.mean, ticksUsed: e.ticksUsed, champion: e.championW });
+      const paths = thePool.lastPaths;
+      thePool.lastPaths = null;
+      generations = Math.max(generations, e.gen); // match: the budget's estimate, never below what ran
+      if (paths && paths.count) { if (status) show(status, paths, e.gen); else early = { paths, gen: e.gen }; }
+      if (status) { status.gen = e.gen; status.ticksUsed = e.ticksUsed; }
+      $('tvGen').textContent = `gen ${e.gen} of ${generations}`;
+      drawGraph(gens, generations);
+    },
+    stop: () => stopAsked,
+  });
+  run.catch(() => undefined); // awaited below; this only keeps an early failure from going unhandled meanwhile
+
+  // the scene (optional: training runs without WebGL); built ahead of time in a round's build phase
+  await warming;
+  stage = await getStage();
+  mark('stage');
+  const webgl = stage !== null;
+  noGL = !webgl;
+  track0 = generateTrack(tracks[0]);
+  mark('track');
+  if (stage) await stage.setTrack(track0, 'train');
+  mark('scene');
+  map ??= new TrackMap($('tvMap') as HTMLCanvasElement);
+  map.setTrack(track0);
+  const last = gens[gens.length - 1];
+  const st: TrainingStatus = status = {
+    state: 'running', seed, phase, tracks, start, workers, T, temperature: temp, generations, gen: last?.gen ?? 0, ticksUsed: last?.ticksUsed ?? 0, shownGen: 0, finale: false,
     shown: stage ? stage.swarm.log : [], ghosts: K, ghostCapacity: stage?.swarm.capacity ?? 0, offered: [], prepMs: 0, switchFrameMs: 0, steadyFrameMs: 0, steadyP95Ms: 0, switchFrames: [],
     flags: stage?.finishFlags ?? 0, frames: 0, frameMs: 0, webgl, quality: stage?.quality,
     probe: stage ? () => (stage as Stage).probe() : undefined, bloomAudit: stage ? (m?: boolean) => (stage as Stage).bloomAudit(m) : undefined,
-    auditAt: stage ? (t: number) => { const st = stage as Stage; const a = st.auditTrainAt(t); return { ...a, gen: st.swarm.shownGen, finale: st.swarm.finale }; } : undefined,
+    auditAt: stage ? (t: number) => { const s = stage as Stage; const a = s.auditTrainAt(t); return { ...a, gen: s.swarm.shownGen, finale: s.swarm.finale }; } : undefined,
+    timeline: tl,
   };
-  window.__training = status;
-  const gens: GenStat[] = [];
+  window.__training = st;
   drawGraph(gens, generations);
-  loop();
+  if (early) { const e0: { paths: Paths; gen: number } = early; early = null; show(st, e0.paths, e0.gen); }
+  if (id === runId) loop();
 
-  pool = new BrowserPool(workers);
-  const thePool = pool;
   let result: PhaseResult;
   try {
-    result = await runPhase(thePool, genome.spec, seed, {
-      T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, now: () => performance.now(),
-      stepTicks: (env) => env.worstCase(pop),
-      // every generation records its seeded handful (display only)
-      beforeStep: () => { if (stage) { const g = gens.length + 1; thePool.record = (count) => showPick(seed, phase, g, K, count); } },
-      onEvent: (e) => {
-        if (e.type !== 'generation') return;
-        gens.push({ gen: e.gen, best: e.best, mean: e.mean, ticksUsed: e.ticksUsed, champion: e.championW });
-        const paths = thePool.lastPaths;
-        thePool.lastPaths = null;
-        if (stage && paths && paths.count) {
-          status.offered.push(e.gen);
-          const f = generations > 1 ? (e.gen - 1) / (generations - 1) : 0;
-          stage.swarm.offer(paths, e.gen, f);
-          setTimeout(() => prepare(paths, e.gen, genome, status), 0);
-        }
-        status.gen = e.gen; status.ticksUsed = e.ticksUsed;
-        generations = Math.max(generations, e.gen); // match: the budget's estimate, never below what ran
-        $('tvGen').textContent = `gen ${e.gen} of ${generations}`;
-        drawGraph(gens, generations);
-      },
-      stop: () => stopAsked,
-    });
+    result = await run;
   } catch (e) {
     await thePool.close();
     running = false;
     if (id !== runId) return; // left (Main menu) meanwhile
     note('Training failed.');
     setButtons('stopped');
-    status.state = 'stopped';
+    st.state = 'stopped';
     round?.done(saved);
     throw e;
   }
@@ -240,7 +274,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   if (id !== runId) return; // left (Main menu) meanwhile: nothing is saved
   const evaluated = result.gens.length;
   if (result.stopped && evaluated === 0) {
-    status.state = 'stopped';
+    st.state = 'stopped';
     note('Stopped before the first generation finished: the brain keeps the weights it had.');
     stage?.swarm.finish(null);
     setButtons('stopped');
@@ -249,11 +283,11 @@ export async function openTraining(saved: Saved, generations: number, temperatur
     // done, or stopped: the best agent evaluated so far becomes the brain, exactly as at the generation limit
     const next: Saved = { ...saved, genome: result.final, train: { seed, phases: phase + 1, temps: [...saved.train.temps, temp] } };
     hooks.save(next);
-    status.state = result.stopped ? 'stopped' : 'done';
-    status.savedOnStop = result.stopped || undefined;
-    status.hash = result.hash;
-    status.genome = genomeHash(result.final);
-    status.ms = result.trainMs;
+    st.state = result.stopped ? 'stopped' : 'done';
+    st.savedOnStop = result.stopped || undefined;
+    st.hash = result.hash;
+    st.genome = genomeHash(result.final);
+    st.ms = result.trainMs;
     if (stage && track0) {
       const best = result.gens.reduce((b, g, i, a) => (g.best > a[b].best ? i : b), 0);
       const lap = championLap(result.final, track0, result.gens[best].gen);
@@ -298,6 +332,44 @@ function prepare(paths: Paths, gen: number, start: Genome, status: TrainingStatu
   status.prepMs = Math.max(status.prepMs, performance.now() - c0);
 }
 
+/** A round's warm-up (prewarmTraining): its worker pool, waiting for the round's training, and the scene's build. */
+let warmPool: BrowserPool | null = null;
+let warming: Promise<void> = Promise.resolve();
+
+/** The worker pool started ahead (if it has this many workers); it is the caller's from now on. */
+function takeWarmPool(workers: number): BrowserPool | null {
+  const w = warmPool;
+  warmPool = null;
+  if (w && w.workers === workers) return w;
+  void w?.close();
+  return null;
+}
+
+/**
+ * Make a round's training view ready during its build phase (ruling 2026-11-05: the view is up within about a second
+ * of the train phase starting): start the worker pool, make the 3-D stage, build training track 0's scene (the round's
+ * tracks follow from the match's training seed) and compile its shaders. Display only: nothing here changes a result.
+ */
+export function prewarmTraining(round: { n: number; seed: number }): void {
+  if (running) return;
+  const p = params();
+  const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
+  if (!warmPool || warmPool.workers !== workers) { void warmPool?.close(); warmPool = new BrowserPool(workers); }
+  const t0 = phaseSeeds(p.seed ?? round.seed, round.n - 1).trainTracks[0];
+  warmedTrack = null;
+  warming = warming.then(async () => {
+    const st = await getStage();
+    if (!st || running) return;
+    await st.setTrack(generateTrack(t0), 'train');
+    await st.warm();
+    if (!running) warmedTrack = t0;
+  }).catch((e) => { console.warn('training: warm-up failed', e); });
+}
+/** The training track whose scene the last warm-up built and compiled (for the checks), or null. */
+let warmedTrack: number | null = null;
+declare global { interface Window { __trainWarm?: { track: number | null } } }
+Object.defineProperty(window, '__trainWarm', { get: () => ({ track: warmedTrack }) });
+
 /** The champion's 1-minute run on training track 0, replayed for display only (no experience charged). */
 function championLap(g: Genome, t: Track, gen: number) {
   const net = compile(g);
@@ -313,6 +385,8 @@ export function stopTraining(): void { if (running) { stopAsked = true; pool?.ab
 /** Leave the view now (Main menu): any run in progress is stopped and saves nothing. */
 export function leaveTraining(): void {
   runId++;
+  void warmPool?.close();
+  warmPool = null;
   if (running) { stopAsked = true; pool?.abort(); }
   cancelAnimationFrame(raf);
   raf = 0;
@@ -330,12 +404,15 @@ function close(hooks: TrainingHooks) {
   hooks.back();
 }
 
+/** While training: the wait between frames on a software rasteriser, and the longest wait otherwise (ms). */
+const LOW_WAIT_MS = 250, MAX_WAIT_MS = 1000;
+
 const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function loop() {
   cancelAnimationFrame(raf);
   let last = performance.now(), nextAt = 0, mapAt = 0, seenSwitches = 0, afterSwitch = 0;
-  const steady: number[] = [];
+  const steady: number[] = [], recent: number[] = [];
   const t0 = last;
   const tick = (now: number) => {
     raf = requestAnimationFrame(tick);
@@ -346,7 +423,9 @@ function loop() {
     if (!stage) return;
     const c0 = performance.now();
     stage.frame(dt, (now - t0) / 1000);
+    if (timeline.frame1 === undefined) { markT('frame1'); timeline.frame1Ms = Math.round(performance.now() - c0); }
     const sw = stage.swarm;
+    if (sw.shownCount > 0 || sw.finale) markT('ghosts');
     engine.set(sw.carV / CONFIG.car.wheelSpeed, sw.carTurn);
     const g = sw.shownGen, fin = sw.finale, st = window.__training;
     if (st) { st.shownGen = g; st.finale = fin; }
@@ -363,8 +442,9 @@ function loop() {
       for (let d = 0; d < nN; d++) L.rates[d] = on ? nodeRate(L.net, d, vals[d]) : 0;
       L.spikes.update(L.rates, L.every, on ? dt : 0, now / 1000);
       L.panel.draw(vals, L.rates, L.spikes, now / 1000, reduce());
+      markT('brain');
     }
-    if (map && now >= mapAt) { map.draw(sw.dots); mapAt = now + 66; }
+    if (map && now >= mapAt) { map.draw(sw.dots); mapAt = now + 66; if (sw.dots.length) markT('dots'); }
     const cost = performance.now() - c0;
     if (st) {
       st.frames++; st.frameMs = cost;
@@ -379,10 +459,15 @@ function loop() {
       else if (afterSwitch < 0) afterSwitch++;
       else if (!fin && sw.log.length >= 2) { steady.push(cost); if (steady.length > 400) steady.shift(); const so = [...steady].sort((a, b) => a - b); st.steadyFrameMs = so[so.length >> 1]; st.steadyP95Ms = so[Math.floor(so.length * 0.95)]; }
     }
-    // While training, drawing must not starve the worker pool. An expensive frame (a weak GPU) is kept to about a
+    // While training, drawing must not starve the worker pool. Expensive frames (a weak GPU) are kept to about a
     // fifth of this thread; a software rasteriser (quality low) draws on the same CPU cores the workers use, so it
-    // gets 4 frames a second.
-    nextAt = !running ? 0 : stage.quality === 'low' ? c0 + 250 : cost > 8 ? c0 + 5 * cost : 0;
+    // gets 4 frames a second. The typical frame decides (the median of the last 7; the first 3 frames always draw),
+    // and the wait is at most MAX_WAIT_MS: one slow frame (shaders compiling, a generation coming in) used to hold the
+    // next one back for five times its own cost, which after a 2 s compile left the view blank for most of a round.
+    recent.push(cost);
+    if (recent.length > 7) recent.shift();
+    const typ = recent.length < 3 ? 0 : [...recent].sort((a, b) => a - b)[recent.length >> 1];
+    nextAt = !running ? 0 : stage.quality === 'low' ? c0 + LOW_WAIT_MS : typ > 8 ? c0 + Math.min(5 * typ, MAX_WAIT_MS) : 0;
   };
   raf = requestAnimationFrame(tick);
 }

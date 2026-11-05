@@ -154,10 +154,24 @@ export class Stage {
     this.resize();
   }
 
-  /** Build the track and scenery for one view: training (swarm) or drive (stadium, car, rays). */
+  /** The training track whose scene is built (warm() may build it ahead of the train phase), or null. */
+  private trainSeed: number | null = null;
+
+  /**
+   * Build the track and scenery for one view: training (swarm) or drive (stadium, car, rays). The training view's
+   * scene for a track already built (ahead of time, by warm-up) is kept: only the swarm and the camera start afresh.
+   */
   async setTrack(t: Track, mode: 'train' | 'drive' = 'train'): Promise<void> {
+    if (mode === 'train' && this.mode === 'train' && this.trainSeed === t.seed && this.track) {
+      this.track = t;
+      this.swarm.setTrack(t);
+      this.car.car.visible = false;
+      this.snap = true;
+      return;
+    }
     if (mode === 'drive' && !this.stadTex) this.stadTex = await stadiumTextures(this.renderer.capabilities.getMaxAnisotropy());
     this.clearWorld();
+    this.trainSeed = mode === 'train' ? t.seed : null;
     this.mode = mode;
     for (const p of trackParts(t)) {
       const m = new THREE.Mesh(p.geometry, this.mats[p.key]);
@@ -203,7 +217,18 @@ export class Stage {
     });
   }
 
+  /**
+   * Compile every shader the scene as it stands will draw with, off the main thread where the browser allows it
+   * (KHR_parallel_shader_compile), then draw once so the passes' own (bloom, output) and the shadow map's are made
+   * too. Run ahead of a view (the round's build phase), so its first frame doesn't stall on compiling.
+   */
+  async warm(): Promise<void> {
+    await this.renderer.compileAsync(this.scene, this.camera);
+    this.composer.render();
+  }
+
   private clearWorld(): void {
+    this.trainSeed = null;
     for (const c of [...this.world.children]) {
       this.world.remove(c);
       if (c instanceof THREE.Mesh) c.geometry.dispose();
