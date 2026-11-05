@@ -82,3 +82,12 @@ Principal: "make sure that when the player starts a game, the brain starts off r
   fit, or the redraw finds one within a few tries.
 - The checks keep using `defaultSpec()` through their fixture hook, so goldens don't move. check:race asserts that
   two match starts give different, valid starters within the budget, and that the sandbox brain is untouched.
+- **Built (landed ahead of T2, 2026-11-05):** `rounds.ts matchStarter()`: round 1 of every vs CPU match (Play again
+  included) and a Multiplayer player's first round open on `starterGenome()` (starterSpec from a fresh crypto seed),
+  drawn again if it is over round 1's budget (never needed: a unit test finds all 2000 seeds' starters within 20%).
+  Nothing comes from the sandbox brain. **Call:** "freshly initialised" is the game's untrained new brain (every
+  weight, bias and field parameter 0, as every new brain and Reset are); there is no random-weight initialiser, and
+  since match-flow v2 each round's training starts from `zeroGenome` of the design anyway, so random weights would not
+  reach the race. The checks' hook is `?starter=default` (dev server only): check:race's Node-compared match starts
+  from `defaultSpec()` through it; check:race asserts two starts without it differ, are valid starters within the
+  budget, and leave the sandbox brain as it was. Checked: types, unit, check:race, check:multiplayer.

@@ -25,7 +25,7 @@ import type { Saved } from '../designer/store';
 import { onPhaseSkip, retimePhase, startPhaseTimer, stopPhaseTimer, type PhaseOptions } from '../phaseTimer';
 import { leaveRace, newRaceSeed, openRace } from '../race/raceView';
 import { leaveTraining, openTraining, stopTraining } from '../training/trainingView';
-import { ordinal, showStandings } from './rounds';
+import { matchStarter, ordinal, showStandings } from './rounds';
 
 const R = CONFIG.rounds;
 const TICK_MS = 100;
@@ -168,7 +168,7 @@ function enterRound(m: RM, n: number): void {
     return;
   }
   // the design carries over from the round before; the weights start fresh every round (match-flow v2 §2)
-  m.genome = m.built ? zeroGenome(m.genome.spec) : defaultGenome();
+  m.genome = m.built ? zeroGenome(m.genome.spec) : matchStarter(); // a fresh random starter for your first round
   m.built = true;
   m.step = 'build';
   V.build(m.genome, R.budgets[n - 1]);

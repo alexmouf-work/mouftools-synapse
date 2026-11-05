@@ -4,7 +4,7 @@ import { compile, evalNet, nodeRate, restRate, zeroGenome } from '../../src/comm
 import { speedAct } from '../../src/common/sim/senses';
 import { startCar, stepPhysics } from '../../src/common/sim/car';
 import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
-import { defaultSpec, type BrainSpec } from '../../src/common/sim/spec';
+import { defaultSpec, starterSpec, type BrainSpec } from '../../src/common/sim/spec';
 import { generateTrack } from '../../src/common/sim/track';
 
 const E = CONFIG.energy;
@@ -64,5 +64,17 @@ describe('energy (brain v2: speed follows firing)', () => {
     expect(cellMax(s, 1)).toBeCloseTo(E.neuron.tanh + 4 * E.wire, 12);
     expect(cellMax(s, 2)).toBeCloseTo(E.wheel, 12);
     expect(layerMax(s, 0)).toBeCloseTo(3 * (E.neuron.tanh + 4 * E.wire), 12);
+  });
+});
+
+describe('a match\'s first brain', () => {
+  it('every random starter of 2000 seeds fits round 1\'s budget (matches start on one; tracks-v2 plan)', () => {
+    let worst = 0;
+    for (let seed = 1; seed <= 2000; seed++) {
+      const sp = starterSpec(seed);
+      worst = Math.max(worst, maxLoad(sp));
+      expect(energyRefusal(sp, CONFIG.rounds.budgets[0])).toBeNull();
+    }
+    expect(worst).toBeLessThanOrEqual(CONFIG.rounds.budgets[0]);
   });
 });

@@ -1,5 +1,5 @@
 // vs CPU as a 5-round match (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): each round builds (60 s in round 1,
-// from the starting brain; 20 s after, upgrading the same design within that round's budget), trains for 20 s (the
+// from a fresh random starter; 20 s after, upgrading the same design within that round's budget), trains for 20 s (the
 // round's budget T, from fresh weights each round; at 20 s it stops where it got to), then races nine CPU players for
 // 30 s on a new track. Only the timers move it on (match-flow v2 plan, 2026-11-05): no Train, Skip or Next round. The
 // score is the total signed distance; after each race the standings show this race's distance and the running total
@@ -7,13 +7,14 @@
 // music plays if you lead. Every phase has its big countdown (ui/phaseTimer.ts) at the top centre.
 import { CONFIG } from '../../../common/config';
 import { defaultGenome } from '../../../common/sim/brain';
+import { energyRefusal } from '../../../common/sim/energy';
 import { CPU_NAMES } from '../../../common/sim/cpu';
 import type { RaceResult } from '../../../common/sim/match';
 import type { Genome } from '../../../common/sim/spec';
 import { derive } from '../../../common/rng';
 import { win } from '../../audio/music';
 import { hideArena } from '../arena';
-import type { Saved } from '../designer/store';
+import { starterGenome, type Saved } from '../designer/store';
 import { startPhaseTimer, stopPhaseTimer } from '../phaseTimer';
 import { fmtKm, leaveRace, newRaceSeed, openRace, roundSetup, tableRows } from '../race/raceView';
 import { leaveTraining, openTraining, stopTraining } from '../training/trainingView';
@@ -45,6 +46,22 @@ export function showStandings(title: string, round: number, rows: StandingsRow[]
   $('rcAgain').hidden = true; $('rcBack').hidden = true;
   $('rcResults').hidden = false;
   $('rcScroll').scrollTop = 0;
+}
+
+/**
+ * Round 1's brain in every vs CPU or Multiplayer match (tracks-v2 plan, "A fresh random brain at the start of every
+ * game"): a new random starter from a fresh crypto seed (starterSpec: 2–6 inputs, one at least a boundary vector cell,
+ * 3 tanh), untrained like every new brain, drawn again until it fits round 1's budget. Nothing comes from the sandbox
+ * brain or an earlier match. Checks: `?starter=default` (dev server only) starts from defaultSpec(), the fixture
+ * their Node runs use.
+ */
+export function matchStarter(): Genome {
+  if (import.meta.env.DEV && new URLSearchParams(location.search).get('starter') === 'default') return defaultGenome();
+  for (let k = 0; k < 64; k++) {
+    const g = starterGenome();
+    if (!energyRefusal(g.spec, R.budgets[0])) return g;
+  }
+  return defaultGenome(); // never in practice (tests/unit: every starter of 2000 seeds fits)
 }
 
 /** What the match asks of the page (main.ts routes the views). */
@@ -87,7 +104,7 @@ export function startMatch(views: MatchViews, o: { seed?: number; round?: number
   V = views;
   const round = Math.max(1, Math.min(R.count, o.round ?? 1));
   M = {
-    seed: o.seed ?? newRaceSeed(), trainSeed: newRaceSeed(), round, phase: 'build', genome: o.raceWith?.genome ?? defaultGenome(),
+    seed: o.seed ?? newRaceSeed(), trainSeed: newRaceSeed(), round, phase: 'build', genome: o.raceWith?.genome ?? matchStarter(),
     saved: o.raceWith ?? null, trained: null, dists: [], total: NAMES.map(() => 0), hash: [],
   };
   if (o.raceWith) { M.trained = o.raceWith.genome; V.away(); race(); } else build();

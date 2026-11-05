@@ -30,6 +30,7 @@ import cpuData from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
 import { compile, defaultGenome, genomeHash, zeroGenome } from '../../src/common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
+import { energyRefusal } from '../../src/common/sim/energy';
 import { gridCar, raceTrackSeed, recordCar, ROUND_RACE, runRace } from '../../src/common/sim/match';
 import { Runner } from '../../src/common/sim/race';
 import { derive } from '../../src/common/rng';
@@ -38,7 +39,7 @@ import { generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { runPhase } from '../../src/common/train/phase';
 import { NO_TRAINING, SAVE_KEY, serialize } from '../../src/client/ui/designer/store';
-import { fixtureBrain, STANDINGS_LAYOUT, standingsClear, type StandingsLayout } from './fixture';
+import { fixtureBrain, isStarter, STANDINGS_LAYOUT, standingsClear, type StandingsLayout } from './fixture';
 
 const OUT = 'out/race';
 const T = 300_000;
@@ -126,8 +127,27 @@ async function main() {
   const standingsRows = (page: Page) => page.$$eval('#rcRows tr', (trs) => trs.map((t) => [...t.querySelectorAll('td')].map((d) => d.textContent ?? '')));
 
   try {
+    // 0. every match starts on a fresh random brain (tracks-v2 plan): two starts, different valid starters within
+    //    round 1's budget; the sandbox brain stays as it was
+    {
+      const p0 = await open(`?race=${MATCH}`);
+      const before = await p0.evaluate((k) => localStorage.getItem(k), SAVE_KEY);
+      const starts: Genome[] = [];
+      for (let k = 0; k < 4 && (starts.length < 2 || JSON.stringify(starts[0].spec) === JSON.stringify(starts[starts.length - 1].spec)); k++) {
+        await p0.click('#toCpu');
+        await p0.waitForFunction(() => window.__match?.phase === 'build', null, { timeout: 15_000 });
+        starts.push(await p0.evaluate(() => window.__designer!.genome()));
+        await p0.click('#toTitle'); await p0.waitForSelector('#leaveDlg[open]'); await p0.click('#lvGo');
+        await p0.waitForSelector('#title:not([hidden])');
+      }
+      const after = await p0.evaluate((k) => localStorage.getItem(k), SAVE_KEY), a = starts[0], b = starts[starts.length - 1];
+      check(JSON.stringify(a.spec) !== JSON.stringify(b.spec) && starts.every((g) => isStarter(g) && energyRefusal(g.spec, CONFIG.rounds.budgets[0]) === null) && before === after && before !== null,
+        `a match starts on a fresh random starter: ${starts.length} starts, ${starts.map((g) => Object.entries(g.spec.senses).filter(([, n]) => n).map(([s, n]) => `${n} ${s}`).join(' + ')).join(' | ')}; each valid and within round 1's budget; the sandbox brain untouched`);
+      await p0.context().close();
+    }
+
     // 1. the round 1 build: the timer, the budget, a design past it
-    let page = await open(`?seed=${SEED}&T=${T}&race=${MATCH}`);
+    let page = await open(`?seed=${SEED}&T=${T}&race=${MATCH}&starter=default`); // the fixture brain, as Node's runs
     await page.click('#toCpu');
     const m0 = await page.evaluate(() => window.__match!);
     let bt = await pt(page);
@@ -316,7 +336,7 @@ async function main() {
     await page.context().close();
 
     // 5b. without ?T= a round trains on the round's budget: T = the full-skill CPU's (CONFIG.rounds.T), all of it if time allows
-    page = await open(`?seed=${SEED}&race=${MATCH}`);
+    page = await open(`?seed=${SEED}&race=${MATCH}&starter=default`);
     await page.click('#toCpu');
     await page.evaluate(() => window.__phase!.skipTo(0.1));
     await page.waitForFunction(() => window.__training?.state === 'running', null, { timeout: 30_000 });
@@ -329,7 +349,7 @@ async function main() {
     await page.screenshot({ path: `${OUT}/train-full-T.png` });
     await page.context().close();
     // 5c. the hard stop: when the train timer reaches 0, training stops where it got to and keeps the best so far
-    page = await open(`?seed=${SEED}&race=${MATCH}`);
+    page = await open(`?seed=${SEED}&race=${MATCH}&starter=default`);
     await page.click('#toCpu');
     await page.evaluate(() => window.__phase!.skipTo(0.1));
     await page.waitForFunction(() => (window.__training?.gen ?? 0) >= 3, null, { timeout: 120_000 });
