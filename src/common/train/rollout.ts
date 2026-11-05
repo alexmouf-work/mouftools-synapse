@@ -1,6 +1,7 @@
 // Rollouts for the gradient trainers: B lanes, each one car driving the current weights tick by tick, learning as it
 // goes. A round runs every lane for the same number of ticks with the weights fixed; each lane returns its own sum of
-// per-tick updates (a "kernel" decides what that is: imitate.ts for backprop), and the trainer adds the lanes up in lane
+// per-tick updates (a "kernel" decides what that is: imitate.ts for backprop, acKernel.ts for actor-critic, arpKernel.ts
+// for A_RP), and the trainer adds the lanes up in lane
 // order and updates the weights once (batched, synchronous). A lane's whole state travels with the job, so the worker
 // that runs it never matters: the same lanes give the same bits on 1 or N workers, inline, in Node or in a browser.
 import { hashU } from '../rng';
@@ -11,7 +12,7 @@ import { paramCount } from '../sim/spec';
 import type { Track } from '../sim/track';
 import type { EpisodeSetup } from './episodes';
 
-export type KernelId = 'imitate';
+export type KernelId = 'imitate' | 'actorCritic' | 'arp';
 
 export interface Lane {
   /** Fixed lane number: seeds where its episodes start. */
@@ -21,7 +22,8 @@ export interface Lane {
   track: number;
   /** Stall-rule mark (race.stopCheck). */
   mark: number;
-  /** Kernel-specific, fixed for the episode (imitate: 1 = the teacher drives this episode). */
+  /** Kernel-specific, fixed for the episode (imitate: 1 = the teacher drives this episode; actor-critic and A_RP: the
+   *  episode's noise seed). */
   mode: number;
   /** null before the first episode and after one ends. */
   car: CarState | null;
@@ -64,6 +66,10 @@ export interface Kernel {
   episodeStart(ctx: KernelCtx, job: RolloutJob, lane: Lane): void;
   /** One tick of lane (its car is live; the core applies the stop rule after it). Adds into grad and stats. */
   tick(ctx: KernelCtx, job: RolloutJob, lane: Lane, grad: Float64Array, stats: Float64Array): void;
+  /** Called when a lane begins its share of a round (its car may be mid-episode from the last round). */
+  laneStart?(ctx: KernelCtx, job: RolloutJob, lane: Lane): void;
+  /** Called after the tick that ends an episode (stall, backwards or time), before the car is dropped. */
+  episodeEnd?(ctx: KernelCtx, job: RolloutJob, lane: Lane, grad: Float64Array, stats: Float64Array): void;
 }
 
 export const fresh = (count: number): Lane[] =>
@@ -99,12 +105,13 @@ export class RolloutCore {
     return job.lanes.map((lane0) => {
       const lane: Lane = { ...lane0, car: lane0.car ? { ...lane0.car, padLap: [...lane0.car.padLap] } : null };
       const grad = new Float64Array(k.gradSize(this.net)), stats = new Float64Array(k.statSize);
+      k.laneStart?.(ctx, job, lane);
       for (let i = 0; i < job.ticks; i++) {
         if (!lane.car) { startEpisode(ctx, job, lane); k.episodeStart(ctx, job, lane); }
         k.tick(ctx, job, lane, grad, stats);
         const c = lane.car as CarState;
         lane.mark = stopCheck(c, lane.mark);
-        if (lane.mark < 0 || c.tick >= ep) lane.car = null;
+        if (lane.mark < 0 || c.tick >= ep) { k.episodeEnd?.(ctx, job, lane, grad, stats); lane.car = null; }
       }
       return { lane, ticks: job.ticks, grad, stats };
     });

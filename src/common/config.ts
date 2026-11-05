@@ -119,6 +119,21 @@ export const CONFIG = {
       betaStart: 0.5, // DAgger mixing: the chance an episode is driven by the teacher, at the start …
       betaUntil: 0.25, // … falling linearly to 0 by this fraction of T (then the brain always drives)
     },
+    /** Actor-critic (train/actorCritic.ts, acKernel.ts); temperature multiplies sigma. */
+    ac: {
+      sigma: 0.3, // Gaussian exploration on each wheel (outputs −1..1) at the start …
+      sigmaEnd: 0.05, // … falling linearly to this by the end of T (the fitness checks drive without it)
+      gamma: 0.98, // discount per tick (a horizon of ~2.5 s)
+      lambda: 0.9, // eligibility-trace decay (TD(λ))
+      alpha: 0.1, // actor: Δw = α · mean δ·e (reward: progress − wallPenalty × wall touch, m per tick)
+      beta: 1, // critic: Δv = β · mean δ·e_v
+    },
+    /** A_RP (train/arp.ts, arpKernel.ts); temperature multiplies noise. */
+    arp: {
+      noise: 0.75, // firing randomness s: the car drives E[y] + s·(y − E[y]) while training
+      penalty: 0.2, // λ: penalty steps are this fraction of reward steps
+      lr: 0.5, // ρ: Δw = ρ · mean δ·x
+    },
   },
 
   /** The scripted pure-pursuit teacher that backprop copies (sim/teacher.ts). */

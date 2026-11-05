@@ -1,5 +1,6 @@
 // Training view browser check (S3, B6), headless Chromium on SwiftShader:
 // - Train from the designer (the generations popup, default 100) finishes; the saved genome hash changes; the phase hash equals the Node run's.
+// - Actor-critic (at ×2) and A_RP train in the browser to Node's hash; their Temperature slider is on, with its hint.
 // - 1 vs 4 workers (and the default pool) → the same hash; training the same saved brain twice → the same result.
 // - Training again continues from the saved weights (carry, next phase) and matches Node.
 // - Stop = the generation limit reached there: the best agent so far is saved (= Node stopped at the same generation =
@@ -36,6 +37,8 @@ async function main() {
   const node1 = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS });
   const node2 = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, phase: 1, start: 'carry', genome: node1.final });
   const nodeHot = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, temperature: 1 });
+  const nodeAc = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, trainer: 'ac', temperature: 1 });
+  const nodeArp = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, generations: GENS, trainer: 'arp' });
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -131,6 +134,22 @@ async function main() {
     check(ts.disabled && ts.shown === '—' && ts.hint === 'Backprop copies a teacher, so it has nothing to explore.', `backprop: the slider is off (${ts.shown}, "${ts.hint}")`);
     await page.click('#tdNo');
     await page.context().close();
+
+    // 3c. actor-critic and A_RP (B4) train in the browser exactly as in Node, with the temperature on their exploration
+    for (const [id, t, node, hint] of [['ac', 1, nodeAc, 'Scales how much the actor explores.'], ['arp', 0, nodeArp, 'Scales how randomly the units fire while learning.']] as const) {
+      page = await open(`?seed=${SEED}&T=${T}&view=sandbox`);
+      await page.click(`#trainers [data-tr="${id}"]`);
+      await page.click('#train');
+      await setT(t);
+      ts = await tslider();
+      check(!ts.disabled && ts.hint === hint, `${id}: the slider is on ("${ts.hint}", ${ts.shown})`);
+      await page.click('#tdGo');
+      await waitState(page, 'done');
+      s = await status(page);
+      sv = await saved(page);
+      check(s?.hash === node.hash && sv.trainer === id && sv.train.temps.join() === String(t), `${id} at ×${2 ** t}: hash ${s?.hash} = Node's ${node.hash}; saved with its trainer and temperature`);
+      await page.context().close();
+    }
 
     // 4. Stop = the generation limit reached there (B6): the best agent so far is saved, as a run asked for that many
     //    generations would; the generation being evaluated is dropped; Drive and Keep training appear

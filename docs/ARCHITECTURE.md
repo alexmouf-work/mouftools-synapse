@@ -30,21 +30,21 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/track.ts` | Track generator + validation, wall grid, ray cast (grid DDA), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule the drive view's beams also use. |
-| `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for backprop (B2e): head direction, grid, speed, landmark, boundary range. |
+| `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, landmark, boundary range. |
 | `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
 | `sim/teacher.ts` | The scripted pure-pursuit teacher backprop copies (`teacherWheels`), and `driveTeacher` (the teacher alone, a reference for tests and the bench). |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry with each trainer's label and refusal (`trainerRefusal`). |
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
 | `train/episodes.ts` | Episode batches: `EpisodeCore` (runs policies × tracks), `splitEven`, `InlineExecutor`. |
 | `train/neuroevo.ts` | Evolution. |
-| `train/grad.ts` | The generalised delta rule on a compiled net (pre-activations, backward pass, Δw ∝ δ·x and Δb ∝ δ); the gradient trainers' one implementation. |
+| `train/grad.ts` | The generalised delta rule on a compiled net (pre-activations, backward pass, Δw ∝ δ·x and Δb ∝ δ; optionally with the error given at the wheels' z, for A_RP); the gradient trainers' one implementation. |
 | `train/rollout.ts` | Lanes for gradient trainers: `RolloutCore` runs a round of lanes with a kernel; lane state travels with the job. |
-| `train/kernels.ts`, `train/imitate.ts` | The kernels by id; `imitate` is backprop's (DAgger with the teacher). |
+| `train/kernels.ts`, `train/imitate.ts`, `train/acKernel.ts`, `train/arpKernel.ts` | The kernels by id: `imitate` is backprop's (DAgger with the teacher), `actorCritic` actor-critic's (Gaussian exploration, TD(λ) with a linear critic), `arp` A_RP's (stochastic ±1 wheels, reward/penalty). |
 | `train/gradTrainer.ts` | What every gradient trainer shares: rounds, fitness checks, the update, the `delta` channel. |
-| `train/backprop.ts` | Backprop (copy a teacher). |
+| `train/backprop.ts`, `train/actorCritic.ts`, `train/arp.ts` | Backprop (copy a teacher), actor-critic, A_RP. |
 | `train/probe.ts` | The `signal` probe all trainers share. |
 | `train/phase.ts` | Seeds for a phase and `runPhase` (setup → env → trainer → result hash; optional per-step hooks and stop). |
-| `train/contract.test.ts` | The suite every trainer must pass. |
+| `train/contract.suite.ts`, `contract.test.ts`, `contract-rl.test.ts` | The suite every trainer must pass (evolution and backprop in one file, actor-critic and A_RP in the other, so neither file holds a test worker for a minute). |
 
 ### Brain (v2, 2026-11-04; plan `docs/plans/2026-11-04-brain-designer-v2.md`)
 A brain is its sense counts and its hidden layers; every column is fully wired to the next, always (no wiring by
@@ -64,8 +64,8 @@ spread, so an untrained cell reads exactly as before (the race goldens with fiel
 They map to bounded tunings (direction default + 45°·p, any; width default·2^(p/2) in 20–180°; range default·2^(p/2)
 in 5–20 m or 10–40 m; head direction + 45°·p; grid scale default·2^(p/2) in 10–60 m, offset 15 m·p, orientation
 15°·p; speed gain 2^(p/4), 0.5–2×), decoded into `net.tune` by `compile` and `setWeights`. Evolution mutates biases
-and fields like weights (scaled by the temperature); backprop learns Δb = η·δ and the fields that have a gradient
-(`fieldgrad.ts`: the error at each sense cell, Σ w·δ, times ∂reading/∂p). A fresh start draws weights and biases
+and fields like weights (scaled by the temperature); the gradient trainers learn the biases (Δb ∝ δ) and the fields
+that have a gradient (`fieldgrad.ts`: the error at each sense cell, Σ w·δ, times ∂reading/∂p). A fresh start draws weights and biases
 and keeps the fields it is given. The default brain: one boundary vector cell, one
 head-direction cell, three tanh neurons. Every node has a firing rate 0..1 (`rateOf`: tanh and linear (y + 1)/2,
 ReLU min(y, 1), sigmoid y; head direction (cos + 1)/2; the other senses their value).
@@ -115,7 +115,8 @@ Neuroevolution: population 64, both training tracks × 1200-tick (1-minute) epis
 backwards),
 elitism 4, tournament 3, no crossover, Gaussian mutation p 0.2 with σ falling 0.4 → 0.08 over the phase (times the
 temperature's multiplier 2^t, t a multiple of 0.25 in −2..2, from a fixed table so it is the same bits everywhere; a
-run input like the seed: `TrainerOptions.temperature`, and a golden at ×2), reset
+run input like the seed: `TrainerOptions.temperature`, and a golden at ×2; actor-critic's σ and A_RP's firing
+randomness take the same multiplier), reset
 p 0.01, weights clamped ±4. `fresh` start draws N(0, 0.5); `carry` puts the given genome in slot 0 exactly and its
 mutants after it. It runs whole generations while the next one's worst case fits T. Probe channel: `signal`.
 
@@ -148,6 +149,24 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant).
   The wheels are tanh like any neuron. The teacher's targets account for the tick's speed cap. On the default v2
   brain it does not learn (no bias input, see the trainers plan); it does on brains with a steady input.
+- **Actor-critic** (`actorCritic.ts`, kernel `acKernel.ts`, B4): the brain is the actor; the lanes drive a = y + σ·ε
+  (ε ~ N(0, 1) per wheel, Box–Muller from counter-based draws on the lane's episode seed, so every worker draws the
+  same noise; σ 0.3 falling to 0.05 over T, times the temperature's multiplier). A linear critic owned by the trainer,
+  V(s) = v·φ, φ = [1, every input cell, every hidden neuron, speed / top speed], travels in the job's params and
+  starts at 0 each phase. Reward per tick r = progress − 0.5 × wall touch (m), the training fitness per tick. TD
+  error δ = r + γV(s′) − V(s) (γ 0.98; V = 0 after an episode ends), settled on the next tick; with eligibility
+  traces (λ 0.9) e ← γλe + ∂log π/∂w (∂log π/∂y = ε/σ, carried back by `grad.ts` and into the fields by
+  `fieldgrad.ts`) and e_v ← γλe_v + φ. Update per round: actor Δw = α·Σδ·e/n (α 0.1), critic Δv = β·Σδ·e_v/n (β 1).
+  Traces and the open transition restart at every episode and round (`laneStart`, `episodeEnd` kernel hooks). Channels
+  `signal`, `value` (per parameter, the critic's weight on the node it belongs to) and `td` (the last round's mean
+  δ·e). The fitness checks drive the mean action, without the noise.
+- **A_RP** (`arp.ts`, kernel `arpKernel.ts`, B4): each wheel is a stochastic unit, y = +1 with probability
+  (1 + E[y])/2 else −1, E[y] = tanh(z) its own output (what it drives in a race). The lanes drive E[y] + s·(y − E[y])
+  (s 0.75 times the temperature's multiplier, clamped to −1..1), spikes drawn from the lane's episode seed. One bit
+  per tick: reward if the car made progress without touching a wall, else penalty. At each wheel δ = y − E[y] on
+  reward, λ(−y − E[y]) on penalty (λ 0.2); that is ∂log P(y)/∂z for these units, so it is the error at z (no slope),
+  and the delta rule carries it to the hidden layers and the fields. Update per round Δw = ρ·Σδ·x/n (ρ 0.5). Channels
+  `signal` and `reward` (the last round's mean δ·x).
 - **The teacher** (`sim/teacher.ts`): pure pursuit on the centreline (privileged: the brain never sees the centreline).
   Look-ahead L = 10 m + 0.4 s × v (≤ 30 m); yaw wanted ω = gain × κ × max(v, 40 m/s), κ = 2·left / d² of the arc
   through the target (gain 3; the grip caps the yaw anyway, and a firm label is what a brain can copy: with gain 1 the
@@ -180,7 +199,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   slider, the bin; a trained neuron's or wheel's bias, its transfer curve plotted against Σ w·x so the bias shifts it;
   the energy split resting–flat out; Reset with a confirmation; the trainer picker and the centred
   "Learning Rule : …" strip; Train asks how many generations and, under it, the Temperature (B2d, mock-up v26: a
-  log-scale slider ×0.25 to ×4 in quarter steps, default ×1, one line on what it scales; off, "—", for backprop));
+  log-scale slider ×0.25 to ×4 in quarter steps, default ×1, one line on what it scales; off, "—", for backprop;
+  every trainer in the picker is live (B4)));
   input cells of radius 16 with their symbols at 1.7× the radius, columns spaced 2R + 6 (B2d), `symbols.ts` (three.js symbols, loaded after first
   paint, one viewport per tray tile and sense cell; build mode is still, so only a gentle idle motion), `store.ts`.
   One 860 × 400 layout scaled to fit any screen (above the storage notice while it shows); portrait phones get the
@@ -283,7 +303,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 
 ## scripts
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
-- `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`), `bench.ts`
+- `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`; a short phase of
+  every trainer, inline = 4 workers), `bench.ts`
   (+ `bench-baseline.json`, Node time ≤ baseline × 1.3), `bench-browser.ts` (headless Chrome time + hash = Node).
 - `scripts/checks/workbench.ts` — the designer in headless Chromium: the starting brain, the energy split = energy.ts,
   the rule strip and trainer picker, tray → cell selected with graph, description and energy line, bin, full sense,
@@ -293,7 +314,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   8 × 8 with every sense full, light and dark, 1440×900 and 844×390; portrait card; screenshots to `out/s2/`.
 - `scripts/checks/training.ts` — the training view in headless Chromium (SwiftShader): train from the designer (the
   generations popup),
-  phase hash = Node's, genome saved and changed, training again = Node's carry run, the same saved brain on 1 and 4
+  phase hash = Node's (actor-critic at ×2 and A_RP too, with their Temperature hints), genome saved and changed, training again = Node's carry run, the same saved brain on 1 and 4
   workers → the same hash, Stop saves the best agent so far (= Node stopped there = Node asked for that many
   generations) and offers Drive / Keep training / Back, render smoke (mean luminance and spread of a real frame),
   the layout at 1440×900 and 844×390 in light and dark, mid-training and at the end (panel width, camera, map

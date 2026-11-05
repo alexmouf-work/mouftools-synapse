@@ -1,6 +1,6 @@
 // Designer browser check (brain v2, B3): serve the app with Vite, drive the designer in headless Chromium.
 // - The starting brain, the energy split (resting–flat out) as energy.ts computes it, the Learning Rule strip and the
-//   trainer picker (actor-critic and A_RP not built yet), the legal line and the two sound toggles.
+//   trainer picker (all four trainers live; each one's rule in the strip), the legal line and the two sound toggles.
 // - Tap a sense in the tray to add a cell (it is selected: graph, one-line description, "At maximum firing rate"
 //   energy from energy.ts, bin); the bin removes it. A full sense dims and loses its "+". A trained neuron or wheel
 //   shows its built-in bias; an untrained one doesn't.
@@ -104,7 +104,7 @@ async function main() {
     check(await page.locator('#aBrain').innerText() === al.brain && await page.locator('#aSpeed').innerText() === al.speed, `energy split: brain ${al.brain}, speed ${al.speed} (resting–flat out, energy.ts)`);
     check(await page.locator('#eq').innerText() === 'Learning Rule : w′ = w + σ·ε', `Learning Rule strip: "${await page.locator('#eq').innerText()}"`);
     const trs = await page.locator('#trainers button').evaluateAll((bs) => bs.map((b) => [b.textContent, (b as HTMLButtonElement).disabled, b.getAttribute('aria-pressed')]));
-    check(JSON.stringify(trs) === JSON.stringify([['Evolution', false, 'true'], ['Backprop', false, 'false'], ['Actor-critic', true, 'false'], ['ARP', true, 'false']]), `trainer picker: ${JSON.stringify(trs)}`);
+    check(JSON.stringify(trs) === JSON.stringify([['Evolution', false, 'true'], ['Backprop', false, 'false'], ['Actor-critic', false, 'false'], ['ARP', false, 'false']]), `trainer picker: ${JSON.stringify(trs)}`);
     check(await page.locator('.app .legal-links').count() === 0, 'the legal links and credits are on the title\'s rail, not in the designer');
     check(await page.locator('#musicWb').getAttribute('aria-label') === 'Music' && await page.locator('#sfxWb').getAttribute('aria-label') === 'Sound effects', 'the Music and Sound effects toggles are in the top bar');
     check(await page.locator('#drive').count() === 0, 'no Drive button on the designer (drive comes after training)');
@@ -113,6 +113,10 @@ async function main() {
     // 2. trainer picker → the rule strip follows
     await page.click('#trainers [data-tr="backprop"]');
     check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = η·δ·x' && (await saved(page)).trainer === 'backprop', 'Backprop picked: the strip shows Δw = η·δ·x, and it is saved');
+    await page.click('#trainers [data-tr="ac"]');
+    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = α·δ·∂log π/∂w' && (await saved(page)).trainer === 'ac', 'Actor-critic picked: the strip shows Δw = α·δ·∂log π/∂w, and it is saved');
+    await page.click('#trainers [data-tr="arp"]');
+    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = ρ·(±y − p)·x' && (await saved(page)).trainer === 'arp', 'A_RP picked: the strip shows Δw = ρ·(±y − p)·x, and it is saved');
     await page.click('#trainers [data-tr="evolution"]');
 
     // 3. tray: add a boundary cell → selected, graph, description, energy; the bin removes it

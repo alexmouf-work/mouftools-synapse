@@ -5,6 +5,8 @@
     "raceHeavy": "9833b3b5",
     "phase": "dab8d72e",
     "phaseBackprop": "6f4b5c6d",
+    "phaseAc": "fc2665c0",
+    "phaseArp": "9abbaa85",
     "phaseTemp2": "551babcf"
   },
   "2": {
@@ -13,6 +15,8 @@
     "raceHeavy": "2a122d7d",
     "phase": "9c774b36",
     "phaseBackprop": "0d17233c",
+    "phaseAc": "9750d82b",
+    "phaseArp": "8c949556",
     "phaseTemp2": "c395d62b"
   },
   "3": {
@@ -21,6 +25,8 @@
     "raceHeavy": "0d6cae41",
     "phase": "031dc2f0",
     "phaseBackprop": "143fff5c",
+    "phaseAc": "902ba674",
+    "phaseArp": "624a3281",
     "phaseTemp2": "7d5a83e8"
   }
 }

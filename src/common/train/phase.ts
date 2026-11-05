@@ -10,6 +10,8 @@ import { MeteredEnv, type Env } from './env';
 import { createTrainer, type TrainerEvent, type TrainerOptions } from './trainer';
 import './neuroevo';
 import './backprop';
+import './actorCritic';
+import './arp';
 
 export interface PhaseSeeds {
   trainTracks: number[];
