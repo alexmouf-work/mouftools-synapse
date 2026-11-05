@@ -591,6 +591,18 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
     W.sel = null; persist(); ($('confirm') as HTMLDialogElement).close(); buildTray(); render();
   };
   addEventListener('resize', () => { fit(); render(); });
+  // The board can change size without the window doing so (the round timer growing the rule strip, the storage
+  // notice, the inspector's content). The diagram's positions are in board pixels and the 3-D symbols are drawn at
+  // them, so a stale layout put the symbols off their circles until the next edit. Re-lay out whenever the board's
+  // size changes.
+  let seen = '', pend = 0;
+  new ResizeObserver(() => {
+    const b = board(), k = `${b.clientWidth}x${b.clientHeight}`;
+    if (k === seen || !b.clientWidth) return;
+    seen = k;
+    cancelAnimationFrame(pend);
+    pend = requestAnimationFrame(() => { if (active) render(); });
+  }).observe(board());
   // keyboard: Enter or Space presses a focused board button; Delete or Backspace removes the selected cell (as its "−")
   svg().addEventListener('keydown', (ev) => {
     const e = ev as KeyboardEvent;

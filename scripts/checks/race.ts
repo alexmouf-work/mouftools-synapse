@@ -136,6 +136,11 @@ async function main() {
     const alloc = await page.locator('#aBrain').innerText();
     check(/ of 20%$/.test(alloc) && JSON.stringify(await page.evaluate(() => window.__designer!.spec())) === JSON.stringify(defaultSpec()), `round 1 starts from the starting brain; the energy bar's full scale is round 1's budget ("Brain ${alloc}")`);
     await page.screenshot({ path: `${OUT}/build-60.png` });
+    // the timer grows the rule strip and so shrinks the board without the window resizing: the diagram (and the 3-D
+    // symbols drawn at its positions) must re-lay out to the board's new size, or the symbols sit off their circles
+    await page.waitForTimeout(300);
+    const fitB = await page.evaluate(`(() => { const b = document.getElementById('board'); return { vb: document.getElementById('net').getAttribute('viewBox'), size: '0 0 ' + b.clientWidth + ' ' + b.clientHeight }; })()`) as { vb: string; size: string };
+    check(fitB.vb === fitB.size, `the diagram fits the board after the timer grows the rule strip (viewBox ${fitB.vb}, board ${fitB.size})`);
     await page.evaluate((g) => window.__designer!.load(g), zeroGenome(BIG));
     await page.click('#train');
     await page.waitForTimeout(300);
