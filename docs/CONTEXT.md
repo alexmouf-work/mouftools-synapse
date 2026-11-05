@@ -291,3 +291,4 @@ Rulings from the principal, verbatim where quoted. Newest last.
   covering what changed, not the full suite.
 - "only show 10 racers at a time, not all of them. same rules as before where we always show podium then also show the
   nearest ones to the player." (2026-11-05) → every standings/results table: places 1–3, then the nearest to you, 10 rows.
+- "make it possible to click on a racer to follow their car with their brain." (2026-11-05) → `docs/plans/2026-11-05-follow-a-racer.md`.
