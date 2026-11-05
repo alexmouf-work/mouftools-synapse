@@ -230,6 +230,10 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
     not measured; at a few times slower it still fits inside the 12 s before Go, though the page is frozen while it
     computes (a worker would fix that if it matters).
   - Not done: the real Supabase project (the principal runs `supabase/schema.sql`); the checks use the local stand-in.
+- **Wrong-way reset (principal, 2026-11-05)**, races only (vs CPU and Multiplayer; training is unchanged): a car whose
+  progress has fallen for about 3 s (60 ticks) is put back, in the sim, at its furthest point so far, on the centre line
+  and facing forwards, at rest. "Wrong way" flashes over the player's own car. It is one rule for every car and is
+  deterministic, so every client agrees. Shown distance never goes below 0.
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.

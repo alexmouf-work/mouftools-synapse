@@ -250,3 +250,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   still show "soon". Work carries on on development.
 - "let's give the default brain a random assortment of input neurons, including copies of the same, with at least 1
   boundary vector cell always. it can start with between 2 and 6 inputs, randomly decided." (2026-11-05)
+- Wrong-way driving in races (2026-11-05), asked how to handle it → "Wrong-way reset (Recommended)": after about 3 s going
+  backwards, "Wrong way" flashes and the car is put back at its furthest point, facing forwards; the same rule for every
+  car; distance never shows below 0.
