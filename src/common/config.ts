@@ -61,19 +61,13 @@ export const CONFIG = {
 
   track: {
     spacing: 2, // m between centreline samples
-    kMin: 8,
-    kMax: 14,
-    angleJitter: 0.3, // ± fraction of the even angle step
-    radiusMin: 170,
-    radiusMax: 260,
-    radiusScaleMin: 0.55, // per point R × U(min, 1)
-    lengthMin: 1100,
-    lengthMax: 1900,
+    lengthMin: 2000, // m: a lap (tracks v2)
+    lengthMax: 3000,
     minRadius: 25, // m, on curvature smoothed over curvWindow
     curvWindow: 10, // m
     farAlong: 60, // m: parts further apart than this along the track …
     farApart: 31, // m: … must be at least this far apart in space
-    straightLen: 150, // m: needs one straight this long (start at its middle)
+    straightLen: 250, // m: needs one straight this long (start at its middle)
     straightCurv: 1 / 300, // 1/m: smoothed |curvature| below this counts as straight
     padLen: 30, // m
     padCountMin: 2,
@@ -82,12 +76,23 @@ export const CONFIG = {
     gateEvery: 300, // m: cosmetic gates
     maxAttempts: 200, // failures before the generator throws
     gridCell: 16, // m: spatial grid cell for wall segments
-    // families (tracks plan §1): a seeded family's control points, scaled to a lap of lapMin–lapMax m before the spline
-    lapMin: 1250,
-    lapMax: 1750,
-    pointJitter: 0.015, // ± per control point, in the family's own units (its shape spans about 3)
-    aspectJitter: 0.12, // x × U(1 − this, 1 + this), y ÷ the same
-    straightStep: 45, // m between control points on the straights of the shapes drawn by heading (clover, eight)
+    // families (tracks v2): a skeleton of straights and corners drawn by the seed, features placed on it, the straights
+    // scaled to a lap of lapMin–lapMax m, then closed
+    lapMin: 2150,
+    lapMax: 2850,
+    startMin: 270, // m: the start straight never closes below this (the detector loses a few metres at each end)
+    sideMin: 45, // m: other straights between corners and features (well over chainGap, so corners stay apart)
+    // the feature detector (on smoothed curvature)
+    turnCurv: 1 / 400, // 1/m: a sample curving more than this is part of a turn
+    turnMin: 8, // degrees: lesser turns are ignored
+    chainGap: 25, // m: corners closer than this run together (a double apex, or a chain: chicane or esses)
+    sweepRadius: 60, // m: a sweep is ≥ 90° at this radius or more
+    hairpinTurn: 150, // degrees within hairpinWithin m
+    hairpinWithin: 120,
+    chicaneTurn: 30, // degrees, each of two neighbouring opposite turns within chicaneWithin m
+    chicaneWithin: 120,
+    essTurn: 12, // degrees, each of three or more alternating turns
+    decreasing: 1.3, // a turn's second half this much more curved than its first
     // the figure eight's crossing (plan §2): the bridge is flat here and ramps down after; the same reach on the lower
     // pass is the crossing's other layer
     crossFlat: 20, // m either side of the crossing on the bridge at full height

@@ -104,14 +104,28 @@ standstill), and loses speed to front/rear mismatch on a side (`scrub`). Walls a
 +10 m/s (cap 72) once per pad per lap, not sensed. Every tick asserts the state is finite.
 
 ### Track
-The seed picks one of seven families (B5, tracks plan §1–2), evenly: loop (today's: 8–14 jittered points round a
-circle), kidney, hairpin, chicane, dogleg (the mock-up's control points, each jittered ±0.015 of the shape's units,
-stretched ×U(0.88, 1.12) one way, scaled to a lap of 1250–1750 m, turned and mirrored), clover (three leaves drawn
-by heading: stem, tip, stem, waist) and figure eight (two lobes and the crossing between them, at 75–105°). Then a
-closed centripetal Catmull-Rom, resampled every ~2 m, validated (length 1100–1900 m, smoothed radius ≥ 25 m, parts
-> 60 m apart along the track ≥ 31 m apart in space, a ≥ 150 m straight with |curvature| < 1/300 for the start, 2–3
-pads on the calmest 30 m windows ≥ 300 m apart). A failure moves to the next sub-seed of the same family; 200
-failures throw. Mean retries: loop 14, clover 6, hairpin 3, dogleg 1, the rest 0.
+The seed picks one of seven families (B5, tracks plan §1–2), evenly. Tracks v2 (T1, tracks-v2 plan): every family but
+the figure eight is a skeleton of straights and corners drawn by the seed: loop (4–6 left corners, one a sweep of
+95–150° at 65–140 m, maybe one a hairpin), kidney (a loop with one side pushed in by a right-hand bend), chicane (four
+corners, a chicane on the long back straight), dogleg (a loop with a left–straight–right step in one side), hairpin (a
+tongue: out, left hairpin, back, right hairpin, out, a wide end, back and down) and clover (three leaves: stem, tip,
+stem, waist; a tip may be a hairpin). The last corner takes up the slack so the lap turns 360°. The seed then places
+the features (`decorate`): at least two, one a hairpin or a chicane, chosen and placed by the seed (a chicane or esses
+into a straight; a double apex or a decreasing radius in place of a plain corner). The straights are scaled to a lap
+of U(2150, 2850) m and the lap is closed by the least weighted change to its straights (never under 270 m for the
+start, 45 m for others). The figure eight: two lobes (far straight 280–380 m, corners 45–75 m, each lobe drawn
+separately) crossing at 70–110°. The lap is traced exactly (arcs and lines; no spline), resampled every ~2 m and
+validated: length 2000–3000 m, smoothed radius ≥ 25 m, parts > 60 m apart along the track ≥ 31 m apart in space, a
+≥ 250 m straight with |curvature| < 1/300 for the start, and for all but the eight a sweep and the features as the
+detector (`detectShape`, on the smoothed curvature) finds them; 2–3 pads on the calmest 30 m windows ≥ 300 m apart.
+The detector: turns are runs curving one way over 1/400 m⁻¹ (≥ 8°); same-way turns < 25 m apart are one corner; a
+corner with ≥ 150° inside 120 m is a hairpin; alternating corners < 25 m apart form a chain, a chicane if two
+neighbours turn ≥ 30° each within 120 m, else esses if three or more (each ≥ 12°); a corner of two turns (≥ 60° in
+all) is a double apex; a lone turn of ≥ 60° whose second half is ≥ 1.3× as curved as its first is a decreasing
+radius; a sweep is a turn of ≥ 90° no tighter than 60 m. `Track.features` lists what it found. A failure moves to the
+next sub-seed of the same family; 200 failures throw. Mean retries over 200 seeds: dogleg 5.9, kidney 4.6, loop 2.9,
+clover 2.6, chicane 1.0, hairpin 0.9, eight 0. Scenery measures how far the track reaches from its centre and puts the
+ridges, the terrain's edge, the trees and the clouds beyond it.
 The figure eight stays flat in the sim. Its one crossing is declared (exactly one self-crossing at 60–120°, both
 passes within 1/150 m⁻¹ of straight for 75 m either side) and is the only exemption from the near-overlap rule. The
 second pass from the start is the bridge: its samples within 20 m (flat) + 55 m (ramps) of the crossing have deck 1.

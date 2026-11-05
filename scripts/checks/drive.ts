@@ -25,7 +25,7 @@ const OUT = 'out/s4';
 
 const T = 1_000_000;
 const SEED = 7;
-const EIGHT = 13; // a figure-eight track seed the trained brain drives under and then over the bridge
+const EIGHT = 311; // a figure-eight track seed the trained brain drives under and then over the bridge (tracks v2: under at tick 297, over at 770)
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 let fails = 0;

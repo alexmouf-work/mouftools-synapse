@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
 import { Hasher } from '../../src/common/hash';
-import { castRay, crossings, FAMILIES, familyOf, generateTrack, hiddenLayer, trackOfFamily, type Track } from '../../src/common/sim/track';
+import { castRay, courseLine, crossings, detectShape, FAMILIES, familyOf, generateTrack, hiddenLayer, shapeOk, trackOfFamily, type Piece, type Track } from '../../src/common/sim/track';
 import { startCar, stepPhysics } from '../../src/common/sim/car';
 import { Rng } from '../../src/common/rng';
 
@@ -28,6 +28,14 @@ function checkTrack(t: Track): void {
     expect(Math.min(d, t.n - d) * t.ds).toBeGreaterThanOrEqual(C.padApart - 1e-9);
   }
   expect(Math.abs(t.curv[t.startIdx])).toBeLessThan(C.straightCurv);
+  // the start sits on a straight of at least straightLen
+  let run = 1;
+  for (const dir of [1, -1]) for (let k = 1; k < t.n && Math.abs(t.curv[(t.startIdx + dir * k + t.n) % t.n]) < C.straightCurv; k++) run++;
+  expect(run * t.ds).toBeGreaterThanOrEqual(C.straightLen);
+  // every family but the figure eight: a sweep, two features, one a hairpin or a chicane (and the track says which)
+  const shape = detectShape(t.curv, t.ds);
+  expect(t.features).toEqual(shape.features);
+  if (t.family !== 'eight') expect(shapeOk(shape)).toBe(true);
   // nothing on the figure eight's crossing: no start, pad or gate on the ramps (or under them)
   expect(t.layer[t.startIdx]).toBe(0);
   for (const p of t.pads) for (let j = 0; j < p.n; j++) expect(t.layer[(p.i0 + j) % t.n]).toBe(0);
@@ -48,10 +56,46 @@ function bruteFarApart(t: Track): boolean {
   return true;
 }
 
+const D = Math.PI / 180;
+const L = (len: number): Piece => ({ arc: false, len, min: 0, w: 0 });
+const A = (r: number, deg: number): Piece => ({ arc: true, r, a: deg * D });
+/** A stadium: two straights with `mid` in the middle of each, two ends `end`; closed by symmetry. */
+const stadium = (end: Piece[], mid: Piece[] = []): Piece[] => [L(200), ...mid, L(200), ...end, L(200), ...mid, L(200), ...end];
+const kinds = (ps: Piece[]) => { const c = courseLine(ps), s = detectShape(c.curv, c.ds); return { sweeps: s.sweeps, kinds: s.features.map((f) => f.kind) }; };
+
+describe('feature detector', () => {
+  it('finds known shapes', () => {
+    expect(kinds(stadium([A(80, 180)]))).toEqual({ sweeps: 2, kinds: [] });
+    expect(kinds(stadium([A(35, 180)]))).toEqual({ sweeps: 0, kinds: ['hairpin', 'hairpin'] });
+    expect(kinds(stadium([A(80, 180)], [A(32, 40), L(6), A(32, -80), L(6), A(32, 40)]))).toEqual({ sweeps: 2, kinds: ['chicane', 'chicane'] });
+    expect(kinds(stadium([A(80, 180)], [A(40, 45), L(8), A(40, -45)]))).toEqual({ sweeps: 2, kinds: ['chicane', 'chicane'] });
+    expect(kinds(stadium([A(80, 180)], [A(70, 24), L(8), A(70, -48), L(8), A(70, 24)]))).toEqual({ sweeps: 2, kinds: ['esses', 'esses'] });
+    expect(kinds(stadium([A(65, 95), L(20), A(65, 85)]))).toEqual({ sweeps: 2, kinds: ['double apex', 'double apex'] }); // the 95° halves sweep
+    expect(kinds(stadium([A(100, 100), A(45, 80)]))).toEqual({ sweeps: 0, kinds: ['decreasing radius', 'decreasing radius'] });
+    // the same corner the other way round opens out: not a decreasing radius
+    expect(kinds(stadium([A(45, 80), A(100, 100)])).kinds).toEqual([]);
+    // two opposite turns too far apart, or under 30°: neither a chicane nor esses
+    expect(kinds(stadium([A(80, 180)], [A(40, 45), L(60), A(40, -45)])).kinds).toEqual([]);
+    expect(kinds(stadium([A(80, 180)], [A(60, 20), L(6), A(60, -20)])).kinds).toEqual([]);
+  });
+});
+
 describe('track generator', () => {
   it('1000 seeds give valid tracks', () => {
     for (let s = 1; s <= 1000; s++) checkTrack(generateTrack(s));
   });
+  it('every family over 200 seeds meets the rules (2–3 km, straight, sweep, features), and varies', () => {
+    for (const f of FAMILIES) {
+      const seen = new Set<string>();
+      for (let s = 1; s <= 200; s++) {
+        const t = trackOfFamily(s, f);
+        expect(t.family).toBe(f);
+        checkTrack(t);
+        seen.add(t.features.map((x) => x.kind).join());
+      }
+      if (f !== 'eight') expect(seen.size).toBeGreaterThanOrEqual(5); // features placed by the seed
+    }
+  }, 60_000);
   it('no near-overlaps (brute force, 40 seeds and 5 of each family)', () => {
     for (let s = 1; s <= 40; s++) expect(bruteFarApart(generateTrack(s))).toBe(true);
     for (const f of FAMILIES) for (let s = 1; s <= 5; s++) expect(bruteFarApart(trackOfFamily(s, f))).toBe(true);
@@ -62,7 +106,6 @@ describe('track generator', () => {
     expect(Object.keys(count).sort()).toEqual([...FAMILIES].sort());
     for (const f of FAMILIES) expect(count[f]).toBeGreaterThan(60);
     for (let s = 1; s <= 50; s++) expect(generateTrack(s).family).toBe(familyOf(s));
-    for (const f of FAMILIES) for (let s = 1; s <= 40; s++) { const t = trackOfFamily(s, f); expect(t.family).toBe(f); checkTrack(t); }
   });
   it('the figure eight: one crossing at 60–120°, both passes nearly straight across it, the bridge the second pass', () => {
     for (let s = 1; s <= 40; s++) {
@@ -139,7 +182,7 @@ describe('track generator', () => {
       const t = generateTrack(s), i = t.startIdx, x = t.px[i], y = t.py[i], tx = t.tx[i], ty = t.ty[i];
       expect(Math.abs(castRay(t.grid, x, y, -ty, tx, 80) - t.wallOff)).toBeLessThan(0.3);
       expect(Math.abs(castRay(t.grid, x, y, ty, -tx, 80) - t.wallOff)).toBeLessThan(0.3);
-      expect(castRay(t.grid, x, y, tx, ty, 80)).toBeGreaterThan(60); // start sits mid-straight (≥ 150 m)
+      expect(castRay(t.grid, x, y, tx, ty, 80)).toBeGreaterThan(60); // start sits mid-straight (≥ 250 m)
     }
   });
   it('grid ray cast equals brute force over every wall segment (random rays, incl. through vertices)', () => {

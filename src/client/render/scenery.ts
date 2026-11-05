@@ -26,6 +26,10 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
   const rand = () => rng.next();
   const group = new THREE.Group();
   const centre = trackCentre(t);
+  // how far the track reaches from its centre: the ridges, the terrain's edge, trees and clouds sit beyond it (laps of
+  // 2–3 km reach up to ~600 m; the old ring started 500 m out, so it is measured from the track now)
+  let reach = 0;
+  for (let i = 0; i < t.n; i += 5) reach = Math.max(reach, Math.hypot(t.px[i] - centre.x, -t.py[i] - centre.z));
   // world-space centreline, every 5th sample, for distance queries
   const coarse: number[] = [];
   for (let i = 0; i < t.n; i += 5) coarse.push(t.px[i], -t.py[i]);
@@ -37,14 +41,14 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
   const terrainH = (x: number, z: number, d: number) => {
     const far = smooth(40, 260, d);
     const n = fbm(x * 0.0035 + 3.1, z * 0.0035 - 1.7);
-    const ridge = smooth(500, 1100, Math.hypot(x - centre.x, z - centre.z));
+    const ridge = smooth(reach + 130, reach + 730, Math.hypot(x - centre.x, z - centre.z));
     return -0.35 + far * (n * 55 + 4) + ridge * (n * 160 + 40) + smooth(24, 50, d) * (vnoise(x * 0.05, z * 0.05) - 0.5) * 1.6;
   };
   const disposables: { dispose(): void }[] = [];
 
   // terrain
   {
-    const size = 2800, seg = 190;
+    const size = Math.max(2800, 2 * (reach + 1030)), seg = 190;
     const g = new THREE.PlaneGeometry(size, size, seg, seg).rotateX(-Math.PI / 2).toNonIndexed();
     const pos = g.attributes.position;
     const cache = new Map<string, number>();
@@ -87,7 +91,7 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
     let nr = 0, nc = 0, nt = 0, tries = 0;
     while ((nr < MAX || nc < MAX) && tries < 9000) {
       tries++;
-      const x = centre.x + (rand() - 0.5) * 1500, z = centre.z + (rand() - 0.5) * 1500;
+      const x = centre.x + (rand() - 0.5) * (2 * reach + 750), z = centre.z + (rand() - 0.5) * (2 * reach + 750);
       const d = distToTrack(x, z);
       if (d < 22 + rand() * 6) continue;
       if (keepClear.some((k) => Math.hypot(x - k.x, z - k.z) < k.r)) continue;
@@ -115,7 +119,7 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
     // a touch off white, faint glow: sunlit tops must stay under the bloom threshold (bloom audit)
     const cm = new THREE.MeshStandardMaterial({ color: '#e4e9f1', flatShading: true, roughness: 1, emissive: '#cfe0ff', emissiveIntensity: 0.12 });
     for (let k = 0; k < 16; k++) {
-      const a = rand() * Math.PI * 2, r = 420 + rand() * 520;
+      const a = rand() * Math.PI * 2, r = reach + 50 + rand() * 520;
       const g = new THREE.Group(); g.position.set(centre.x + Math.cos(a) * r, 120 + rand() * 110, centre.z + Math.sin(a) * r);
       const puffs = 4 + Math.floor(rand() * 4);
       for (let p = 0; p < puffs; p++) { const m = new THREE.Mesh(cg, cm); const s = 14 + rand() * 18; m.scale.set(s * 1.4, s * 0.8, s); m.position.set((p - puffs / 2) * 16 + rand() * 6, rand() * 8, rand() * 14 - 7); g.add(m); }

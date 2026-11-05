@@ -121,7 +121,9 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     timers = [...cd.at.map((t, i) => [t, String(5 - i)] as const), [cd.go, 'Go'] as const, [cd.go + 800, ''] as const]
       .filter(([t]) => t >= now - 1).map(([t, l]) => window.setTimeout(() => showCount(l), Math.max(0, t - now)));
   };
-  const endCount = () => { cd.go = Math.min(cd.go, performance.now()); timers.forEach(clearTimeout); timers = []; showCount(''); };
+  // Go for every later frame: a rAF timestamp can be earlier than performance.now() here, and a frame that still thought
+  // it was before Go would put the car back on the line (seen as the car drawn on the ground over the bridge)
+  const endCount = () => { cd.go = -Infinity; timers.forEach(clearTimeout); timers = []; showCount(''); };
   const status: DriveStatus = {
     trackSeed, hash: run.hash, ticks, tick: 0, distance: 0, load: 0, laps: 0, bestLap: null, stuck: false, cam, frames: 0,
     webgl: !!stage, finalProg: run.result.prog, countdown: '', countdownSeen: [], go: false, countdownMusic: cd.music,

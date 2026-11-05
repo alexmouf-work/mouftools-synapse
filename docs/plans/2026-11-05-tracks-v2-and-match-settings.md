@@ -30,6 +30,58 @@ and map."
   S1 and report it without tuning. Episodes stay 60 s. The checks that cover tracks, training, drive, race and
   determinism run; the rest don't (affected systems only).
 
+- **Built: T1 (2026-11-05).** `src/common/sim/track.ts`. Every family but the figure eight is now a skeleton of
+  straights and corners drawn by the seed (number of corners, angles, radii, straight lengths), not the mock-up's
+  fixed control points; the seed then places the features on it (`decorate`: which kinds, where, how tight), scales the
+  straights to a lap of 2.15–2.85 km and closes the lap by the least weighted change to its straights. The lap is traced
+  exactly (arcs and lines), so the Catmull-Rom is gone. Families keep their forms: loop (4–6 corners), kidney (a side
+  pushed in), chicane (a chicane on the long back straight), dogleg (a step in one side), hairpin (a tongue with a
+  left and a right hairpin), clover (three leaves; a tip may be a hairpin) and the figure eight (two lobes drawn
+  separately, far straights 280–380 m, crossing at 70–110°). Random rotation and mirroring as before.
+  - **Feature detector** `detectShape(curv, ds)` on the smoothed curvature, with the plan's definitions (hairpin
+    ≥ 150° within 120 m; chicane: two neighbouring opposite turns ≥ 30° each within 120 m; esses: three or more
+    alternating; double apex: one corner of two turns; decreasing radius: second half ≥ 1.3× as curved; sweep ≥ 90° at
+    ≥ 60 m). Same-way turns < 25 m apart are one corner; alternating corners < 25 m apart are a chain. The validator
+    rejects a lap (next sub-seed) without a ≥ 250 m straight for the start, a sweep, two features or a hairpin/chicane;
+    `Track.features` carries what it found (for T2's picker). Laps measured 2.00–2.90 km (the validator allows 2–3).
+  - **Measured over 200 seeds per family:** no failures; mean retries dogleg 5.9, kidney 4.6, loop 2.9, clover 2.6,
+    chicane 1.0, hairpin 0.9, eight 0; all seven families generate 1400 tracks in ~3 s.
+  - **Contact sheet** (six seeds per family, length and features labelled, features marked: red hairpin, blue chicane,
+    purple esses, orange double apex, teal decreasing radius; black dot = start): `scratchpad/t1/sheet.png`.
+  - **Knock-on:** the teacher still laps every track cleanly (0 wall ticks over 60 unseen tracks) but at 1.07–1.39
+    laps a minute, so its unit test asks for a lap, not 1.5. check:drive's figure eight is now seed 311 (the T=1M
+    seed-7 brain passes under at tick 297 and over at 770; seed 13 is still an eight, but that brain no longer
+    reaches its crossing). Scenery measures the track's reach from its centre and puts ridges, terrain edge, trees
+    and clouds beyond it (tracks now reach ~600 m from centre; the old ridge ring began at 500 m). CPU brains
+    regenerated (scripts/sim/cpuBrains.ts). Every golden changes (all run on tracks).
+  - **Fixed on the way:** the drive view's hand-ended countdown (`endCount`, used by seek and the checks' audits) set
+    Go to `performance.now()`; a rAF timestamp can be earlier than that, so one frame put the car back on the line.
+    Go is now in the past for every later frame (check:drive's "over the bridge" height had read 0 m).
+  - **Checked:** types, purity, unit (incl. 200 seeds × 7 families and the detector's known shapes), determinism
+    (goldens regenerated), check:training, check:drive, check:race. Not run (unaffected): workbench, preview, legal,
+    audio, icons, title, multiplayer, bench.
+  - **S1 re-run, evolution:** seeds 1–20, T 6M, the default brain (`npx tsx scripts/sim/bench.ts`; `out/bench/report.md`).
+    Not tuned.
+
+    | S1, evolution, seeds 1–20, T 6M | B5 (seven families) | T1 (tracks v2) |
+    |---|---|---|
+    | final training fitness, median | 2839 (20/20 ≥ 500) | 2876 (20/20 ≥ 500) |
+    | gate: end ≥ 1.5× start | 20/20 | 20/20 |
+    | (a) median 30 s on the unseen track | 1303 m (×27 gen 1) | 1390 m (×11.4 gen 1) |
+    | (b) ≥ 80% of a lap in 30 s | 12/20 (need 15) | **0/20** (need 15) |
+    | (c) end ≥ 2× gen 1 | 19/20 | 19/20 (seed 3: 2008 → 3018) |
+    | (d) Minimal (1 boundary, 1 linear) ≥ 50% of a lap | 16/20 | 17/20 |
+    | 60 s: ≥ 1.6 laps / Minimal ≥ 1 lap | 13/20 / 12/20 | 0/20 / 16/20 |
+    | (f) same seed → same hash; 1 vs 4 workers | pass | pass |
+    | phase time, Node 4 workers, median (max) | 4.24 s (5.09) | 2.96 s (3.18) |
+    | the teacher alone, 30 s on the unseen track, median | 1497 m | 1492 m |
+
+    Brains drive as far as before in 30 s (1390 m median, more than B5's 1303 m), but a lap is now 2–3 km, so the
+    lap-relative bars can't be met: the teacher itself covers 1492 m in 30 s, about 62% of a median lap, so (b)'s 80%
+    and the 60 s 1.6 laps are out of reach for any brain. Those bars were set for 1.25–1.75 km laps; they need restating
+    in metres or as a fraction of the teacher (a call for the principal, not made here). Brains that fall short: seed 15
+    (487 m) and seed 19 (58 m) on their unseen tracks.
+
 ## Stage T2: choosing tracks, match settings, names, the host (UI and schema)
 - **Track choice in the sandbox:**
   - A "Track" button in the designer's top bar, available at any time, opens a picker. It shows the seven families
