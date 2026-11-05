@@ -33,9 +33,11 @@ html, body { overflow: hidden; }
 .word { font-weight: 700; font-size: 15px; }
 .alloc { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 11.5px; min-width: 0; }
 .alloc b { font-weight: 400; font-variant-numeric: tabular-nums; }
-.split { position: relative; width: 140px; height: 10px; border-radius: 0; background: var(--speed); overflow: hidden; flex: none; }
+.split { position: relative; width: 140px; height: 10px; border-radius: 0; background: var(--speed); overflow: hidden; flex: 0 1 140px; min-width: 56px; } /* the bar shrinks before the figures wrap */
+.alloc span { white-space: nowrap; }
 .split i { position: absolute; inset: 0 auto 0 0; background: var(--spike); transition: width .12s linear; }
 .split s { position: absolute; inset: 0 auto 0 0; background: var(--spike); opacity: .35; }
+.alloc.budget .split em { display: none; } /* a round's budget as the full scale: no 50/50 mark */
 .split em { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .55; }
 .btn { min-height: 30px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px; border-radius: 0; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; font-size: 12px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }

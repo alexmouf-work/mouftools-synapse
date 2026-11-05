@@ -32,7 +32,8 @@ export function makeCar(primary: string, trimHex: string, glowTex: THREE.Texture
   // 0.7, a faint coat): driving into a low sun, the yellow paint still glinted to 1.8 (bloom audit, brain v2 drive).
   const glassMat = M(new THREE.MeshPhysicalMaterial({ color: '#0a1124', roughness: 0.45, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.45, flatShading: true }));
   const paint = M(new THREE.MeshPhysicalMaterial({ color: primary, metalness: 0, roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.7, flatShading: true, envMapIntensity: 0.6 }));
-  const trim = M(new THREE.MeshPhysicalMaterial({ color: trimHex, metalness: 0.35, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.45, flatShading: true }));
+  // a softer clearcoat than at first (0.6 at 0.45): the rear wing's flat top mirrored a low sun past the bloom threshold
+  const trim = M(new THREE.MeshPhysicalMaterial({ color: trimHex, metalness: 0.35, roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.7, flatShading: true }));
   const tail = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 0.15, 0.3) }));
   const led = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.7, 3.0) }));
   const exhaust = M(new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.2, 0.2) }));

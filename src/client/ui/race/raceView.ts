@@ -2,17 +2,19 @@
 // 100 cars on a race track drawn from the race seed. The whole race is computed first (common/sim/match.ts runRace, the
 // same function a Node replay or any other client uses, so every client sees the same race), then played back in real
 // time: the grid two by two behind the line with the players listed, "5, 4, 3, 2, 1, Go" (vs CPU: the drive view's
-// countdown on the music's beat; a room: Go at the moment the server set, so every client starts together), 2 laps
-// capped at 120 s, the standings live beside a map of every car in the corner, then the results (place, time,
-// distance; never below 0). A car going the wrong way for 3 s is put back by the sim (race.ts putBack); "Wrong way"
+// countdown on the music's beat; a room: Go at the moment the server set, so every client starts together), then a
+// room's 2 laps capped at 120 s or a vs CPU round's 30 s (rounds plan 2026-11-05: no laps, scored by the signed distance
+// covered), with the standings in the sidebar over a map of every car (sidebar plan 2026-11-05: places 1–3 and the
+// racers nearest you, 10 rows) and your live brain in the camera's corner; then the results (a room) or the round's
+// standings (vs CPU, shown by ui/rounds). Distances are signed (ruling 2026-11-05). A car going the wrong way for 3 s is put back by the sim (race.ts putBack); "Wrong way"
 // flashes over your car from 1 s of it until 1 s after. Your car is the drive view's yellow car with its beams; the nearest others (at most MAX_RIVALS) are solid
 // cars in their own colours, the rest only dots on the map. Cars pass through each other. Finishing first plays the
 // winner music.
 import cpuData from '../../../assets/cpu/brains.json';
 import { CONFIG } from '../../../common/config';
-import { compile } from '../../../common/sim/brain';
-import { cpuBrains } from '../../../common/sim/cpu';
-import { gridCar, raceTrackSeed, rank, runRace, type RaceResult } from '../../../common/sim/match';
+import { compile, nodeRate } from '../../../common/sim/brain';
+import { CPU_NAMES, cpuRounds } from '../../../common/sim/cpu';
+import { gridCar, LAPPED, raceTrackSeed, rank, ROUND_RACE, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
 import type { Genome } from '../../../common/sim/spec';
 import { MAX_RIVALS, type DrivePose, type RivalPose } from '../../render/drive';
 import type { Stage } from '../../render/stage';
@@ -24,6 +26,8 @@ import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import type { Saved } from '../designer/store';
 import { TrackMap } from '../training/map';
+import { BrainPanel } from '../drive/brainPanel';
+import { SpikeTrains } from '../drive/spikes';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -32,7 +36,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 };
 const HZ = CONFIG.tick.hz, M = CONFIG.match;
 const RESULTS_AFTER_S = 1.5; // the cars hold this long after the race ends, then the results show
-const LISTED = 10; // standings rows (yours added below them if you are further back)
+const LISTED = 10; // racers list rows: places 1–3, then the racers nearest you (sidebar plan 2026-11-05)
 const WRONG_WAY = M.wrongWayTicks;
 const WRONG_SHOW = HZ; // "Wrong way" shows once progress has fallen this many ticks, and this long after the reset
 const YOU = '#ffc21a';
@@ -41,8 +45,19 @@ export const RACE_COLORS = ['#e8475f', '#3f8cff', '#2fc28a', '#b46cff', '#ff8a3d
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`;
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const ord = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
-/** Distance as shown: from the line, never below 0 (a car still behind it, or going backwards, shows 0). */
-export const shownDist = (prog: number): number => (prog > 0 ? prog : 0);
+/** Distance as shown: signed (ruling 2026-11-05: going backwards counts as negative). */
+export const shownDist = (m: number): number => m;
+/** "1.23 km", "−0.05 km". */
+export const fmtKm = (m: number): string => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
+/**
+ * Which standings rows the sidebar lists (indices into the order): all of them up to `rows`; otherwise places 1–3, then
+ * the rows nearest place p (yours), `rows` in all; `gap` is true where the two groups don't meet (a "⋯" row goes there).
+ */
+export function listRows(n: number, p: number, rows = LISTED): { idx: number[]; gap: boolean } {
+  if (n <= rows) return { idx: Array.from({ length: n }, (_, i) => i), gap: false };
+  const k = rows - 3, start = Math.max(3, Math.min(p - Math.floor(k / 2), n - k));
+  return { idx: [0, 1, 2, ...Array.from({ length: k }, (_, i) => start + i)], gap: start > 3 };
+}
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** One race to show: who drives (in entry order), which car is yours (−1: watching), the seed, and for a room when Go is. */
@@ -57,8 +72,10 @@ export interface RaceSetup {
   goAt?: number;
   /** A room's race number (its result is reported with it). */
   raceNo?: number;
+  /** Laps in a capped time (a room), or a timed race (a vs CPU round). */
+  len?: RaceLength;
 }
-export interface RaceRow { name: string; place: number; finish: number | null; prog: number; slot: number }
+export interface RaceRow { name: string; place: number; finish: number | null; prog: number; slot: number; dist: number }
 export interface RaceStatus {
   state: 'grid' | 'racing' | 'results';
   kind: 'cpu' | 'room'; me: number;
@@ -76,22 +93,27 @@ export interface RaceStatus {
   countdown: string; countdownSeen: string[]; countdownMusic: boolean;
   /** "Wrong way" is showing over your car this frame. */
   wrongWay: boolean;
-  /** The players as listed now ('Grid' before Go, then the standings): names in order. */
+  /** The players in order now ('Grid' before Go, then the standings): names; and the rows the sidebar shows ("⋯" a gap). */
   listed: () => string[];
+  shown: () => string[];
   /** Cars drawn in 3-D (yours or the one followed, then the others) as world [x, y, z, visible, car index], and map dots. */
   drawn: () => number[][]; dots: () => number;
   seek(seconds: number): void;
   /** Checks only: true holds the playback where it is (the clock stops; frames still draw). */
   hold: boolean;
   /** Seek, snap the camera, draw that frame and audit bloom on it (deterministic). */
-  auditAt(seconds: number): { over: number; max: number };
+  auditAt(seconds: number, mask?: boolean): { over: number; max: number; mask?: string };
   probe?: () => { mean: number; sd: number; w: number; h: number };
 }
 declare global { interface Window { __race?: RaceStatus } }
 export interface RaceHooks {
   back(): void;
-  /** vs CPU: another race with the same brain. */
+  /** Another race with the same brain. */
   again?(): void;
+  /** Called once at Go. */
+  go?(): void;
+  /** A vs CPU round: called once when the race is over, instead of the results (the round's standings follow). */
+  ended?(race: RaceResult): void;
   /** Called once when the results show: your row (or null when watching). */
   result?(row: RaceRow | null): void;
 }
@@ -102,26 +124,31 @@ export function firstSeed(): number {
   const q = new URLSearchParams(location.search).get('race');
   return q !== null && /^\d+$/.test(q) ? Number(q) : newSeed();
 }
-/** vs CPU: you (car 0) and the nine CPU brains. */
-export function cpuSetup(saved: Saved, raceSeed = newSeed()): RaceSetup {
-  const cpu = cpuBrains(cpuData);
-  return { kind: 'cpu', title: 'vs CPU', names: ['You', ...cpu.map((b) => b.name)], genomes: [saved.genome, ...cpu.map((b) => b.genome)], me: 0, raceSeed };
+/** A vs CPU round's race (round 1–5): you (car 0) and the nine CPU players' brains for that round, 30 s. */
+export function roundSetup(saved: Saved, round: number, raceSeed: number): RaceSetup {
+  const cpu = cpuRounds(cpuData)[round - 1];
+  return { kind: 'cpu', title: `Round ${round} of ${CONFIG.rounds.count}`, names: ['You', ...CPU_NAMES], genomes: [saved.genome, ...cpu.map((b) => b.genome)], me: 0, raceSeed, len: ROUND_RACE };
 }
+export const newRaceSeed = newSeed;
 
 let raf = 0;
 let map: TrackMap | null = null;
+/** Leaving now (Main menu): whatever the open race needs to stop. */
+let leaveNow: () => void = () => undefined;
+export function leaveRace(): void { leaveNow(); leaveNow = () => undefined; }
 
 export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void> {
   cancelAnimationFrame(raf);
   showArena('race');
   const { names, genomes, me, raceSeed } = setup, n = genomes.length;
   const c0 = performance.now();
-  const race: RaceResult = runRace(genomes, raceSeed, (k) => k === me);
+  const len = setup.len ?? LAPPED, timed = len.laps === 0;
+  const race: RaceResult = runRace(genomes, raceSeed, (k) => k === me, len);
   const computeMs = performance.now() - c0;
   const { track, cars } = race;
   const follow = me >= 0 ? me : 0, mine = me >= 0;
-  const net = compile(genomes[follow]), rec0 = cars[follow].rec, nN = net.nNodes, end = race.endTicks / HZ, goal = M.laps * track.len;
-  const results: RaceRow[] = race.ranking.map((k, i) => ({ name: names[k], place: i + 1, finish: cars[k].finish, prog: cars[k].prog, slot: cars[k].slot }));
+  const net = compile(genomes[follow]), rec0 = cars[follow].rec, nN = net.nNodes, end = race.endTicks / HZ, goal = len.laps * track.len;
+  const results: RaceRow[] = race.ranking.map((k, i) => ({ name: names[k], place: i + 1, finish: cars[k].finish, prog: cars[k].prog, slot: cars[k].slot, dist: cars[k].dist }));
   const place = mine ? race.ranking.indexOf(me) + 1 : 0;
   const nB = mine ? genomes[me].spec.senses.boundary : 0;
   const beams = Array.from({ length: nB }, (_, k) => net.tune[4 * k]), ranges = Array.from({ length: nB }, (_, k) => net.tune[4 * k + 2]);
@@ -143,6 +170,13 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   $('rcAgain').hidden = !hooks.again;
   $('rcBack').textContent = setup.kind === 'room' ? 'Back to room' : 'Back';
   $('rcCars').textContent = `${n} cars`;
+  $('rcLapK').textContent = timed ? 'Distance' : 'Lap';
+  $('rcSkip').textContent = timed ? 'Skip to standings' : 'Skip to results';
+  $('rcLeave').hidden = !!hooks.ended; // a round: Main menu leaves the match
+  // your live brain in the camera's corner (sidebar plan): its nodes are recorded for your car only
+  $('rcBrainC').hidden = !mine;
+  const panel = mine ? new BrainPanel($('rcBrain') as HTMLCanvasElement, net) : null;
+  const spikes = new SpikeTrains(nN), every = new Uint8Array(nN).fill(1), rates = new Float64Array(nN);
   const engine = new Engine(mine ? 1 : 0.35), cd = setup.goAt !== undefined ? countdownTo(setup.goAt) : raceCountdown();
   let timers: number[] = [];
   const showCount = (label: string) => {
@@ -165,6 +199,8 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const drawnIdx = new Int32Array(R).fill(-1);
   const dots: Dot[] = cars.map(() => ({ x: 0, y: 0, hl: false, alpha: 1, deck: 0 }));
   const progNow = new Float64Array(n), dist = new Float64Array(n);
+  /** Signed distance as listed: from the line (laps), or covered since the grid (a timed race). */
+  const shownOf = (k: number) => (timed ? progNow[k] - grid[k].prog : progNow[k]);
   // late (a room's race already under way): join it where it is
   let playT = Math.max(0, (performance.now() - cd.go) / 1000), frames = 0, shown = false, won = false, lastUi = -1;
   /** Car k at playback time pt (s from Go; before Go, on its grid slot), into out; returns the recording index or −1. */
@@ -189,23 +225,24 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     return b;
   };
   /** Standings at playback time pt: cars that have finished by then by finish time, the rest by progress. */
-  const standings = (pt: number) => rank(cars.map((c, k) => ({ slot: c.slot, finish: c.finish !== null && c.finish <= pt * HZ ? c.finish : null, prog: progNow[k] })));
+  const standings = (pt: number) => rank(cars.map((c, k) => ({ slot: c.slot, finish: c.finish !== null && c.finish <= pt * HZ ? c.finish : null, prog: timed ? progNow[k] - grid[k].prog : progNow[k] })));
   const listOrder = () => (playT > 0 ? standings(Math.min(playT, end)) : cars.map((_, k) => k).sort((a, b) => cars[a].slot - cars[b].slot));
   const status: RaceStatus = {
     state: 'grid', kind: setup.kind, me, raceSeed, trackSeed: raceTrackSeed(raceSeed), family: track.family, hash: race.hash, names, slots: cars.map((c) => c.slot),
     results, place, won: false, computeMs, t: 0, end, frames: 0, go: false, webgl: !!stage, goAt: cd.go, countdown: '', countdownSeen: [], countdownMusic: cd.music, wrongWay: false,
     listed: () => listOrder().map((k) => names[k]),
+    shown: () => { const o = listOrder(), r = listRows(n, o.indexOf(follow)); return r.idx.flatMap((i, j) => (r.gap && j === 3 ? ['⋯', names[o[i]]] : [names[o[i]]])); },
     drawn: () => (stage ? stage.drive.drawn().map((p, i) => [...p, i ? drawnIdx[i - 1] : follow]) : []), dots: () => dots.length,
     hold: false,
     seek: (sec) => { endCount(); playT = Math.max(0, Math.min(sec, end)); stage?.drive.snapNow(); },
-    auditAt: (sec) => {
+    auditAt: (sec, mask) => {
       if (!stage) return { over: 0, max: 0 };
       endCount();
       playT = sec;
       poseAll(playT, 0);
       stage.drive.snapNow();
       stage.frame(0, 0, pose);
-      return stage.bloomAudit();
+      return stage.bloomAudit(mask);
     },
     probe: stage ? () => stage.probe() : undefined,
   };
@@ -241,12 +278,15 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const wrongEl = $('rcWrong');
   let lastJ = -1;
   const leave = () => { cancelAnimationFrame(raf); raf = 0; engine.stop(); endCount(); wrongEl.hidden = true; };
+  leaveNow = leave;
+  let wentGo = false, over = false;
   const showResults = () => {
     if (shown) return;
     shown = true; status.state = 'results';
     $('rcSkip').hidden = true;
     $('rcResT').textContent = !mine ? 'Results' : place === 1 ? 'You won!' : `You finished ${ord(place)} of ${n}`;
-    $('rcRows').innerHTML = results.map((r) => `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${(shownDist(r.finish !== null ? goal : r.prog) / 1000).toFixed(2)} km</td></tr>`).join('');
+    $('rcHead').innerHTML = '<tr><th>Place</th><th>Name</th><th>Time</th><th>Distance</th></tr>';
+    $('rcRows').innerHTML = results.map((r) => `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${fmtKm(shownDist(r.finish !== null ? goal : r.prog))}</td></tr>`).join('');
     // the table scrolls (up to 100 rows) under the pinned title and buttons: open it on your row
     const sc = $('rcScroll'), you = sc.querySelector<HTMLElement>('tr.you');
     sc.scrollTop = you ? Math.max(0, you.offsetTop - sc.clientHeight / 2) : 0;
@@ -282,22 +322,34 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     if (wrongEl.hidden === wrong) wrongEl.hidden = !wrong;
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; status.frames = frames; }
     const ended = playT >= end;
+    if (panel) {
+      const live = j >= 0 && !ended, vals = rec0.act.subarray(Math.max(0, j) * nN, (Math.max(0, j) + 1) * nN);
+      for (let d = 0; d < nN; d++) rates[d] = live ? nodeRate(net, d, vals[d]) : 0;
+      spikes.update(rates, every, live ? dt : 0, now / 1000);
+      panel.draw(vals, rates, spikes, now / 1000, reduce());
+    }
     engine.set(ended || j < 0 ? 0 : pose.v / CONFIG.car.wheelSpeed, Math.abs((wheels[0] + wheels[2]) - (wheels[1] + wheels[3])) / 2);
     // first across the line: the winner music then and there
-    if (place === 1 && cars[me].finish !== null && pt * HZ >= cars[me].finish!) cheer();
-    if (playT >= end + RESULTS_AFTER_S) showResults();
+    if (!timed && place === 1 && cars[me].finish !== null && pt * HZ >= cars[me].finish!) cheer();
+    if (status.go && !wentGo) { wentGo = true; hooks.go?.(); }
+    if (playT >= end + RESULTS_AFTER_S) {
+      if (!hooks.ended) showResults();
+      else if (!over) { over = true; status.state = 'results'; $('rcSkip').hidden = true; hooks.ended(race); }
+    }
     if (now - lastUi > 100) {
       lastUi = now;
-      const order = listOrder(), pos = order.indexOf(follow) + 1, lap = Math.min(M.laps, Math.max(1, Math.floor(progNow[follow] / track.len) + 1));
+      const order = listOrder(), pos = order.indexOf(follow) + 1, lap = Math.min(len.laps, Math.max(1, Math.floor(progNow[follow] / track.len) + 1));
       const fin = cars[follow].finish;
       $('rcState').textContent = !status.go ? 'on the grid' : ended ? 'finished' : 'racing';
       $('rcPos').textContent = `${ord(pos)} of ${n}${mine ? '' : ` (${esc(names[follow])})`}`;
-      $('rcLap').textContent = fin !== null && pt * HZ >= fin ? 'finished' : `${lap} of ${M.laps}`;
-      $('rcTime').textContent = `${fmtClock(pt)} / ${fmtClock(M.capTicks / HZ)}`;
+      $('rcLap').textContent = timed ? fmtKm(shownOf(follow)) : fin !== null && pt * HZ >= fin ? 'finished' : `${lap} of ${len.laps}`;
+      $('rcTime').textContent = `${fmtClock(pt)} / ${fmtClock(len.ticks / HZ)}`;
       $('rcListH').textContent = playT > 0 ? 'Standings' : 'Grid';
-      const rows = order.slice(0, LISTED);
-      if (pos > LISTED) rows.push(follow);
-      $('rcList').innerHTML = rows.map((k) => { const i = order.indexOf(k), c = cars[k]; return `<li class="${k === follow ? 'you' : ''}"><b>${i + 1}</b><i style="background:${colorOf(k)}"></i><span>${esc(names[k])}</span>${c.finish !== null && c.finish <= pt * HZ ? `<small>${fmtT(c.finish / HZ)}</small>` : ''}</li>`; }).join('');
+      const L = listRows(n, pos - 1);
+      $('rcList').innerHTML = L.idx.map((i, j) => {
+        const k = order[i], c = cars[k], done = c.finish !== null && c.finish <= pt * HZ;
+        return `${L.gap && j === 3 ? '<li class="gap" aria-hidden="true">⋯</li>' : ''}<li class="${k === follow ? 'you' : ''}"><b>${i + 1}</b><i style="background:${colorOf(k)}"></i><span>${esc(names[k])}</span><small>${done ? fmtT(c.finish! / HZ) : playT > 0 ? fmtKm(shownOf(k)) : ''}</small></li>`;
+      }).join('');
       map?.draw(dots);
     }
   };

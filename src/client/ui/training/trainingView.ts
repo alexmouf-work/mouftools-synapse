@@ -42,6 +42,12 @@ export interface TrainingHooks {
   race?(s: Saved): void;
   /** The label of that button ('Race', or 'Hand in' in a room). */
   raceLabel?: string;
+  /**
+   * A vs CPU round (rounds plan 2026-11-05): train from the brain as built (weights carried over), phase n − 1 of the
+   * match's training seed, no buttons (the round's timer moves on); `done` gets the trained brain (or the brain as it
+   * was, if training failed or nothing was evaluated).
+   */
+  round?: { n: number; seed: number; done(s: Saved): void };
 }
 
 export interface TrainingStatus {
@@ -136,12 +142,14 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   if (running) return;
   running = true;
   stopAsked = false;
+  const id = ++runId, round = hooks.round;
   const p = params();
-  const seed = p.seed ?? (match ? null : saved.train.seed) ?? newSeed();
-  const phase = match ? 0 : saved.train.phases;
+  const seed = p.seed ?? (round ? round.seed : match ? null : saved.train.seed) ?? newSeed();
+  const phase = round ? round.n - 1 : match ? 0 : saved.train.phases;
   const temp = saved.trainer === 'backprop' || match ? 0 : temperature;
-  const genome = match ? zeroGenome(saved.genome.spec) : saved.genome;
-  if (match) saved = { ...saved, train: NO_TRAINING };
+  // a room trains from scratch; a vs CPU round from the brain as built (its weights carried over from the last round)
+  const genome = match && !round ? zeroGenome(saved.genome.spec) : saved.genome;
+  if (match) saved = { ...saved, train: round ? { seed, phases: phase, temps: [] } : NO_TRAINING };
   // weights and biases all 0 (untrained, or edited since): from scratch; the cells' learned fields are kept either way
   const start: 'fresh' | 'carry' = genome.w.slice(0, weightCount(genome.spec)).every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
@@ -153,6 +161,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
 
   showArena('train');
   matchRun = match;
+  roundRun = !!round;
   $('tvRace').textContent = hooks.raceLabel ?? 'Race';
   setButtons('running');
   note('Training…');
@@ -211,20 +220,24 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   } catch (e) {
     await thePool.close();
     running = false;
+    if (id !== runId) return; // left (Main menu) meanwhile
     note('Training failed.');
     setButtons('stopped');
     status.state = 'stopped';
+    round?.done(saved);
     throw e;
   }
   await thePool.close();
   pool = null;
   running = false;
+  if (id !== runId) return; // left (Main menu) meanwhile: nothing is saved
   const evaluated = result.gens.length;
   if (result.stopped && evaluated === 0) {
     status.state = 'stopped';
     note('Stopped before the first generation finished: the brain keeps the weights it had.');
     stage?.swarm.finish(null);
     setButtons('stopped');
+    round?.done(saved);
   } else {
     // done, or stopped: the best agent evaluated so far becomes the brain, exactly as at the generation limit
     const next: Saved = { ...saved, genome: result.final, train: { seed, phases: phase + 1, temps: [...saved.train.temps, temp] } };
@@ -241,12 +254,15 @@ export async function openTraining(saved: Saved, generations: number, temperatur
       stage.swarm.finish(lap);
     }
     $('tvGen').textContent = `gen ${evaluated} of ${generations}`;
-    note(match
+    note(round
+      ? `Done in ${(result.trainMs / 1000).toFixed(1)} s: the race starts when the round's training time is up.`
+      : match
       ? `${result.stopped ? `Stopped at gen ${evaluated}` : `Done in ${(result.trainMs / 1000).toFixed(1)} s`}: the best brain is saved. Race it against nine CPU brains.`
       : result.stopped
         ? `Stopped at gen ${evaluated}: the best brain so far is saved. Keep training continues from it on new tracks.`
         : `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain is saved; Keep training continues from it on new tracks.`);
     setButtons('done');
+    round?.done(next);
     $('tvAgain').onclick = () => { void openTraining(next, generations, temperature, hooks); };
     $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); hooks.drive(next); };
     $('tvRace').onclick = () => { if (running || !hooks.race) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); lives.clear(); champLive = null; hooks.race(next); };
@@ -281,6 +297,16 @@ function championLap(g: Genome, t: Track, gen: number) {
   const rec = newRecording(net, CONFIG.drive.ticks);
   new Runner().run(net, t, { ticks: CONFIG.drive.ticks, earlyStop: false, record: rec });
   return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, prog: rec.prog, ticks: rec.ticks, gen, rec };
+}
+
+/** Leave the view now (Main menu): any run in progress is stopped and saves nothing. */
+export function leaveTraining(): void {
+  runId++;
+  if (running) { stopAsked = true; pool?.abort(); }
+  cancelAnimationFrame(raf);
+  raf = 0;
+  engine.stop();
+  lives.clear(); champLive = null;
 }
 
 function close(hooks: TrainingHooks) {
@@ -350,12 +376,16 @@ function loop() {
 
 /** This run is vs CPU's (ends with Race instead of Drive and Keep training). */
 let matchRun = false;
+/** A vs CPU round: no buttons; the round's timer moves on. */
+let roundRun = false;
+/** Each run's number: a run left meanwhile (Main menu) saves nothing when it ends. */
+let runId = 0;
 function setButtons(state: 'running' | 'done' | 'stopped') {
-  $('tvStop').hidden = state !== 'running';
-  $('tvBack').hidden = state === 'running';
+  $('tvStop').hidden = state !== 'running' || roundRun;
+  $('tvBack').hidden = state === 'running' || roundRun;
   $('tvAgain').hidden = state !== 'done' || matchRun;
   $('tvDrive').hidden = state !== 'done' || matchRun;
-  $('tvRace').hidden = state !== 'done' || !matchRun;
+  $('tvRace').hidden = state !== 'done' || !matchRun || roundRun;
   $('tvStop').onclick = () => { stopAsked = true; ($('tvStop') as HTMLButtonElement).disabled = true; pool?.abort(); };
   ($('tvStop') as HTMLButtonElement).disabled = false;
 }

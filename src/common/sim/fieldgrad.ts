@@ -74,7 +74,7 @@ export function fieldGrads(net: Net, c: CarState, t: Track, delta: ArrayLike<num
       }
       default: {
         const x = (c.v * tune[q]) / CONFIG.car.wheelSpeed;
-        if (x > 0 && x < 1) grad[at] += s * (c.v / CONFIG.car.wheelSpeed) * tuneD[q];
+        if (x > -1 && x < 1) grad[at] += s * (c.v / CONFIG.car.wheelSpeed) * tuneD[q];
       }
     }
   }

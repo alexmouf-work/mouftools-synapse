@@ -5,7 +5,7 @@
 // - Cameras switch; New track re-seeds (new hash); Back returns to the workbench, which now offers Drive.
 // - An untrained brain (all weights 0: the wheels stay at 0) shows "Not moving" with the time, and the camera keeps
 //   moving (no frozen frame); the energy line shows the brain's load and the speed share it leaves, from the recording.
-//   844×390: panels apart, no horizontal scroll.
+//   844×390: panels apart, no horizontal scroll; the sidebar a quarter of the width with the map in it (sidebar plan).
 // Screenshots → out/s4/.
 //   npx tsx scripts/checks/drive.ts
 import { mkdirSync } from 'node:fs';
@@ -186,9 +186,12 @@ async function main() {
     await page.waitForTimeout(1200);
     const lay = await page.evaluate(() => {
       const a = document.querySelector('.dv-status')!.getBoundingClientRect(), b = document.querySelector('.dv-brain')!.getBoundingClientRect();
-      return { overlap: a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, fits: a.bottom <= innerHeight };
+      const side = document.querySelector('.dv-side')!.getBoundingClientRect(), m = document.getElementById('dvMap')!.getBoundingClientRect();
+      return { overlap: a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, fits: a.bottom <= innerHeight,
+        side: Math.abs(side.width - innerWidth / 4) < 1.5 && side.left === 0, map: m.top >= a.bottom - 0.5 && m.bottom <= innerHeight + 0.5 && m.height > 0 && m.left >= side.left && m.right <= side.right + 0.5 };
     });
     check(!lay.overlap && lay.sw <= lay.cw && lay.fits, `844×390: panels apart and on screen, no horizontal scroll`);
+    check(lay.side && lay.map, '844×390: the sidebar is a quarter of the width, the map under the status in it (sidebar plan)');
     await page.screenshot({ path: `${OUT}/drive-844x390.png` });
     await page.context().close();
 

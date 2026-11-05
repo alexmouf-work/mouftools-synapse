@@ -19,6 +19,7 @@ import { raceCountdown } from '../../audio/countdown';
 import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import type { Saved } from '../designer/store';
+import { TrackMap } from '../training/map';
 import { BrainPanel } from './brainPanel';
 import { SpikeTrains } from './spikes';
 
@@ -73,6 +74,10 @@ export function firstTrack(s: Saved): number {
 }
 
 let raf = 0;
+let map: TrackMap | null = null;
+/** Leaving now (Main menu): whatever the open drive needs to stop. */
+let leaveNow: () => void = () => undefined;
+export function leaveDrive(): void { leaveNow(); leaveNow = () => undefined; }
 
 export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = firstTrack(saved)): Promise<void> {
   cancelAnimationFrame(raf);
@@ -157,6 +162,11 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   const onKey = (e: KeyboardEvent) => { const m = ({ '1': 'chase', '2': 'tv', '3': 'orbit' } as const)[e.key as '1']; if (m) setCam(m); };
   window.addEventListener('keydown', onKey);
   const leave = () => { cancelAnimationFrame(raf); raf = 0; window.removeEventListener('keydown', onKey); engine.stop(); endCount(); };
+  leaveNow = leave;
+  // the sidebar's map (sidebar plan 2026-11-05): your car's dot
+  map ??= new TrackMap($('dvMap') as HTMLCanvasElement);
+  map.setTrack(track);
+  const dot = [{ x: track.px[track.startIdx], y: track.py[track.startIdx], hl: true, alpha: 1, deck: 0 }];
   $('dvBack').onclick = () => { leave(); hideArena(); hooks.back(); };
   $('dvNew').onclick = () => { leave(); void openDrive(saved, hooks, newSeed()); };
 
@@ -207,6 +217,8 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
     status.bestLap = lapTimes.length ? Math.min(...lapTimes) / HZ : null;
     if (now - lastUi > 100) {
       lastUi = now;
+      dot[0].x = pose.x; dot[0].y = pose.y; dot[0].deck = track.deck[Math.round(pose.f) % track.n];
+      map?.draw(dot);
       $('dvTime').textContent = ended ? `${fmtT(ticks / HZ)} · done` : `${fmtT(k / HZ)} / ${fmtT(ticks / HZ)}`;
       $('dvDist').textContent = `${(rec.prog[k] / 1000).toFixed(2)} km · ${done.length} lap${done.length === 1 ? '' : 's'}`;
       $('dvLap').textContent = lapTimes.length ? fmtLap(Math.min(...lapTimes)) : `– (lap ${(track.len / 1000).toFixed(2)} km)`;

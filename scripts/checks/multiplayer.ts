@@ -12,7 +12,7 @@
 //   chips: scattered in the field on a desktop; in rows on a short screen (the field scrolls).
 // - The host starts the race: on both clients the same race (hash = Node runRace of the frozen entries and seed), Go
 //   at the same moment (the server's clock), 100 cars on the map, at most MAX_RIVALS others drawn in 3-D and they are
-//   the nearest to your car (a brain past the match limit is left out by every client); the results table = Node; each client's result reaches the room; Back to room.
+//   the nearest to your car (a brain past the match limit is left out by every client); the sidebar lists 10 racers (places 1–3 and those nearest you); the results table = Node, distances signed; each client's result reaches the room; Back to room.
 // - The page bundle carries the anon key and the project URL only; the service role key never reaches the browser.
 // Reports the race's compute time in the page (100 brains × 120 s). Console clean. Screenshots → out/multiplayer/.
 //   npx tsx scripts/checks/multiplayer.ts
@@ -23,7 +23,7 @@ import cpuData from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
 import { genomeHash, genomeToJSON, zeroGenome } from '../../src/common/sim/brain';
 import { energyRefusal } from '../../src/common/sim/energy';
-import { cpuBrains } from '../../src/common/sim/cpu';
+import { cpuRounds } from '../../src/common/sim/cpu';
 import { runRace } from '../../src/common/sim/match';
 import { defaultSpec, type BrainSpec, type Genome } from '../../src/common/sim/spec';
 import { InlineExecutor } from '../../src/common/train/episodes';
@@ -51,7 +51,7 @@ async function main() {
   process.env.SUPABASE_SERVICE_ROLE_KEY = SERVICE;
   const hostBrain = (await runPhase(new InlineExecutor(), defaultSpec(), 7, { T })).final;
   const guestBrain = (await runPhase(new InlineExecutor(), defaultSpec(), 8, { T })).final;
-  const cpu = cpuBrains(cpuData).map((b) => b.genome);
+  const cpu = cpuRounds(cpuData)[4].map((b) => b.genome);
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -234,6 +234,8 @@ async function main() {
     const me0 = posAt(0), d2 = node.cars.map((_, k) => { const p = posAt(k); return k === 0 ? Infinity : (p[0] - me0[0]) ** 2 + (p[1] - me0[1]) ** 2; });
     const want = node.cars.map((_, k) => k).sort((a, b) => d2[a] - d2[b] || a - b).slice(0, MAX_RIVALS).sort((a, b) => a - b);
     const got = r.drawn.slice(1).map((p) => p[4]);
+    const shown = await host.evaluate(() => window.__race!.shown());
+    check(shown.filter((x) => x !== '⋯').length === 10 && shown.length <= 11 && shown.includes('Host'), `the sidebar lists 10 racers of 99: places 1–3 and those nearest you (${shown.join(', ')})`);
     check(r.drawn.length === 1 + MAX_RIVALS && JSON.stringify(got) === JSON.stringify(want) && r.dots === 99, `at ${r.t.toFixed(1)} s: ${MAX_RIVALS} others drawn in 3-D, the nearest to your car (${got.join(' ')}); 99 dots on the map`);
     await host.screenshot({ path: `${OUT}/race-100.png` });
 
@@ -247,11 +249,14 @@ async function main() {
     const lay = async (p: Page) => p.evaluate(`(() => {
       const on = (id) => { const q = document.getElementById(id).getBoundingClientRect(); return q.width > 0 && q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; };
       const sc = document.getElementById('rcScroll'), dist = [...document.querySelectorAll('#rcRows td:nth-child(4)')].map((d) => d.textContent);
-      return { pinned: on('rcResults') && on('rcResT') && on('rcBack'), scrolls: sc.scrollHeight > sc.clientHeight + 50, page: document.documentElement.scrollHeight <= innerHeight, neg: dist.filter((d) => d.startsWith('-')).length };
-    })()`) as Promise<{ pinned: boolean; scrolls: boolean; page: boolean; neg: number }>;
+      return { pinned: on('rcResults') && on('rcResT') && on('rcBack'), scrolls: sc.scrollHeight > sc.clientHeight + 50, page: document.documentElement.scrollHeight <= innerHeight, dist };
+    })()`) as Promise<{ pinned: boolean; scrolls: boolean; page: boolean; dist: string[] }>;
+    // distances are signed (ruling 2026-11-05): "−0.05 km" for a car that ended behind the line
+    const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
+    const wantDist = node.ranking.map((k) => km(node.cars[k].finish !== null ? CONFIG.match.laps * node.track.len : node.cars[k].prog));
     for (const [p, who] of [[host, 'host'], [guest, 'guest']] as const) {
       const l = await lay(p);
-      check(l.pinned && l.scrolls && l.page && l.neg === 0, `${who}: 99 results, the table scrolls and the title and Back stay on screen (pinned ${l.pinned}, scrolls ${l.scrolls}); no distance below 0`);
+      check(l.pinned && l.scrolls && l.page && JSON.stringify(l.dist) === JSON.stringify(wantDist), `${who}: 99 results, the table scrolls and the title and Back stay on screen (pinned ${l.pinned}, scrolls ${l.scrolls}); signed distances = Node (${wantDist.filter((d) => d.startsWith('−')).length} below 0)`);
     }
     await host.$eval('#rcScroll', (e) => { e.scrollTop = e.scrollHeight; });
     const end = await lay(host);

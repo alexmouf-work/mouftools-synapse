@@ -5,8 +5,9 @@
 // - Training again continues from the saved weights (carry, next phase) and matches Node.
 // - Stop = the generation limit reached there: the best agent so far is saved (= Node stopped at the same generation =
 //   Node asked for that many), and Drive, Keep training and Back appear.
-// - Layout (1440×900 and 844×390, light and dark, mid-training and at the end): the panel on the left at min(20vw,
-//   280px), the camera filling the rest; the map in its bottom-right (min(28%, 300px), 4:3, 10 px margins); the
+// - Layout (1440×900 and 844×390, light and dark, mid-training and at the end): the sidebar on the left at 25vw, the
+//   fitness graph over the map in it, the camera filling the rest; the live brain in its bottom-right (min(28%, 300px),
+//   4:3, 10 px margins); the
 //   generation big and white at the top centre (clamp(40px, 9vh, 88px)); no sideways scroll.
 // - Playback: the whole population (64) as ghosts every generation, added in over a few frames with no frame spike; every generation offered; shown strictly in order, never twice, each after the
 //   ~2 s minimum and starting further along; then the champion's lap; no main-thread spike preparing a generation.
@@ -172,14 +173,14 @@ async function main() {
 
     // 5. the layout (light and dark, desktop and landscape phone), mid-training and at the end, with screenshots
     type Box = { x: number; y: number; w: number; h: number };
-    interface Lay { W: number; H: number; A: Box; panel: Box; scene: Box; cam: Box; mini: Box; big: Box; btns: Box[]; bigText: string; bigSize: number; bigColor: string; sw: number; cw: number; cars: string }
+    interface Lay { W: number; H: number; A: Box; panel: Box; scene: Box; cam: Box; mini: Box; map: Box; graph: Box; big: Box; btns: Box[]; bigText: string; bigSize: number; bigColor: string; sw: number; cw: number; cars: string }
     // as a string: the bundler's name helper isn't defined inside the page
     const layout = (page: Page) => page.evaluate(`(() => {
       const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
       const big = document.getElementById('tvBig'), cs = getComputedStyle(big);
-      const btns = [...document.querySelectorAll('.tv-info button')].filter((b) => b.offsetParent).map((b) => { const q = b.getBoundingClientRect(); return { x: q.left, y: q.top, w: q.width, h: q.height }; });
+      const btns = [...document.querySelectorAll('#trainOverlay .tv-info button')].filter((b) => b.offsetParent).map((b) => { const q = b.getBoundingClientRect(); return { x: q.left, y: q.top, w: q.width, h: q.height }; });
       return {
-        W: innerWidth, H: innerHeight, A: r('#arena'), panel: r('.tv-info'), scene: r('#scene'), cam: r('.tv-cam'), mini: r('.tv-mini'), big: r('#tvBig'), btns,
+        W: innerWidth, H: innerHeight, A: r('#arena'), panel: r('#trainOverlay .tv-info'), scene: r('#scene'), cam: r('#trainOverlay .tv-cam'), mini: r('#trainOverlay .tv-brainc'), map: r('#tvMap'), graph: r('#tvGraph'), big: r('#tvBig'), btns,
         bigText: big.textContent, bigSize: parseFloat(cs.fontSize), bigColor: cs.color, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
         cars: document.getElementById('tvCars').textContent,
       };
@@ -188,13 +189,15 @@ async function main() {
     const inside = (a: Box, b: Box) => a.x >= b.x - 0.5 && a.y >= b.y - 0.5 && a.x + a.w <= b.x + b.w + 0.5 && a.y + a.h <= b.y + b.h + 0.5;
     const apart = (a: Box, b: Box) => a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
     const judge = (L: Lay, label: string, gen: number) => {
-      const pw = Math.min(0.2 * L.W, 280), camW = L.W - pw;
+      const pw = 0.25 * L.W, camW = L.W - pw; // the sidebar: a quarter of the width (sidebar plan 2026-11-05)
       // the arena ends above the storage notice while it shows
       const okP = near(L.panel.x, 0) && near(L.panel.w, pw) && near(L.panel.h, L.A.h) && near(L.scene.x, pw) && near(L.scene.x + L.scene.w, L.W) && near(L.cam.x, pw);
       check(okP,
-        `${label}: the panel is its own section on the left (${Math.round(L.panel.w)} px = min(20vw, 280)), the camera fills the rest${okP ? '' : ` (panel ${JSON.stringify(L.panel)}, scene ${JSON.stringify(L.scene)}, arena ${JSON.stringify(L.A)})`}`);
+        `${label}: the sidebar is its own section on the left (${Math.round(L.panel.w)} px = 25vw), the camera fills the rest${okP ? '' : ` (panel ${JSON.stringify(L.panel)}, scene ${JSON.stringify(L.scene)}, arena ${JSON.stringify(L.A)})`}`);
       check(near(L.mini.x + L.mini.w, L.W - 10) && near(L.mini.y + L.mini.h, L.A.y + L.A.h - 10) && near(L.mini.w, Math.min(0.28 * camW, 300), 2) && near(L.mini.h / L.mini.w, 0.75, 0.02),
-        `${label}: the map in the camera's bottom-right (${Math.round(L.mini.w)}×${Math.round(L.mini.h)}, 4:3, 10 px margins)`);
+        `${label}: the live brain in the camera's bottom-right (${Math.round(L.mini.w)}×${Math.round(L.mini.h)}, 4:3, 10 px margins)`);
+      check(inside(L.map, L.panel) && inside(L.graph, L.panel) && L.map.y >= L.graph.y + L.graph.h - 0.5 && L.map.h > 40 && L.map.w > 0.8 * pw,
+        `${label}: the map in the sidebar under the fitness graph (${Math.round(L.map.w)}×${Math.round(L.map.h)})`);
       const want = Math.max(40, Math.min(0.09 * L.H, 88));
       check(L.bigText === String(gen) && near(L.bigSize, want, 0.6) && L.bigColor === 'rgb(255, 255, 255)' && near(L.big.x + L.big.w / 2, pw + camW / 2, 2) && L.big.y >= 0 && apart(L.big, L.mini),
         `${label}: generation ${L.bigText} big and white at the top centre of the camera (${L.bigSize.toFixed(1)} px, want ${want.toFixed(1)})`);

@@ -4,7 +4,8 @@
 // laps, capped at 120 s. A car whose progress has fallen for 3 s is put back at its furthest point, facing forwards
 // (the wrong-way reset, race.ts putBack). Cars pass through each other, so each car is its own deterministic run
 // (Runner) and every client that re-runs a race gets the same bits. Ranking: finish time (to a fraction of a tick, from where the car crossed the line), then progress at the
-// cap, then grid slot.
+// cap, then grid slot. A vs CPU round's race (rounds plan 2026-11-05) is timed instead: 30 s, no laps to finish, ranked
+// by the signed distance covered (backwards counts against you).
 import { CONFIG } from '../config';
 import { Hasher } from '../hash';
 import { derive, Rng, TAG } from '../rng';
@@ -51,6 +52,8 @@ export interface RaceCar {
   finish: number | null;
   /** Progress when the race ended (m from the line). */
   prog: number;
+  /** Signed distance covered from its grid slot by then (m): a timed race's score. */
+  dist: number;
 }
 
 export interface RaceResult {
@@ -75,27 +78,34 @@ export function rank(cars: readonly Pick<RaceCar, 'slot' | 'finish' | 'prog'>[])
   });
 }
 
+/** A race's length: `laps` to finish within `ticks` (Multiplayer: 2 laps in 120 s), or laps 0: a timed race, every car
+ * running all `ticks` and ranked by its signed distance then (vs CPU's rounds: 30 s). */
+export interface RaceLength { ticks: number; laps: number }
+export const LAPPED: RaceLength = { ticks: M.capTicks, laps: M.laps };
+export const ROUND_RACE: RaceLength = { ticks: CONFIG.rounds.raceTicks, laps: 0 };
+
 /**
  * Run a race: car k is genomes[k]. `act(k)` says which cars keep every node's output per tick (the player's, for its
  * live brain); the rest record frames only. Every car has the wrong-way reset. Every car drives the whole cap (after the flag it carries on, as on a
  * cool-down lap), so a race's recordings never depend on the other cars.
  */
-export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: number) => boolean = () => false): RaceResult {
+export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: number) => boolean = () => false, len: RaceLength = LAPPED): RaceResult {
   const track = generateTrack(raceTrackSeed(raceSeed), genomes.length), order = gridOrder(raceSeed, genomes.length);
-  const goal = M.laps * track.len, runner = new Runner();
+  const goal = len.laps * track.len, cap = len.ticks, runner = new Runner();
   const cars: RaceCar[] = genomes.map((g, k) => {
-    const net = compile(g), rec = newRecording(net, M.capTicks, act(k));
-    runner.run(net, track, { ticks: M.capTicks, earlyStop: false, record: rec, start: gridCar(track, order[k]), wrongWay: true });
+    const net = compile(g), rec = newRecording(net, cap, act(k));
+    runner.run(net, track, { ticks: cap, earlyStop: false, record: rec, start: gridCar(track, order[k]), wrongWay: true });
     let finish: number | null = null;
-    for (let j = 0, prev = -gridPlace(track, order[k]).back; j < rec.ticks; prev = rec.prog[j], j++) {
+    if (len.laps > 0) for (let j = 0, prev = -gridPlace(track, order[k]).back; j < rec.ticks; prev = rec.prog[j], j++) {
       if (rec.prog[j] >= goal) { finish = j + (goal - prev) / (rec.prog[j] - prev); break; }
     }
-    return { slot: order[k], rec, finish, prog: 0 };
+    return { slot: order[k], rec, finish, prog: 0, dist: 0 };
   });
-  const all = cars.every((c) => c.finish !== null);
-  const endTicks = all ? Math.min(M.capTicks, Math.ceil(Math.max(...cars.map((c) => c.finish as number)))) : M.capTicks;
-  for (const c of cars) c.prog = c.rec.prog[endTicks - 1];
-  const ranking = rank(cars);
+  const all = len.laps > 0 && cars.every((c) => c.finish !== null);
+  const endTicks = all ? Math.min(cap, Math.ceil(Math.max(...cars.map((c) => c.finish as number)))) : cap;
+  for (const c of cars) { c.prog = c.rec.prog[endTicks - 1]; c.dist = c.prog + gridPlace(track, c.slot).back; }
+  // a timed race ranks by the distance each car covered (the grid's rows start up to 36 m apart)
+  const ranking = len.laps > 0 ? rank(cars) : rank(cars.map((c) => ({ slot: c.slot, finish: null, prog: c.dist })));
   const h = new Hasher().u32(raceSeed >>> 0).u32(track.sub).u32(endTicks);
   for (const c of cars) h.u32(c.slot).f64(c.finish ?? -1).f64(c.prog).f64s(c.rec.x).f64s(c.rec.y).f64s(c.rec.hdg).f64s(c.rec.v);
   for (const k of ranking) h.u32(k);

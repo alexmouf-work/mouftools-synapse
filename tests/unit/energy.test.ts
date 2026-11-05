@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../../src/common/config';
-import { restRate } from '../../src/common/sim/brain';
+import { compile, evalNet, nodeRate, restRate, zeroGenome } from '../../src/common/sim/brain';
+import { speedAct } from '../../src/common/sim/senses';
 import { startCar, stepPhysics } from '../../src/common/sim/car';
 import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
 import { defaultSpec, type BrainSpec } from '../../src/common/sim/spec';
@@ -32,11 +33,30 @@ describe('energy (brain v2: speed follows firing)', () => {
     expect(a.v).toBeCloseTo(30, 6);
     expect(b.v).toBeCloseTo(15, 6);
   });
-  it('the sandbox refuses nothing; vs CPU and Multiplayer refuse a design past 100% flat out', () => {
+  it('the sandbox refuses nothing; Multiplayer refuses a design past 100% flat out', () => {
     expect(maxLoad(big())).toBeGreaterThan(100);
     expect(energyRefusal(big(), 'sandbox')).toBeNull();
     expect(energyRefusal(big(), 'match')).toMatch(/races allow 100%/);
     expect(energyRefusal(defaultSpec(), 'match')).toBeNull();
+  });
+  it('vs CPU rounds (rounds plan §2): 4 wall cells + 5 tanh (9 cells) just fit round 1; 11 such cells don\'t; ×1 ×1.4 ×2 ×2.6 ×3.2', () => {
+    const R = CONFIG.rounds.budgets, sp = (b: number, n: number): BrainSpec => ({ v: 2, senses: { boundary: b, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n, fn: 'tanh' }] });
+    expect(maxLoad(sp(4, 5))).toBeCloseTo(19.5, 9);
+    expect(energyRefusal(sp(4, 5), R[0])).toBeNull();
+    for (const [b, n] of [[5, 6], [4, 7], [6, 5]]) expect(energyRefusal(sp(b, n), R[0])).toMatch(/this round allows 20%/);
+    expect(R.map((x) => x / R[0])).toEqual([1, 1.4, 2, 2.6, 3.2]);
+    expect(energyRefusal(defaultSpec(), R[0])).toBeNull(); // the starting brain fits round 1
+  });
+  it('the signed speed cell (ruling 2026-11-05): negative going backwards, mirrored, and it costs its size either way', () => {
+    const top = CONFIG.car.wheelSpeed;
+    expect(speedAct(top / 2)).toBeCloseTo(0.5, 12);
+    expect(speedAct(-top / 2)).toBeCloseTo(-0.5, 12);
+    expect(speedAct(-2 * top)).toBe(-1);
+    expect(speedAct(2 * top)).toBe(1);
+    const s: BrainSpec = { v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn: 'linear' }] }, net = compile(zeroGenome(s));
+    expect(nodeRate(net, 0, -0.5)).toBe(0.5);
+    const out = new Float64Array(net.nNodes);
+    expect(evalNet(net, [-0.5], out)).toBeCloseTo(evalNet(net, [0.5], out), 12);
   });
   it('"At maximum firing rate": a cell counts its own cost plus the wires it drives', () => {
     const s = defaultSpec();

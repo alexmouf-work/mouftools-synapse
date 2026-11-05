@@ -87,12 +87,13 @@
       <span class="mp-note" id="lbNote" aria-live="polite"></span>
       <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicLb" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxLb" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
       <button class="btn" type="button" id="lbLeave">Leave room</button>
+      <button class="btn menu" type="button" id="lbMenu">Main menu</button>
     </footer>
   </section>
 </div>
 <div class="app" hidden>
   <header class="top">
-    <button class="word" type="button" id="toTitle" aria-label="Synapse: back to the title">Synapse</button>
+    <button class="btn menu" type="button" id="toTitle">Main menu</button>
     <div class="tr" id="trainers" role="group" aria-label="Trainer"></div>
     <div class="alloc" aria-label="Energy split: brain power against speed">
       <span>Brain <b id="aBrain"></b></span>
@@ -120,6 +121,7 @@
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>
+  <div class="cam-top" id="camTop"></div>
   <div id="trainOverlay" hidden>
   <aside class="tv-info" aria-label="Training">
     <section class="tv-half" aria-label="Fitness per generation">
@@ -130,78 +132,97 @@
         <button class="btn primary" id="tvRace" type="button" hidden>Race</button>
         <button class="btn" id="tvAgain" type="button" hidden>Keep training</button>
         <button class="btn" id="tvBack" type="button" hidden>Back</button>
+        <button class="btn menu" id="tvMenu" type="button">Main menu</button>
         <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
       </div>
       <canvas id="tvGraph" aria-label="Best and mean fitness per generation"></canvas>
       <div class="tv-key"><span><i class="best"></i>best</span><span><i class="mean"></i>mean</span><span>m per 60 s</span></div>
       <p class="tv-note" id="tvNote" aria-live="polite"></p>
     </section>
-    <section class="tv-half" aria-label="The highlighted car's brain">
-      <div class="tv-hd"><h2>Brain</h2><span class="tv-gen" id="tvBrainOf"></span></div>
-      <canvas id="tvBrain" aria-label="The highlighted car's brain, firing"></canvas>
+    <section class="tv-half" aria-label="Map">
+      <div class="tv-hd"><h2>Map</h2><span class="tv-gen" id="tvCars"></span></div>
+      <canvas id="tvMap" class="side-map" aria-label="Map of the track with every shown car"></canvas>
     </section>
   </aside>
   <div class="tv-cam">
     <div class="tv-big" id="tvBig" aria-live="polite"></div>
-    <div class="tv-mini"><div class="tv-hd"><h2>Map</h2><span class="tv-gen" id="tvCars"></span></div><canvas id="tvMap" aria-label="Map of the track with every shown car"></canvas></div>
+    <div class="tv-mini tv-brainc"><div class="tv-hd"><h2>Brain</h2><span class="tv-gen" id="tvBrainOf"></span></div><canvas id="tvBrain" aria-label="The highlighted car's brain, firing"></canvas></div>
   </div>
   </div>
   <div id="raceOverlay" hidden>
-    <div class="dv-count" id="rcCount" aria-live="assertive"></div>
-    <div class="rc-wrong" id="rcWrong" role="status" hidden>Wrong way</div>
-    <section class="tv-panel rc-status" aria-label="Race">
-      <h1 class="tv-title"><span id="rcTitle">vs CPU</span><span class="tv-name" id="rcState"></span></h1>
-      <dl class="kv">
-        <dt>Position</dt><dd id="rcPos"></dd>
-        <dt>Lap</dt><dd id="rcLap"></dd>
-        <dt>Time</dt><dd id="rcTime"></dd>
-      </dl>
-      <h2 class="rc-h" id="rcListH">Grid</h2>
-      <ol class="rc-list" id="rcList"></ol>
-      <div class="tv-actions">
-        <button class="btn" id="rcSkip" type="button">Skip to results</button>
-        <button class="btn" id="rcLeave" type="button">Back</button>
-        <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicRc" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxRc" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
-      </div>
-    </section>
-    <div class="tv-mini rc-mini"><div class="tv-hd"><h2>Map</h2><span class="tv-gen" id="rcCars"></span></div><canvas id="rcMap" aria-label="Map of the track with every car"></canvas></div>
-    <section class="tv-panel rc-results" id="rcResults" aria-label="Results" hidden>
-      <h2 id="rcResT">Results</h2>
-      <div class="rc-scroll" id="rcScroll"><table class="rc-table"><thead><tr><th>Place</th><th>Name</th><th>Time</th><th>Distance</th></tr></thead><tbody id="rcRows"></tbody></table></div>
-      <div class="tv-actions"><button class="btn primary" id="rcAgain" type="button">Race again</button><button class="btn" id="rcBack" type="button">Back</button></div>
-    </section>
+    <aside class="tv-info rc-side" aria-label="Race">
+      <section class="tv-half rc-status">
+        <div class="tv-hd"><h2 id="rcTitle">vs CPU</h2><span class="tv-gen" id="rcState"></span></div>
+        <dl class="kv">
+          <dt>Position</dt><dd id="rcPos"></dd>
+          <dt id="rcLapK">Lap</dt><dd id="rcLap"></dd>
+          <dt>Time</dt><dd id="rcTime"></dd>
+        </dl>
+        <div class="tv-hd"><h2 class="rc-h" id="rcListH">Grid</h2><span class="tv-gen" id="rcCars"></span></div>
+        <ol class="rc-list" id="rcList"></ol>
+        <div class="tv-actions">
+          <button class="btn" id="rcSkip" type="button">Skip to results</button>
+          <button class="btn" id="rcLeave" type="button">Back</button>
+          <button class="btn menu" id="rcMenu" type="button">Main menu</button>
+          <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicRc" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxRc" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
+        </div>
+      </section>
+      <section class="tv-half rc-mini" aria-label="Map">
+        <div class="tv-hd"><h2>Map</h2></div>
+        <canvas id="rcMap" class="side-map" aria-label="Map of the track with every car"></canvas>
+      </section>
+    </aside>
+    <div class="tv-cam">
+      <div class="dv-count" id="rcCount" aria-live="assertive"></div>
+      <div class="rc-wrong" id="rcWrong" role="status" hidden>Wrong way</div>
+      <div class="tv-mini tv-brainc" id="rcBrainC"><div class="tv-hd"><h2>Brain · live</h2></div><canvas id="rcBrain" aria-label="Your car's brain, firing"></canvas></div>
+      <section class="tv-panel rc-results" id="rcResults" aria-label="Results" hidden>
+        <h2 id="rcResT">Results</h2>
+        <div class="rc-scroll" id="rcScroll"><table class="rc-table"><thead id="rcHead"><tr><th>Place</th><th>Name</th><th>Time</th><th>Distance</th></tr></thead><tbody id="rcRows"></tbody></table></div>
+        <div class="tv-actions"><button class="btn primary" id="rcAgain" type="button">Race again</button><button class="btn" id="rcBack" type="button">Back</button></div>
+      </section>
+    </div>
   </div>
   <div id="driveOverlay" hidden>
-    <div class="dv-count" id="dvCount" aria-live="assertive"></div>
-    <section class="tv-panel tv-status dv-status" aria-live="polite">
-      <h1 class="tv-title"><span>Drive</span><span class="tv-name" id="dvName"></span></h1>
-      <dl class="kv">
-        <dt>Time</dt><dd id="dvTime"></dd>
-        <dt>Distance</dt><dd id="dvDist"></dd>
-        <dt>Best lap</dt><dd id="dvLap"></dd>
-        <dt>Energy</dt><dd id="dvEnergy"></dd>
-        <dt>Track</dt><dd id="dvTrack"></dd>
-      </dl>
-      <div class="tv-progress dv-energy" role="progressbar" aria-label="Energy used this minute"><i id="dvEnergyFill"></i></div>
-      <p class="dv-stuck" id="dvStuck" hidden></p>
-      <div class="dv-cams" role="group" aria-label="Camera">
-        <button type="button" data-cam="chase" aria-pressed="true">Chase</button>
-        <button type="button" data-cam="tv" aria-pressed="false">Broadcast</button>
-        <button type="button" data-cam="orbit" aria-pressed="false">Showroom</button>
-      </div>
-      <div class="tv-actions">
-        <button class="btn" id="dvNew" type="button">New track</button>
-        <button class="btn primary" id="dvBack" type="button">Back to workbench</button>
-        <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicDv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxDv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
-      </div>
-    </section>
-    <section class="tv-panel dv-brain" aria-label="Live brain">
-      <h2>Brain · live</h2>
-      <canvas id="dvBrain"></canvas>
-      <p class="note tv-legend">Wires: <span class="sw wneg"></span>−1 <span class="sw wzero"></span>0 <span class="sw wpos"></span>+1 · thicker, brighter = stronger. Every cell flashes faster the faster it fires.</p>
-    </section>
+    <aside class="tv-info dv-side" aria-label="Drive">
+      <section class="tv-half dv-status" aria-live="polite">
+        <div class="tv-hd"><h2>Drive</h2><span class="tv-gen" id="dvName"></span></div>
+        <dl class="kv">
+          <dt>Time</dt><dd id="dvTime"></dd>
+          <dt>Distance</dt><dd id="dvDist"></dd>
+          <dt>Best lap</dt><dd id="dvLap"></dd>
+          <dt>Energy</dt><dd id="dvEnergy"></dd>
+          <dt>Track</dt><dd id="dvTrack"></dd>
+        </dl>
+        <div class="tv-progress dv-energy" role="progressbar" aria-label="Energy used this minute"><i id="dvEnergyFill"></i></div>
+        <p class="dv-stuck" id="dvStuck" hidden></p>
+        <div class="dv-cams" role="group" aria-label="Camera">
+          <button type="button" data-cam="chase" aria-pressed="true">Chase</button>
+          <button type="button" data-cam="tv" aria-pressed="false">Broadcast</button>
+          <button type="button" data-cam="orbit" aria-pressed="false">Showroom</button>
+        </div>
+        <div class="tv-actions">
+          <button class="btn" id="dvNew" type="button">New track</button>
+          <button class="btn primary" id="dvBack" type="button">Back to workbench</button>
+          <button class="btn menu" id="dvMenu" type="button">Main menu</button>
+          <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicDv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxDv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
+        </div>
+      </section>
+      <section class="tv-half" aria-label="Map">
+        <div class="tv-hd"><h2>Map</h2></div>
+        <canvas id="dvMap" class="side-map" aria-label="Map of the track with your car"></canvas>
+      </section>
+    </aside>
+    <div class="tv-cam">
+      <div class="dv-count" id="dvCount" aria-live="assertive"></div>
+      <section class="tv-mini tv-brainc dv-brain" aria-label="Live brain">
+        <div class="tv-hd"><h2>Brain · live</h2></div>
+        <canvas id="dvBrain"></canvas>
+      </section>
+    </div>
   </div>
 </div>
+<dialog id="leaveDlg" aria-labelledby="lvT"><p id="lvT"><b id="lvQ">Leave the match?</b></p><div class="cf"><button class="btn" type="button" id="lvStay">Stay</button><button class="btn red" type="button" id="lvGo">Leave</button></div></dialog>
 <div id="toast" hidden></div>
 <script type="module" src="/src/client/main.ts"></script>
 </body>

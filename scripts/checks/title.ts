@@ -1,6 +1,6 @@
 // Title screen check (B2c, B7, B8), headless Chromium: the page opens on the title; Multiplayer (blue) is live (its
 // card and rooms: check:multiplayer); vs CPU (yellow) opens the designer in match mode and Sandbox (plain) in sandbox mode, and the designer's
-// wordmark comes back; the rail along
+// Main menu comes back (asking first mid-match: Stay / Leave); the rail along
 // the foot carries Privacy · Terms · Cookies (resolving) and the music credits, and the designer's rule strip no longer
 // does; the storage notice sits below the rail, never over it; an overlap audit of the card, its buttons and the rail
 // at 1440×900 and 844×390, light and dark. Landscape only (B9): an upright phone gets "Turn your phone sideways" over
@@ -65,16 +65,23 @@ async function main() {
     }
     check(await page.locator('.rulebar .legal-links').count() === 0, 'the Learning Rule strip has no legal line any more');
 
-    // 3. vs CPU → the designer in match mode → the wordmark → the title; Sandbox → the designer in sandbox mode → back
+    // 3. vs CPU → the designer in match mode → Main menu asks first (Stay keeps the match, Leave goes to the title);
+    //    Sandbox → the designer in sandbox mode → Main menu goes straight back (sidebar plan 2026-11-05 §2)
     await page.click('#toCpu');
     check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.evaluate(() => document.body.classList.contains('match')), 'vs CPU opens the designer in match mode');
+    check((await page.locator('#toTitle').innerText()) === 'Main menu' && await page.locator('.app .word').count() === 0, 'the designer\'s top bar has a Main menu button in place of the wordmark');
     await page.click('#toTitle');
-    check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()), 'the wordmark goes back to the title from vs CPU');
+    const asked = await page.evaluate(() => ({ open: (document.getElementById('leaveDlg') as HTMLDialogElement).open, q: document.getElementById('lvQ')!.textContent }));
+    await page.click('#lvStay');
+    check(asked.open && asked.q === 'Leave the match?' && await page.locator('.app').isVisible() && await page.evaluate(() => window.__match!.phase === 'build'), `mid-match, Main menu asks first ("${asked.q}"); Stay keeps the match`);
+    await page.click('#toTitle');
+    await page.click('#lvGo');
+    check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()) && await page.evaluate(() => window.__match!.phase === 'none' && window.__phase!.state === 'off'), 'Leave goes back to the title, the match and its timer gone');
     await page.click('#toSandbox');
     check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.locator('#net g.cell').count() > 0
       && !(await page.evaluate(() => document.body.classList.contains('match'))), 'Sandbox opens the designer (sandbox mode)');
     await page.click('#toTitle');
-    check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()), 'the designer\'s "Synapse" wordmark goes back to the title');
+    check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()) && !(await page.evaluate(() => (document.getElementById('leaveDlg') as HTMLDialogElement).open)), 'in the Sandbox, Main menu goes straight back to the title');
     await page.context().close();
 
     // 4. overlap audit: card, buttons, rail and the two sound toggles inside the screen and apart; light and dark;

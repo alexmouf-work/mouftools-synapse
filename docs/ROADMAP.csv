@@ -6,7 +6,7 @@ M1-3,Training view,done,accepted after the story revision
 M1-4,Drive view,done,accepted; bloom audit made deterministic; near-field glow toned
 M1-6,Principal's changes after playing: beams follow the eyes; spiking inputs; weight colours,review,docs/CONTEXT.md 2026-10-31; screenshots in out/s6/
 M1-5,Ship to synapse.mouftools.com,review,S5 built: vercel.json + production check; principal connects Vercel + CNAME (README)
-M2,Match mode: 5 rounds vs 4 bots with timers,later,solo-loop plan steps 5-7
+M2,Match mode: vs CPU as 5 rounds vs nine CPU players with timers (60/20 s build; 10 s train; 30 s race; weights carried over; total signed distance),review,docs/plans/2026-11-05-rounds.md (Built)
 T1,Backprop trainer (copy a teacher; DAgger + generalised delta rule) + linear replaces step,review,plan and bench results: docs/plans/2026-11-04-trainers.md
 B1,Arial only site-wide (no web fonts; canvas and 3-D text too),review,docs/plans/2026-11-04-build-order.md
 B2,Brain v2 engine: senses; one function per layer; speed from firing; 8 × 8; default brain; generations,review,docs/plans/2026-11-04-brain-designer-v2.md (as built + S1)
@@ -27,3 +27,6 @@ M3,Lab (untimed),later,
 M5,Multiplayer (B8): rooms by 4-letter code; up to 100 players; lobby; hand in a trained brain; host starts; every client re-runs the race; nearest 11 cars in 3-D and the rest as map dots; countdown to the server's Go; results to the room; supabase/schema.sql (RLS; functions; 30-day purge),review,docs/plans/2026-11-04-tracks-training-matches.md §4 (Built B8); supabase/schema.sql for the principal to run
 B8b,Races: wrong-way reset in the sim (60 ticks of falling progress → put back at the furthest point facing forwards; "Wrong way" over your car; distance never below 0); pads off the whole grid for up to 100 cars; results table scrolls with Race again and Back pinned,review,docs/plans/2026-11-04-tracks-training-matches.md §4 (Wrong-way reset; Built)
 B9,Multiplayer lobby: room code (the fourth letter checks) → name on its own screen (unique in the room; the server checks too) → lobby of pop-in name chips (scattered; rows on a short screen past 60); host removes a player; Leave frees the name; landscape only (the "Turn your phone sideways" card is modal; no portrait rules),review,docs/plans/2026-11-05-lobby-and-landscape.md (Built); supabase/schema.sql to re-run
+BT,vs CPU build timer as a reusable phase countdown; a "−" on the selected cell,review,docs/plans/2026-11-05-build-timer-and-cell-minus.md (Built)
+R5,Rounds: round budgets 20/28/40/52/64%; signed speed cell and signed distances everywhere; per-round CPU brains; standings; S1 re-run,review,docs/plans/2026-11-05-rounds.md (Built)
+SB,One sidebar (a quarter of the width) for training; drive and race: map in it; live brain in the camera's corner; racers list (top 3 + nearest; 10 rows); Main menu on every screen (asks mid-match or in a room),review,docs/plans/2026-11-05-sidebar-and-main-menu.md (Built)

@@ -41,8 +41,9 @@ export function gridAct(x: number, y: number, scale: number, phase: number, ox =
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/** Speed cell: 0 at rest, 1 at top wheel speed (sooner with a gain above 1). */
-export const speedAct = (v: number, gain = 1): number => { const x = (v * gain) / CONFIG.car.wheelSpeed; return x < 0 ? 0 : x > 1 ? 1 : x; };
+/** Speed cell: the signed forward speed (ruling 2026-11-05): 0 at rest, 1 at top wheel speed forwards, −1 backwards
+ * (sooner with a gain above 1); the same response mirrored for negative speeds. */
+export const speedAct = (v: number, gain = 1): number => { const x = (v * gain) / CONFIG.car.wheelSpeed; return x < -1 ? -1 : x > 1 ? 1 : x; };
 
 // ---- learnable receptive fields (B2e, plan §3ad) ----
 // Each cell's tuning is its default (the even spread above) moved by its field parameters in the genome, each
@@ -93,8 +94,8 @@ export function gridOf(k: number, p0 = 0, p1 = 0, p2 = 0, p3 = 0): Grid {
 /** A speed cell's gain. */
 export const speedGainOf = (p0 = 0): number => pow2(SPEED_LOG2 * p0);
 
-/** A sense value as a firing rate 0..1 (head direction's cosine maps −1..1 to 0..1). */
-export const senseRate = (id: SenseId, v: number): number => (id === 'hd' ? (v + 1) / 2 : v);
+/** A sense value as a firing rate 0..1 (head direction's cosine maps −1..1 to 0..1; the signed speed cell, its size). */
+export const senseRate = (id: SenseId, v: number): number => (id === 'hd' ? (v + 1) / 2 : id === 'speed' && v < 0 ? -v : v);
 
 /** Text for the designer. */
 export const SENSE_INFO: Record<SenseId, { name: string; desc: string }> = {
@@ -102,5 +103,5 @@ export const SENSE_INFO: Record<SenseId, { name: string; desc: string }> = {
   landmark: { name: 'Landmark cells', desc: 'Fires faster when the finish line is in view.' },
   hd: { name: 'Head direction cells', desc: 'Fires faster when facing a given angle.' },
   grid: { name: 'Grid cells', desc: 'Fires on a hexagonal grid.' },
-  speed: { name: 'Speed cells', desc: 'Fires faster at higher speeds.' },
+  speed: { name: 'Speed cells', desc: 'Fires faster at higher speeds; negative going backwards.' },
 };

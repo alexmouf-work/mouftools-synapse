@@ -2,13 +2,18 @@
 // between thinking and speed: every cell spends its cost × its firing rate (0..1), and every wire its cost × its
 // source's rate. What is left is that tick's top speed, never below the floor (10%), so every car can move.
 // Costs are % of the supply (halved 2026-11-04: "increase the max energy allowed for a brain by 2x").
-// The sandbox refuses nothing; vs CPU and Multiplayer ("match") refuse a design past 100% with everything flat out.
+// The sandbox refuses nothing; Multiplayer ("match") refuses a design past 100% with everything flat out, and each
+// vs CPU round past its own budget (CONFIG.rounds.budgets, rounds plan 2026-11-05 §2).
 // Retired with this: the per-minute pool, the noise rule and the energy-left input.
 import { CONFIG } from '../config';
 import { columns, type BrainSpec, type SenseId } from './spec';
 
 const E = CONFIG.energy;
 export type Mode = 'sandbox' | 'match';
+/** What a design is held to: the sandbox (no limit), a match at 100%, or a vs CPU round's budget (% flat out). */
+export type Rule = Mode | number;
+/** The most a design may use flat out under a rule (%); Infinity in the sandbox. */
+export const ruleLimit = (r: Rule): number => (r === 'sandbox' ? Infinity : r === 'match' ? 100 : r);
 
 /** Each node's cost at full rate, in compiled node order (inputs, hidden by layer, wheels). */
 export function nodeCosts(s: BrainSpec): number[] {
@@ -45,11 +50,12 @@ export function speedCap(load: number): number {
   return (left < E.speedFloor ? E.speedFloor : left) / 100;
 }
 
-/** Why a design can't be raced in this mode, or null. The sandbox refuses nothing. */
-export function energyRefusal(s: BrainSpec, mode: Mode): string | null {
-  if (mode === 'sandbox') return null;
-  const m = maxLoad(s);
-  return m > 100 ? `Flat out it would use ${Math.round(m)}% of the energy; races allow 100%.` : null;
+/** Why a design can't be raced under this rule, or null. The sandbox refuses nothing; a vs CPU round names its budget. */
+export function energyRefusal(s: BrainSpec, rule: Rule): string | null {
+  if (rule === 'sandbox') return null;
+  const m = maxLoad(s), lim = ruleLimit(rule);
+  if (m <= lim + 1e-9) return null;
+  return rule === 'match' ? `Flat out it would use ${Math.round(m)}% of the energy; races allow 100%.` : `Flat out it would use ${Math.round(m)}% of the energy; this round allows ${Math.round(lim)}%.`;
 }
 
 /** "At maximum firing rate, uses x% energy" for one cell: its cost plus the wires it drives. */

@@ -2,8 +2,9 @@
 // with every sense and two layers, whose energy load caps its speed, and the heavy brain on a figure eight, where rays
 // skip the other deck), and a short training phase per trainer
 // (evolution, backprop, actor-critic, A_RP, and evolution at temperature ×2) of the default brain run inline and on 4
-// worker_threads (must match each other and the golden; ×2 must differ from ×1), and a vs CPU race of the nine stored
-// CPU brains (B7: race track, grid, 2 laps, ranking). golden.json is written only by this script:
+// worker_threads (must match each other and the golden; ×2 must differ from ×1), a 2-lap race of the nine stored CPU
+// brains of round 5 (B7: race track, grid, 2 laps, ranking; as Multiplayer races), and a vs CPU round's 30 s timed race
+// of round 1's (rounds plan 2026-11-05). golden.json is written only by this script:
 //   npx tsx scripts/checks/determinism.ts            check
 //   npx tsx scripts/checks/determinism.ts --update   regenerate (say why in the commit)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -19,8 +20,8 @@ import { InlineExecutor } from '../../src/common/train/episodes';
 import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
 import cpuData from '../../src/assets/cpu/brains.json';
-import { cpuBrains } from '../../src/common/sim/cpu';
-import { runRace } from '../../src/common/sim/match';
+import { cpuRounds } from '../../src/common/sim/cpu';
+import { ROUND_RACE, runRace } from '../../src/common/sim/match';
 
 const SEEDS = [1, 2, 3];
 const PHASE_T = 600_000; // a few generations of 60 s episodes
@@ -63,7 +64,7 @@ async function main() {
     const hotPooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T, temperature: 1 });
     if (hotInline.hash !== hotPooled.hash) { bad++; console.error(`seed ${seed} ×2: inline ${hotInline.hash} ≠ 4 workers ${hotPooled.hash}`); }
     if (hotInline.hash === inline.hash) { bad++; console.error(`seed ${seed}: temperature ×2 gave the ×1 hash ${inline.hash}`); }
-    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), raceEight: raceHash(seed, HEAVY, EIGHT_TRACK), phase: inline.hash, phaseBackprop: bpInline.hash, ...rl, phaseTemp2: hotInline.hash, match: runRace(cpuBrains(cpuData).map((b) => b.genome), seed).hash };
+    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), raceEight: raceHash(seed, HEAVY, EIGHT_TRACK), phase: inline.hash, phaseBackprop: bpInline.hash, ...rl, phaseTemp2: hotInline.hash, match: runRace(cpuRounds(cpuData)[4].map((b) => b.genome), seed).hash, round: runRace(cpuRounds(cpuData)[0].map((b) => b.genome), seed, undefined, ROUND_RACE).hash };
   }
   await pool.close();
   if (update) {
@@ -77,7 +78,7 @@ async function main() {
     if (golden[seed]?.[k] !== got[seed][k]) { bad++; console.error(`seed ${seed} ${k}: got ${got[seed][k]}, golden ${golden[seed]?.[k]}`); }
   }
   if (bad) { console.error(`determinism: ${bad} mismatch(es)`); process.exit(1); }
-  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, the heavy brain on a figure eight, evolution, backprop, actor-critic, A_RP and ×2 phases inline = 4 workers, a vs CPU race)`);
+  console.log(`determinism: ${SEEDS.length} seeds match golden (track, default and heavy brains' races, the heavy brain on a figure eight, evolution, backprop, actor-critic, A_RP and ×2 phases inline = 4 workers, a 2-lap race, a round's timed race)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

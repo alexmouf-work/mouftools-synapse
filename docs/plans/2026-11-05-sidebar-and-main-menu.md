@@ -29,3 +29,21 @@ total of 10 racers shown). Make the sidebar take up 1/4 of the width rather than
   the room?", with Leave / Stay. Leaving a room also calls leave_room. In the Sandbox it goes straight to the title,
   because the brain is saved anyway.
 - It replaces the "Synapse" word-link back to the title. Back buttons that go one step back stay as they are.
+
+## Built (2026-11-05, landed together with the rounds plan)
+- One sidebar (`--tv-w: 25vw`, its own section; the scene starts at its edge) in the training, drive and race views:
+  training has the fitness graph over the map, and the highlighted car's brain in the camera's bottom-right card (the
+  map's old place and size). Drive has its status (time, distance, best lap, energy, track, cameras, New track, Back,
+  Main menu, sounds) over a new map of your car, its live brain in the corner card. Race has its status (position,
+  lap or distance, time), the racers list, Skip, Back, Main menu and sounds over the map, and your live brain in the
+  corner card (new: the race records your car's nodes already). The floating race panel is gone; results and standings
+  open over the camera. The countdown and "Wrong way" now sit over the camera, not the whole window.
+- Racers list (`raceView.ts` `listRows`): all of them up to 10; otherwise places 1–3, then the 7 nearest your place,
+  with a "⋯" row where the two groups don't meet. Each row: place, colour, name, signed distance (or the finish time).
+- Main menu (`#toTitle` in the designer's top bar in place of the wordmark, `tvMenu`, `dvMenu`, `rcMenu`, `lbMenu` in
+  the lobby's footer): back to the title (lounge music). Mid-match: "Leave the match?" and in a room "Leave the room?"
+  (Leave calls leave_room), in an in-page dialog with Stay / Leave. Sandbox: straight to the title. Leaving stops
+  whatever runs (training saves nothing; race, drive, timers).
+- Checked: check:training (sidebar 25vw, the map in it under the graph, the brain card in the corner), check:drive
+  (sidebar and map at 844×390), check:race (sidebar, list rows, brain card, 844×390), check:multiplayer (10 of 99
+  listed, signed distances), check:title (Main menu: asks mid-match, Stay / Leave; Sandbox goes straight back).

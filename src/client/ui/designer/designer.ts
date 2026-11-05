@@ -6,12 +6,12 @@
 // common/sim/brain.ts and is saved; energy figures come from common/sim/energy.ts.
 import { ACTS, CONFIG, type Act } from '../../../common/config';
 import {
-  addSense, ACT_CODE, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer, weightCount,
+  addSense, ACT_CODE, zeroGenome, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer, weightCount,
   type EditResult,
 } from '../../../common/sim/brain';
-import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
+import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode, type Rule } from '../../../common/sim/energy';
 import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
-import { biasIndex, columns, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
+import { biasIndex, columns, defaultSpec, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
 import { load, NO_TRAINING, save, starterGenome, type Saved, type TrainerId } from './store';
@@ -30,9 +30,14 @@ const el = (t: string, a: Attrs = {}, p?: Element): SVGElement => {
   return e;
 };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-/** sandbox: no energy limit, Train asks how many generations · match (vs CPU, B7): a design past 100% flat out is
+/** sandbox: no energy limit, Train asks how many generations · match (vs CPU, Multiplayer): a design past the limit is
  * refused, and Train spends the fixed budget T straight away (no popup), so every racer trains on the same budget. */
 let MODE: Mode = 'sandbox';
+/** The limit edits are held to: the sandbox's none, a room's 100%, or a vs CPU round's budget (edits then carry the
+ * weights over: rounds plan 2026-11-05). */
+let RULE: Rule = 'sandbox';
+/** A vs CPU match's brain is its own: shown and edited here but never saved over the sandbox brain. */
+let matchBrain = false;
 
 /** Functions as the designer shows them (one per hidden layer; wheels fixed to tanh). */
 export const FX: Record<Act, { n: string; g: string }> = {
@@ -65,6 +70,7 @@ let saveWarned = false;
 let trainWhenValid = false;
 
 function persist(): void {
+  if (matchBrain) return;
   if (!save(W.saved) && !saveWarned) { saveWarned = true; toast('This browser won’t keep your brain, so changes last until you close the tab.'); }
 }
 function commit(r: EditResult, what?: string): boolean {
@@ -195,12 +201,12 @@ function render(): void {
   // a "+" under each layer's neurons adds one (gone at the limit); a "−" above them removes one
   s.layers.forEach((l, L) => {
     const ids = layerIds(s, L), last = P.get(ids[ids.length - 1]);
-    if (!last || l.n >= CONFIG.brain.maxPerLayer) return;
+    if (!last || l.n >= CONFIG.brain.maxPerLayer || !setLayerSize(W.saved.genome, L, l.n + 1, RULE).ok) return; // gone at the limit or past the budget
     const add = el('g', { class: 'hit btnc', role: 'button', tabindex: 0, 'data-add-n': L, 'aria-label': `Add a neuron to layer ${L + 1}` }, g0);
     const y = last.y + (last.step as number);
     el('circle', { cx: last.x, cy: y, r: 8, style: 'fill:var(--panel);stroke:var(--line)', 'stroke-width': 1.5 }, add);
     el('path', { d: `M ${last.x - 4} ${y} H ${last.x + 4} M ${last.x} ${y - 4} V ${y + 4}`, style: 'stroke:var(--accent)', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, add);
-    add.addEventListener('click', (ev) => { ev.stopPropagation(); commit(setLayerSize(W.saved.genome, L, l.n + 1, MODE), 'Another neuron'); render(); });
+    add.addEventListener('click', (ev) => { ev.stopPropagation(); commit(setLayerSize(W.saved.genome, L, l.n + 1, RULE), 'Another neuron'); render(); });
   });
   const minus = (x: number, y: number, r: number, label: string, data: Attrs, fn: () => void) => {
     const g = el('g', { class: 'hit btnc', role: 'button', tabindex: 0, 'aria-label': label, ...data }, g0);
@@ -212,23 +218,24 @@ function render(): void {
   s.layers.forEach((l, L) => {
     const first = P.get(layerIds(s, L)[0]);
     if (!first) return;
-    if (l.n > 1) minus(first.x, first.y - (first.step as number), 8, `Remove a neuron from layer ${L + 1}`, { 'data-rm-n': L }, () => commit(setLayerSize(W.saved.genome, L, l.n - 1)));
-    if (s.layers.length > 1) minus(regions[L + 1].cx, box.h - 22, rowR(), `Remove layer ${L + 1}`, { 'data-rm-l': L }, () => commit(removeLayer(W.saved.genome, L)));
+    if (l.n > 1) minus(first.x, first.y - (first.step as number), 8, `Remove a neuron from layer ${L + 1}`, { 'data-rm-n': L }, () => commit(setLayerSize(W.saved.genome, L, l.n - 1, RULE)));
+    if (s.layers.length > 1) minus(regions[L + 1].cx, box.h - 22, rowR(), `Remove layer ${L + 1}`, { 'data-rm-l': L }, () => commit(removeLayer(W.saved.genome, L, RULE)));
   });
   // a "+" at the bottom of each boundary between columns inserts a hidden layer there (gone at the limit)
   if (s.layers.length < CONFIG.brain.maxLayers) for (let i = 0; i < regions.length - 1; i++) {
+    if (!insertLayer(W.saved.genome, i, RULE).ok) continue; // past the round's budget here
     const x = regions[i].x1, y = box.h - 22, r = rowR(), a = r * 0.45;
     const add = el('g', { class: 'hit btnc', role: 'button', tabindex: 0, 'data-add-l': i, 'aria-label': 'Add a layer here' }, g0);
     el('circle', { cx: x, cy: y, r, style: 'fill:var(--panel);stroke:var(--accent)', 'stroke-width': 1.4 }, add);
     el('path', { d: `M ${x - a} ${y} H ${x + a} M ${x} ${y - a} V ${y + a}`, style: 'stroke:var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round' }, add);
-    add.addEventListener('click', (ev) => { ev.stopPropagation(); commit(insertLayer(W.saved.genome, i, MODE), 'A new layer'); W.sel = null; render(); });
+    add.addEventListener('click', (ev) => { ev.stopPropagation(); commit(insertLayer(W.saved.genome, i, RULE), 'A new layer'); W.sel = null; render(); });
   }
   showAlloc();
   if (!holdPanel) inspect();
   symbolsDirty = true;
   if (focused) (g0.querySelector(`g.cell[data-id="${focused}"]`) as SVGGElement | null)?.focus();
   // time ran out on a design past the limit: training starts as soon as an edit brings it within
-  if (trainWhenValid && MODE === 'match' && !energyRefusal(s, 'match')) { trainWhenValid = false; setTimeout(trainMatch, 0); }
+  if (trainWhenValid && MODE === 'match' && !energyRefusal(s, RULE)) { trainWhenValid = false; setTimeout(trainMatch, 0); }
 }
 
 /** What the inspector's bin does for this cell (the selected-cell "−" and Delete do the same), or null where there is
@@ -237,11 +244,11 @@ function removal(id: string): (() => void) | null {
   const s = spec();
   if (id.startsWith('i:')) {
     const sid = id.split(':')[1] as SenseId;
-    return s.senses[sid] > 0 ? () => { commit(removeSense(W.saved.genome, sid)); buildTray(); } : null;
+    return s.senses[sid] > 0 ? () => { commit(removeSense(W.saved.genome, sid, RULE)); buildTray(); } : null;
   }
   if (id.startsWith('h')) {
     const L = Number(id.slice(1, id.indexOf(':')));
-    return s.layers[L] && s.layers[L].n > 1 ? () => { commit(setLayerSize(W.saved.genome, L, s.layers[L].n - 1)); } : null;
+    return s.layers[L] && s.layers[L].n > 1 ? () => { commit(setLayerSize(W.saved.genome, L, s.layers[L].n - 1, RULE)); } : null;
   }
   return null;
 }
@@ -256,11 +263,14 @@ function cellLabel(id: string): string {
 
 // ---- the energy split: brain power against speed (resting to flat out while building) ----
 function showAlloc(): void {
-  const s = spec(), top = maxLoad(s), lo = restLoad(s, restRate), f = (v: number) => Math.round(Math.max(0, v)), bar = (v: number) => clamp(v, 0, 100);
+  const s = spec(), top = maxLoad(s), lo = restLoad(s, restRate), f = (v: number) => Math.round(Math.max(0, v));
+  // a vs CPU round's budget is the bar's full scale (rounds plan §2); otherwise the whole supply
+  const lim = typeof RULE === 'number' ? RULE : 100, bar = (v: number) => clamp((v / lim) * 100, 0, 100);
   const sp = (load: number) => Math.round(speedCap(load) * 100);
   $('aFill').style.width = `${bar(lo)}%`;
   $('aRange').style.width = `${bar(top)}%`;
-  $('aBrain').textContent = f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`;
+  document.querySelector('.alloc')?.classList.toggle('budget', lim !== 100);
+  $('aBrain').textContent = (f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`) + (lim !== 100 ? ` of ${lim}%` : '');
   $('aSpeed').textContent = sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%`;
 }
 
@@ -295,16 +305,16 @@ function inspect(): void {
     box2.innerHTML = `<h2>Layer ${L + 1}</h2><div class="fx">${ACTS.map((k) => `<button type="button" data-fx="${k}" aria-pressed="${l.fn === k}"><svg viewBox="-10 -7 20 14"><path d="${FX[k].g}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${FX[k].n}</button>`).join('')}</div>`
       + `<label class="count"><span>Neurons</span><b id="nVal">${l.n}</b><input id="nSlide" type="range" min="1" max="${CONFIG.brain.maxPerLayer}" step="1" value="${l.n}" aria-label="Neurons in layer ${L + 1}"></label>`
       + `<div id="lUse" style="margin-top:12px">${useLine(layerMax(s, L))}</div>${s.layers.length > 1 ? binBtn('rmL', 'Remove this layer') : ''}`;
-    box2.querySelectorAll<HTMLButtonElement>('[data-fx]').forEach((b) => b.addEventListener('click', () => { commit(setLayerFn(W.saved.genome, L, b.dataset.fx as Act, MODE), 'That function'); render(); }));
+    box2.querySelectorAll<HTMLButtonElement>('[data-fx]').forEach((b) => b.addEventListener('click', () => { commit(setLayerFn(W.saved.genome, L, b.dataset.fx as Act, RULE), 'That function'); render(); }));
     // the slider sets the layer's size live; a size the energy rule refuses (vs CPU, Multiplayer) snaps back
     ($('nSlide') as HTMLInputElement).addEventListener('input', (e) => {
       const inp = e.target as HTMLInputElement, want = Number(inp.value), old = spec().layers[L].n;
-      if (want !== old && !commit(setLayerSize(W.saved.genome, L, want, MODE), 'That many neurons')) inp.value = String(old);
+      if (want !== old && !commit(setLayerSize(W.saved.genome, L, want, RULE), 'That many neurons')) inp.value = String(old);
       $('nVal').textContent = String(spec().layers[L].n);
       $('lUse').innerHTML = useLine(layerMax(spec(), L));
       holdPanel = true; render(); holdPanel = false;
     });
-    if (document.getElementById('rmL')) $('rmL').onclick = () => { commit(removeLayer(W.saved.genome, L)); W.sel = null; render(); };
+    if (document.getElementById('rmL')) $('rmL').onclick = () => { commit(removeLayer(W.saved.genome, L, RULE)); W.sel = null; render(); };
     return;
   }
   if (id.startsWith('i:')) {
@@ -442,12 +452,12 @@ function buildTray(): void {
     const b = document.createElement('button'), info = SENSE_INFO[id];
     b.type = 'button'; b.className = 'sense'; b.dataset.s = id;
     b.setAttribute('aria-label', `Add a ${info.name.replace(/ cells$/, '').toLowerCase()} cell`);
-    const full = spec().senses[id] >= CONFIG.senses[id].max;
+    const full = spec().senses[id] >= CONFIG.senses[id].max || !addSense(W.saved.genome, id, RULE).ok; // or past the round's budget
     b.innerHTML = full ? '' : '<span class="plus" aria-hidden="true">+</span>';
     if (full) { b.disabled = true; b.classList.add('full'); }
     b.addEventListener('click', () => {
       if (spec().senses[id] >= CONFIG.senses[id].max) return;
-      if (commit(addSense(W.saved.genome, id, MODE), `A ${info.name.toLowerCase().replace(/s$/, '')}`)) W.sel = `i:${id}:${spec().senses[id] - 1}`;
+      if (commit(addSense(W.saved.genome, id, RULE), `A ${info.name.toLowerCase().replace(/s$/, '')}`)) W.sel = `i:${id}:${spec().senses[id] - 1}`;
       buildTray(); render();
     });
     tr.appendChild(b);
@@ -532,16 +542,24 @@ export function setActive(on: boolean): void {
   if (on) { fit(); buildTray(); buildTrainers(); render(); }
 }
 /** vs CPU opens the designer in match mode, Sandbox in sandbox mode. A brain past the limit says so on entering. */
-export function setDesignerMode(m: Mode): void {
+export function setDesignerMode(m: Mode, limit?: number): void {
   MODE = m;
+  RULE = m === 'match' && limit !== undefined ? limit : m;
   document.body.classList.toggle('match', m === 'match');
-  const why = energyRefusal(spec(), m);
+  const why = energyRefusal(spec(), RULE);
   if (why) toast(`${why} Remove cells to race.`, 4000);
 }
 export const designerMode = (): Mode => MODE;
+/** vs CPU: edit this brain (never saved over the sandbox brain); null: back to the saved sandbox brain. */
+export function useMatchBrain(g: Genome | null): void {
+  if (g) { W.saved = { ...W.saved, name: 'vs CPU', genome: g, train: NO_TRAINING }; matchBrain = true; }
+  else if (matchBrain) { matchBrain = false; W.saved = load().saved; }
+  W.sel = null;
+  if (active) { buildTray(); render(); }
+}
 /** Match mode's Train: the fixed budget straight away, unless the design is past the limit (then it says why). */
 function trainMatch(): boolean {
-  const why = energyRefusal(spec(), 'match');
+  const why = energyRefusal(spec(), RULE);
   if (why) { toast(`${why} Remove cells to race.`, 4000); return false; }
   trainWhenValid = false;
   onTrain(W.saved, 0, 0);
@@ -568,7 +586,8 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
   $('reset').onclick = () => ($('confirm') as HTMLDialogElement).showModal();
   $('cfNo').onclick = () => ($('confirm') as HTMLDialogElement).close();
   $('cfYes').onclick = () => {
-    W.saved = { ...W.saved, genome: starterGenome(), train: NO_TRAINING }; // a new random starter (plan §3c)
+    // a new random starter (plan §3c); in a vs CPU match the starting brain, which fits round 1's budget
+    W.saved = { ...W.saved, genome: matchBrain ? zeroGenome(defaultSpec()) : starterGenome(), train: NO_TRAINING };
     W.sel = null; persist(); ($('confirm') as HTMLDialogElement).close(); buildTray(); render();
   };
   addEventListener('resize', () => { fit(); render(); });
@@ -600,11 +619,12 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
 // for checks (Playwright): the brain as saved, the layout, and a way to render any brain
 declare global {
   interface Window {
-    __designer?: { spec: () => BrainSpec; scale: () => number; load: (g: Genome) => void; select: (id: string | null) => void; cells: () => string[] };
+    __designer?: { spec: () => BrainSpec; genome: () => Genome; scale: () => number; load: (g: Genome) => void; select: (id: string | null) => void; cells: () => string[] };
   }
 }
 window.__designer = {
   spec: () => spec(),
+  genome: () => W.saved.genome,
   scale: () => SCALE,
   load: (g) => { W.saved = { ...W.saved, genome: g, train: NO_TRAINING }; W.sel = null; buildTray(); render(); },
   select: (id) => { W.sel = id; render(); },

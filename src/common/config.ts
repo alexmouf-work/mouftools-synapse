@@ -178,6 +178,22 @@ export const CONFIG = {
     wrongWayTicks: 60, // races: a car whose progress has fallen this many ticks in a row is put back (tracks plan §4)
   },
 
+  // vs CPU as five rounds (docs/plans/2026-11-05-rounds.md): build → train → race each round, weights carried over.
+  rounds: {
+    count: 5,
+    /** Build time per round (s): round 1 from scratch, then upgrades. */
+    build: [60, 20, 20, 20, 20],
+    train: 10, // s: the fixed budget T, its view held until then
+    raceTicks: 600, // 30 s; the score is the signed distance covered by then (no laps to finish)
+    /**
+     * The most a design may use flat out each round (%): R1 is calibrated so 4 boundary cells + 5 tanh neurons (9
+     * cells, fully wired, plus the wheels) just fit at 19.5% and 11 such cells don't (23.6%), then ×1, ×1.4, ×2,
+     * ×2.6, ×3.2 (the planned 10 : 14 : 20 : 26 : 32).
+     */
+    budgets: [20, 28, 40, 52, 64],
+    nextAfter: 8, // s: the standings, then the next build starts by itself
+  },
+
   race: {
     ticks: 600, // 30 s: the first half of a 1-minute run, the S1 criterion's look at the unseen track (milestone 2's match phase is revisited when planned)
   },

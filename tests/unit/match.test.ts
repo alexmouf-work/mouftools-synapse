@@ -6,9 +6,9 @@ import { CONFIG } from '../../src/common/config';
 import { compile, defaultGenome } from '../../src/common/sim/brain';
 import { newRecording, putBack, Runner } from '../../src/common/sim/race';
 import { biasIndex, OUTPUTS, type Genome } from '../../src/common/sim/spec';
-import { CPU_NAMES, cpuBrains } from '../../src/common/sim/cpu';
+import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
 import { maxLoad } from '../../src/common/sim/energy';
-import { gridCar, gridOrder, gridPlace, rank, raceTrackSeed, runRace } from '../../src/common/sim/match';
+import { gridCar, gridOrder, gridPlace, rank, raceTrackSeed, ROUND_RACE, runRace } from '../../src/common/sim/match';
 import { generateTrack, gridDepth } from '../../src/common/sim/track';
 
 const M = CONFIG.match;
@@ -61,7 +61,7 @@ describe('ranking', () => {
 });
 
 describe('a race', () => {
-  const cpu = cpuBrains(data);
+  const cpu = cpuRounds(data)[4];
   const genomes = [defaultGenome(), ...cpu.map((b) => b.genome)];
   it('is deterministic and keeps every car independent of the others', () => {
     const a = runRace(genomes, 42, (k) => k === 0), b = runRace(genomes, 42);
@@ -147,18 +147,42 @@ describe('the wrong-way reset (races only)', () => {
     expect(((t.startIdx * t.ds + c.prog) % t.len + t.len) % t.len).toBeCloseTo(c.idx * t.ds, 6);
   });
   it('is deterministic: the same race gives the same bits', () => {
-    const g = [backwards(), ...cpuBrains(data).map((b) => b.genome)];
+    const g = [backwards(), ...cpuRounds(data)[4].map((b) => b.genome)];
     expect(runRace(g, 77).hash).toBe(runRace(g, 77).hash);
+  });
+  it('a round\'s timed race: 30 s, no finishers, ranked by the signed distance covered from each grid slot', () => {
+    const g = [backwards(), ...cpuRounds(data)[0].map((b) => b.genome)], r = runRace(g, 5, undefined, ROUND_RACE);
+    expect(r.endTicks).toBe(CONFIG.rounds.raceTicks);
+    for (const c of r.cars) {
+      expect(c.finish).toBeNull();
+      expect(c.rec.ticks).toBe(CONFIG.rounds.raceTicks);
+      expect(c.dist).toBeCloseTo(c.rec.prog[CONFIG.rounds.raceTicks - 1] + gridPlace(r.track, c.slot).back, 9);
+    }
+    for (let i = 1; i < r.ranking.length; i++) expect(r.cars[r.ranking[i - 1]].dist).toBeGreaterThanOrEqual(r.cars[r.ranking[i]].dist);
+    // backwards counts against you: below its grid spot while going backwards (the wrong-way reset puts it back), never ahead
+    const c0 = r.cars[0], back0 = gridPlace(r.track, c0.slot).back;
+    expect(Math.min(...c0.rec.prog.slice(0, c0.rec.ticks)) + back0).toBeLessThan(0);
+    expect(c0.dist).toBeLessThanOrEqual(0);
+    expect(runRace(g, 5, undefined, ROUND_RACE).hash).toBe(r.hash);
   });
 });
 
 describe('the CPU brains', () => {
-  it('nine, named, each one a design a player could race, trained on budgets from 5% to 100% of T', () => {
-    const b = cpuBrains(data);
-    expect(b.map((x) => x.name)).toEqual([...CPU_NAMES]);
-    for (const x of b) expect(maxLoad(x.genome.spec)).toBeLessThanOrEqual(100);
-    expect(b[0].budget).toBe(Math.round(0.05 * CONFIG.train.T));
-    expect(b[8].budget).toBe(CONFIG.train.T);
-    expect(b.some((x) => x.design.startsWith('starter:')) && b.some((x) => !x.design.startsWith('starter:'))).toBe(true);
+  it('five rounds of nine, named, each within its round\'s budget, trained on 5% to 100% of T, growing round to round', () => {
+    const rounds = cpuRounds(data);
+    expect(rounds.length).toBe(CONFIG.rounds.count);
+    rounds.forEach((b, r) => {
+      expect(b.map((x) => x.name)).toEqual([...CPU_NAMES]);
+      for (const x of b) expect(maxLoad(x.genome.spec)).toBeLessThanOrEqual(CONFIG.rounds.budgets[r] + 1e-9);
+      expect(b[0].budget).toBe(Math.round(0.05 * CONFIG.train.T));
+      expect(b[8].budget).toBe(CONFIG.train.T);
+    });
+    // each player's design only grows: every later round has at least the cells it had
+    for (let k = 0; k < CPU_NAMES.length; k++) for (let r = 1; r < rounds.length; r++) {
+      const a = rounds[r - 1][k].genome.spec, c = rounds[r][k].genome.spec;
+      expect(c.layers.length).toBe(a.layers.length);
+      a.layers.forEach((l, L) => expect(c.layers[L].n).toBeGreaterThanOrEqual(l.n));
+      for (const id of Object.keys(a.senses) as (keyof typeof a.senses)[]) expect(c.senses[id]).toBeGreaterThanOrEqual(a.senses[id]);
+    }
   });
 });
