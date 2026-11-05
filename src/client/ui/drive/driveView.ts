@@ -1,6 +1,6 @@
 // Drive view: the trained brain drives 60 s on an unseen track. The whole run is computed first (runDrive, the same
 // function a Node replay uses, so the hash matches) and then played back in real time: the yellow car with wheels at
-// their outputs, eye rays, the live brain panel (weights as colours, inputs spiking), chase / broadcast / showroom
+// their outputs (no beams: match-flow v2), the live brain panel (weights as colours, inputs spiking), chase / broadcast / showroom
 // cameras. Distance and best lap in a
 // plain overlay; a stall shows "Stuck against the wall" with the time while the camera stays on the car. New track
 // re-seeds; the run loops after a short pause at the end. Opening (and New track) counts down "5, 4, 3, 2, 1, Go"
@@ -171,7 +171,8 @@ export async function openDrive(saved: Saved, hooks: DriveHooks, trackSeed = fir
   $('dvNew').onclick = () => { leave(); void openDrive(saved, hooks, newSeed()); };
 
   const wheels = new Float64Array(4);
-  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, f: track.startIdx, wheels, beams, ranges, stuck: false };
+  // no lasers (match-flow v2 plan §5): the car draws no boundary-cell beams
+  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, f: track.startIdx, wheels, beams: [], ranges, stuck: false };
   let last = performance.now();
   const t0 = last;
   /** Fill `pose` for playback time pt; returns the tick and whether the run has ended. */

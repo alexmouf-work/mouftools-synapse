@@ -383,6 +383,7 @@ interface PlotOpts { x: number[]; y: number[]; xt: number[]; yt: number[]; xl: s
 /** An x/y frame: faint grid, solid axes through 0, tick labels, axis titles. */
 function plot(o: PlotOpts) {
   const { g, w } = gctx(), l = 30, r = w - 8, t = 8, b = w - 30;
+  ($('graph') as HTMLCanvasElement).dataset.axes = JSON.stringify({ x: o.x, y: o.y, xl: o.xl }); // for the checks
   const X = (v: number) => l + ((r - l) * (v - o.x[0])) / (o.x[1] - o.x[0]), Y = (v: number) => b - ((b - t) * (v - o.y[0])) / (o.y[1] - o.y[0]);
   g.font = `9px ${FONT}`; g.lineWidth = 1; g.strokeStyle = css('--line');
   for (const v of o.xt) { g.beginPath(); g.moveTo(X(v), t); g.lineTo(X(v), b); g.stroke(); }
@@ -428,10 +429,11 @@ function graphCurve(fn: Act, xl: string, yl = 'output', b = 0): void {
   const { g, X, Y } = plot({ x: [-4, 4], y: [ymin, ymax], xt: [-4, 0, 4], yt: [...new Set([ymin, 0, ymax])], xl, yl });
   line(g, 160, (u) => { const xv = -4 + 8 * u; return [X(xv), Y(clamp(transfer(code, xv + b), ymin, ymax))]; });
 }
+/** The signed speed cell (principal 2026-11-05): −1 at top speed backwards, through 0 at rest, +1 at top speed forwards. */
 function speedLine(gain: number): void {
   const top = CONFIG.car.wheelSpeed;
-  const { g, X, Y } = plot({ x: [0, top], y: [0, 1], xt: [0, top / 2, top], yt: [0, 1], xl: 'speed (m/s)', yl: 'activation' });
-  line(g, 60, (u) => [X(u * top), Y(Math.min(1, u * gain))]);
+  const { g, X, Y } = plot({ x: [-top, top], y: [-1, 1], xt: [-top, 0, top], yt: [-1, 0, 1], xl: 'forward speed (m/s)', yl: 'activation' });
+  line(g, 120, (u) => { const v = -top + 2 * top * u; return [X(v), Y(clamp((v * gain) / top, -1, 1))]; });
 }
 /** The cell's graph from its learned field (B2e): the inspector shows how training moved it. */
 function graphSense(id: SenseId, k: number, n: number): void {

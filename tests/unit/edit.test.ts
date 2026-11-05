@@ -3,7 +3,6 @@ import { CONFIG } from '../../src/common/config';
 import {
   addSense, compile, defaultGenome, genomeHash, insertLayer, removeLayer, removeSense, setLayerFn, setLayerSize, weightCount, type EditResult,
 } from '../../src/common/sim/brain';
-import { biasIndex, wireList } from '../../src/common/sim/spec';
 import { maxLoad } from '../../src/common/sim/energy';
 import { defaultSpec, fieldIndex, paramCount, type Genome } from '../../src/common/sim/spec';
 
@@ -41,36 +40,7 @@ describe('edit ops (brain v2: senses, layers, functions; wiring is fixed)', () =
     expect(setLayerSize(g, 0, 9).ok).toBe(false);
     expect(setLayerSize(g, 0, 0).ok).toBe(false);
   });
-  it('a vs CPU round carries the weights over (rounds plan 2026-11-05): kept cells keep theirs, added ones start at 0, removed ones go', () => {
-    const g0 = ok(insertLayer(defaultGenome(), 1)), trained: Genome = { ...g0, w: g0.w.map((_, k) => 0.01 * (k + 1)) };
-    const wOf = (g: Genome, a: string, b: string) => g.w[wireList(g.spec).findIndex(([x, y]) => x === a && y === b)];
-    const bOf = (g: Genome, id: string) => g.w[biasIndex(g.spec, id)];
-    // a new sense cell: its wires at 0, every other wire and bias as it was
-    const a = ok(addSense(trained, 'boundary', 64));
-    expect(wOf(a, 'i:boundary:1', 'h0:0')).toBe(0);
-    expect(wOf(a, 'i:boundary:0', 'h0:2')).toBe(wOf(trained, 'i:boundary:0', 'h0:2'));
-    expect(wOf(a, 'h1:1', 'o:rr')).toBe(wOf(trained, 'h1:1', 'o:rr'));
-    expect(bOf(a, 'o:fl')).toBe(bOf(trained, 'o:fl'));
-    // a layer inserted in front: the old layers' wires follow them to their new places; the new layer's start at 0
-    const b = ok(insertLayer(trained, 0, 64));
-    expect(wOf(b, 'h1:0', 'h2:1')).toBe(wOf(trained, 'h0:0', 'h1:1'));
-    expect(bOf(b, 'h2:1')).toBe(bOf(trained, 'h1:1'));
-    expect(wOf(b, 'i:hd:0', 'h0:0')).toBe(0);
-    expect(bOf(b, 'h0:0')).toBe(0);
-    // a layer removed: the wires through it go; the rest keep theirs
-    const c = ok(removeLayer(trained, 0, 64));
-    expect(wOf(c, 'h0:1', 'o:fr')).toBe(wOf(trained, 'h1:1', 'o:fr'));
-    expect(wOf(c, 'i:boundary:0', 'h0:0')).toBe(0);
-    // a neuron dropped from the end, a function changed: the rest as they were
-    const d = ok(setLayerFn(ok(setLayerSize(trained, 0, 2, 64)), 0, 'relu', 64));
-    expect(wOf(d, 'h0:1', 'h1:0')).toBe(wOf(trained, 'h0:1', 'h1:0'));
-    expect(bOf(d, 'h0:1')).toBe(bOf(trained, 'h0:1'));
-    expect(d.w.length).toBe(paramCount(d.spec));
-    // a round's budget refuses what doesn't fit; removals never
-    expect(addSense(trained, 'boundary', 5).ok).toBe(false);
-    expect(removeSense(trained, 'boundary', 5).ok).toBe(true);
-  });
-  it('any sandbox edit leaves an untrained brain: every wire and bias, old or new, at 0 (the learned fields stay)', () => {
+  it('any edit leaves an untrained brain: every wire and bias, old or new, at 0 (the learned fields stay)', () => {
     const trained: Genome = { ...defaultGenome(), w: defaultGenome().w.map((_, k) => (k % 3) - 1) };
     for (const g of [ok(addSense(trained, 'grid')), ok(setLayerFn(trained, 0, 'linear')), ok(setLayerSize(trained, 0, 5)), ok(insertLayer(trained, 1))]) {
       expect(g.w.length).toBe(paramCount(g.spec));
@@ -80,16 +50,16 @@ describe('edit ops (brain v2: senses, layers, functions; wiring is fixed)', () =
   });
   it('B2e: a new cell keeps the others\' learned fields and goes in the widest gap; an untrained sense re-spreads', () => {
     const spec = { ...defaultSpec(), senses: { ...defaultSpec().senses, boundary: 2 } }, base = { spec, w: new Array(paramCount(spec)).fill(0) };
-    // untrained: the even spread for the new count (−90, 0, 90)
+    // untrained: the table's directions for the new count (−45, 0, 45; match-flow v2 plan §4)
     const even = compile(ok(addSense(base, 'boundary')));
-    expect([0, 1, 2].map((i) => even.tune[4 * i])).toEqual([-90, 0, 90]);
-    // learned: cell 0 turned to −30°, cell 1 (default +90°) narrowed; the third goes in the widest gap between −30 and 90
+    expect([0, 1, 2].map((i) => even.tune[4 * i] + 0)).toEqual([-45, 0, 45]);
+    // learned: cell 0 turned from −30° to −90°, cell 1 (default +30°) narrowed; the third goes in the widest gap
     const w = [...base.w], a0 = fieldIndex(spec, 'i:boundary:0'), a1 = fieldIndex(spec, 'i:boundary:1');
-    w[a0] = 60 / 45; w[a1 + 1] = -1; w[a1 + 2] = -1;
+    w[a0] = -60 / 45; w[a1 + 1] = -1; w[a1 + 2] = -1;
     const before = compile({ spec, w }), after = compile(ok(addSense({ spec, w }, 'boundary')));
-    expect(before.tune[0]).toBeCloseTo(-30, 12);
+    expect(before.tune[0]).toBeCloseTo(-90, 12);
     for (const i of [0, 1]) for (let j = 0; j < 3; j++) expect(after.tune[4 * i + j]).toBeCloseTo(before.tune[4 * i + j], 9);
-    expect(after.tune[8]).toBeCloseTo(-150, 9); // the gap from 90 round to −30 (240°) is the widest: its middle
+    expect(after.tune[8]).toBeCloseTo(150, 9); // the gap from 30 round to −90 (240°) is the widest: its middle
     // removing a cell leaves the rest where they are
     const fewer = compile(ok(removeSense(ok(addSense({ spec, w }, 'boundary')), 'boundary')));
     for (const i of [0, 1]) for (let j = 0; j < 3; j++) expect(fewer.tune[4 * i + j]).toBeCloseTo(before.tune[4 * i + j], 9);

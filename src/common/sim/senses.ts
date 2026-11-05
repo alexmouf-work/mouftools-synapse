@@ -10,9 +10,30 @@ const S = CONFIG.senses;
 
 /** A field's direction for cell k of n, degrees clockwise from the nose: ahead for one, spread −90…+90 for more. */
 export const spreadDeg = (k: number, n: number): number => (n <= 1 ? 0 : -90 + (180 * k) / (n - 1));
-/** A field's angular width (degrees): narrower the more cells share the front. */
-export const fieldWidthDeg = (sense: 'boundary' | 'landmark', n: number): number =>
-  n > 1 ? S.fieldSpreadDeg / n : sense === 'boundary' ? S.boundary.widthDeg : S.landmark.widthDeg;
+/**
+ * Boundary vector cells' untrained directions by count (match-flow v2 plan §4, principal 2026-11-05: "pick useful
+ * directions to cover"): mirror-symmetric about the nose, weighted to the front, reaching the sides as the count
+ * grows. Degrees clockwise from the nose, cell 0 the leftmost.
+ */
+export const BOUNDARY_DIRS: readonly (readonly number[])[] = [
+  [], [0], [-30, 30], [-45, 0, 45], [-60, -20, 20, 60], [-75, -30, 0, 30, 75], [-80, -45, -15, 15, 45, 80],
+  [-90, -55, -25, 0, 25, 55, 90], [-90, -60, -35, -12, 12, 35, 60, 90],
+];
+/** An untrained field's direction for cell k of n: boundary cells from the table, landmark cells the even spread. */
+export const fieldDirDeg = (sense: 'boundary' | 'landmark', k: number, n: number): number =>
+  sense === 'boundary' && n < BOUNDARY_DIRS.length ? BOUNDARY_DIRS[n][k] : spreadDeg(k, n);
+/**
+ * A field's untrained angular width (degrees). Boundary cells: 0.6 × the gap to the nearest neighbour, so neighbouring
+ * fields cross at half activation (exp(−(0.5/0.6)²) ≈ 0.5), within 20–60°; one cell alone keeps 60°. Landmark cells:
+ * narrower the more cells share the front.
+ */
+export function fieldWidthDeg(sense: 'boundary' | 'landmark', n: number, k = 0): number {
+  if (sense === 'landmark' || n >= BOUNDARY_DIRS.length) return n > 1 ? S.fieldSpreadDeg / n : sense === 'boundary' ? S.boundary.widthDeg : S.landmark.widthDeg;
+  if (n <= 1) return S.boundary.widthDeg;
+  const d = BOUNDARY_DIRS[n], gap = Math.min(k > 0 ? d[k] - d[k - 1] : Infinity, k < n - 1 ? d[k + 1] - d[k] : Infinity);
+  const w = 0.6 * gap;
+  return w < 20 ? 20 : w > S.boundary.widthDeg ? S.boundary.widthDeg : w;
+}
 
 /** Activation of a field cell for a target `dist` metres away at `offDeg` degrees from the cell's direction. */
 export function fieldAct(offDeg: number, dist: number, range: number, widthDeg: number): number {
@@ -76,10 +97,10 @@ export function scaled(def: number, p: number, k: number, lo: number, hi: number
 /** A boundary or landmark cell's field: direction (degrees clockwise from the nose, −180..180), width (°), range (m). */
 export interface Field { dirDeg: number; widthDeg: number; rangeM: number; dWidth: number; dRange: number }
 export function fieldOf(sense: 'boundary' | 'landmark', k: number, n: number, p0 = 0, p1 = 0, p2 = 0): Field {
-  let dir = spreadDeg(k, n) + FIELD_DIR_DEG * p0;
+  let dir = fieldDirDeg(sense, k, n) + FIELD_DIR_DEG * p0;
   dir -= 360 * Math.round(dir / 360);
   const [wl, wh] = FIELD_BOUNDS.width, [rl, rh] = sense === 'boundary' ? FIELD_BOUNDS.boundaryRange : FIELD_BOUNDS.landmarkRange;
-  const w = scaled(fieldWidthDeg(sense, n), p1, FIELD_LOG2, wl, wh);
+  const w = scaled(fieldWidthDeg(sense, n, k), p1, FIELD_LOG2, wl, wh);
   const r = scaled(sense === 'boundary' ? S.boundary.rangeM : S.landmark.rangeM, p2, FIELD_LOG2, rl, rh);
   return { dirDeg: dir, widthDeg: w.v, rangeM: r.v, dWidth: w.dv, dRange: r.dv };
 }
@@ -103,5 +124,5 @@ export const SENSE_INFO: Record<SenseId, { name: string; desc: string }> = {
   landmark: { name: 'Landmark cells', desc: 'Fires faster when the finish line is in view.' },
   hd: { name: 'Head direction cells', desc: 'Fires faster when facing a given angle.' },
   grid: { name: 'Grid cells', desc: 'Fires on a hexagonal grid.' },
-  speed: { name: 'Speed cells', desc: 'Fires faster at higher speeds; negative going backwards.' },
+  speed: { name: 'Speed cells', desc: '+1 at top speed forwards, −1 at top speed backwards.' },
 };

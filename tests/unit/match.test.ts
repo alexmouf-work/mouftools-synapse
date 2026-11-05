@@ -174,8 +174,8 @@ describe('the CPU brains', () => {
     rounds.forEach((b, r) => {
       expect(b.map((x) => x.name)).toEqual([...CPU_NAMES]);
       for (const x of b) expect(maxLoad(x.genome.spec)).toBeLessThanOrEqual(CONFIG.rounds.budgets[r] + 1e-9);
-      expect(b[0].budget).toBe(Math.round(0.05 * CONFIG.train.T));
-      expect(b[8].budget).toBe(CONFIG.train.T);
+      expect(b[0].budget).toBe(Math.round(0.05 * CONFIG.rounds.T));
+      expect(b[8].budget).toBe(CONFIG.rounds.T);
     });
     // each player's design only grows: every later round has at least the cells it had
     for (let k = 0; k < CPU_NAMES.length; k++) for (let r = 1; r < rounds.length; r++) {

@@ -93,16 +93,14 @@ async function main() {
     const en = await drive(page), enText = await page.locator('#dvEnergy').innerText();
     const wantE = `brain ${Math.round(en!.load)}% · speed ${Math.round(speedCap(en!.load) * 100)}%`;
     check(en!.load > 0 && en!.load === node.rec.energy[en!.tick] && enText === wantE, `energy line "${enText}" = the recorded load at tick ${en!.tick} and its speed share`);
-    // beams: each boundary vector cell's beam leaves the car along exactly its field's sim direction (a few poses)
-    let worst = 0, nBeams = -1;
+    // no lasers (match-flow v2 plan §5): no boundary-cell beam is drawn from the car, at any pose
+    let nBeams = 0;
     for (const at of [3, 11, 27]) {
       await page.evaluate((x) => window.__drive!.seek(x), at);
       await page.waitForFunction((f) => (window.__drive?.frames ?? 0) > f, (await drive(page))!.frames + 1, { timeout: 60_000 });
-      const bc = await page.evaluate(() => window.__drive!.beamCheck());
-      nBeams = bc.beams.length;
-      bc.beams.forEach((b, e) => { worst = Math.max(worst, Math.abs(b[0] - bc.sim[e][0]), Math.abs(b[1] + bc.sim[e][1])); });
+      nBeams = Math.max(nBeams, (await page.evaluate(() => window.__drive!.beamCheck())).beams.length);
     }
-    check(worst < 1e-4 && nBeams === trained.spec.senses.boundary, `${nBeams} beam(s), one per boundary cell, along the sim's field directions at 3 poses (worst component error ${worst.toExponential(1)})`);
+    check(nBeams === 0 && trained.spec.senses.boundary > 0, `no beams drawn from the car (${nBeams} at 3 poses, with ${trained.spec.senses.boundary} boundary cell(s))`);
     // spikes: every cell flashes at about SPIKE_MAX_HZ × its firing rate
     await page.evaluate(() => { window.__drive!.seek(4); window.__drive!.resetSpikes(); });
     await page.waitForTimeout(5000);

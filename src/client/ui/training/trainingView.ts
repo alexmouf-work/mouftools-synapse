@@ -148,13 +148,13 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   const seed = p.seed ?? (round ? round.seed : match ? null : saved.train.seed) ?? newSeed();
   const phase = round ? round.n - 1 : match ? 0 : saved.train.phases;
   const temp = saved.trainer === 'backprop' || match ? 0 : temperature;
-  // a room trains from scratch; a vs CPU round from the brain as built (its weights carried over from the last round)
-  const genome = match && !round ? zeroGenome(saved.genome.spec) : saved.genome;
+  // a match trains every round from fresh weights, biases and fields for the design as it stands (match-flow v2 §2)
+  const genome = match ? zeroGenome(saved.genome.spec) : saved.genome;
   if (match) saved = { ...saved, train: round ? { seed, phases: phase, temps: [] } : NO_TRAINING };
   // weights and biases all 0 (untrained, or edited since): from scratch; the cells' learned fields are kept either way
   const start: 'fresh' | 'carry' = genome.w.slice(0, weightCount(genome.spec)).every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
-  const T = p.T ?? (match ? CONFIG.train.T : phaseBudget(generations));
+  const T = p.T ?? (round ? CONFIG.rounds.T : match ? CONFIG.train.T : phaseBudget(generations));
   // match: the generations the budget allows (evolution's worst case; a gradient trainer's fitness checks)
   if (match) generations = Math.max(1, saved.trainer === 'evolution' ? Math.floor(T / phaseBudget(1)) : Math.floor(T / CONFIG.train.grad.evalEvery) + 1);
   const seeds = phaseSeeds(seed, phase);
@@ -299,6 +299,10 @@ function championLap(g: Genome, t: Track, gen: number) {
   new Runner().run(net, t, { ticks: CONFIG.drive.ticks, earlyStop: false, record: rec });
   return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, prog: rec.prog, ticks: rec.ticks, gen, rec };
 }
+
+/** A round's time is up (match-flow v2 §3): training stops where it has got to and keeps the best agent so far, as
+ * Stop does (ruling 2026-11-04); a run with nothing evaluated yet hands back the brain as it was. */
+export function stopTraining(): void { if (running) { stopAsked = true; pool?.abort(); } }
 
 /** Leave the view now (Main menu): any run in progress is stopped and saves nothing. */
 export function leaveTraining(): void {

@@ -5,14 +5,16 @@
 //   then Train starts itself with the design as it stands (jumped ahead with __phase.skipTo).
 // - Train: no popup and no buttons, "Round 1 of 5 · Train" from 10 (red under 5), the fixed budget (a small ?T= here)
 //   from the starting brain: the trained brain = Node's run of the same design, seed and budget; the generation shows
-//   in the timer as "gen n" (nothing overlaps the timer); the race starts when the 10 s are up. Without ?T= a round
-//   spends the game's budget, T = the full-skill CPU's (all of it; generations and time reported).
+//   in the timer as "gen n" (nothing overlaps the timer); the race starts when the 20 s are up. Without ?T= a round
+//   spends the round's budget, T = the full-skill CPU's (all of it; generations and time reported); at 0 a run still
+//   going stops where it got to and keeps the best so far. No Train or Skip button anywhere in vs CPU.
 // - Race: ten cars on the grid two by two behind the line where the sim puts them (= Node gridCar), listed in grid
 //   order, the countdown 5…1 Go, then "Round 1 of 5 · Race" from 30; the race hash, the ranking by signed distance and
 //   each car's place on screen at 20 s = Node runRace (30 s, no laps); the sidebar a quarter of the width with the
 //   status, the racers list and the map; your live brain in the camera's corner; render smoke; bloom audits.
 // - Standings after the race: this race's signed distance and the total per player, = Node, best total first; "Round 2
-//   of 5 in" counting 8; Next round → round 2's build: 20 s, the budget 28%, the brain carried over (= the trained one).
+//   of 5 in" counting 8 and no buttons → round 2's build: 20 s, the budget 28%, the design carried over with fresh
+//   weights (match-flow v2).
 // - The last round (round 5, a race straight from ?view=race with the strongest round-5 CPU brain as yours, on a seed
 //   where you lead): the final standings, "You won the match!", Play again and Back, and the winner music.
 // - The wrong-way reset: each round-1 CPU brain alone from pole on ten race tracks with and without it (it never
@@ -141,30 +143,31 @@ async function main() {
     await page.waitForTimeout(300);
     const fitB = await page.evaluate(`(() => { const b = document.getElementById('board'); return { vb: document.getElementById('net').getAttribute('viewBox'), size: '0 0 ' + b.clientWidth + ' ' + b.clientHeight }; })()`) as { vb: string; size: string };
     check(fitB.vb === fitB.size, `the diagram fits the board after the timer grows the rule strip (viewBox ${fitB.vb}, board ${fitB.size})`);
-    await page.evaluate((g) => window.__designer!.load(g), zeroGenome(BIG));
-    await page.click('#train');
-    await page.waitForTimeout(300);
-    const toast = await page.locator('#toast').innerText();
-    check(await page.evaluate(() => window.__match!.phase === 'build') && await page.locator('#arena').isHidden() && /this round allows 20%/.test(toast), `a design past round 1's budget can't train ("${toast}")`);
-    await page.evaluate((g) => window.__designer!.load(g), defaultGenome());
+    check(await page.locator('#train').isHidden() && await page.locator('#rcSkip').count() === 0, 'vs CPU: no Train button in the designer and no Skip anywhere (only the timers move a match on)');
     await page.evaluate(() => window.__phase!.skipTo(9.5));
     bt = await pt(page);
     check(bt.text === '10' && bt.red && bt.bg === 'rgb(217, 70, 91)' && !bt.pulse, `the last 10 s: red (${bt.text}, ${bt.bg}), no pulse yet`);
     await page.screenshot({ path: `${OUT}/build-red.png` });
     const p5 = await page.evaluate(() => { window.__phase!.skipTo(4.5); return { pulse: window.__phase!.pulse, text: window.__phase!.text, sfx: window.__audio!.liveSfx, audio: window.__audio!.state }; });
     check(p5.text === '5' && p5.pulse && (p5.audio !== 'running' || p5.sfx > 0), `the last 5 s: pulses, and ticks on the effects bus (audio ${p5.audio}, ${p5.sfx} effect sounding)`);
+    // a design past the budget when time runs out: it says why, and training starts as soon as an edit brings it within
+    await page.evaluate((g) => window.__designer!.load(g), zeroGenome(BIG));
     await page.evaluate(() => window.__phase!.skipTo(0.2));
     await page.waitForFunction(() => window.__phase?.state === 'up', null, { timeout: 5000 });
     const up = await page.evaluate(() => ({ text: window.__phase!.text, designer: !(document.querySelector('.app') as HTMLElement).hidden }));
     await page.screenshot({ path: `${OUT}/build-up.png` });
     check(up.text === 'Time’s up' && up.designer, `at 0: "${up.text}" over the designer`);
+    await page.waitForTimeout(1200);
+    const toast = await page.locator('#toast').innerText();
+    check(await page.evaluate(() => window.__match!.phase === 'build') && await page.locator('#arena').isHidden() && /this round allows 20%/.test(toast), `a design past round 1's budget doesn't train at 0 ("${toast}")`);
+    await page.evaluate((g) => window.__designer!.load(g), defaultGenome());
 
     // 2. training: started by the timer, 10 s, no buttons; the trained brain = Node
     await page.waitForFunction(() => window.__training?.state === 'running' || window.__training?.state === 'done', null, { timeout: 30_000 });
     const tr = await page.evaluate(() => ({ T: window.__training!.T, start: window.__training!.start, phase: window.__training!.phase, popup: (document.getElementById('trainDlg') as HTMLDialogElement).open,
       btns: ['tvStop', 'tvRace', 'tvBack', 'tvDrive', 'tvAgain'].filter((id) => !(document.getElementById(id) as HTMLElement).hidden), menu: !(document.getElementById('tvMenu') as HTMLElement).hidden }));
     bt = await pt(page);
-    check(!tr.popup && tr.T === T && tr.start === 'fresh' && tr.phase === 0 && tr.btns.length === 0 && tr.menu && bt.label === 'Round 1 of 5 · Train' && Number(bt.text) <= 10 && Number(bt.text) >= 8,
+    check(!tr.popup && tr.T === T && tr.start === 'fresh' && tr.phase === 0 && tr.btns.length === 0 && tr.menu && bt.label === 'Round 1 of 5 · Train' && Number(bt.text) <= 20 && Number(bt.text) >= 17,
       `Train starts itself: no popup, the budget (T ${tr.T}, ${tr.start}, phase ${tr.phase}), "${bt.label}" ${bt.text}, no buttons but Main menu (${tr.btns.join(' ') || 'none'})`);
     // the generation goes into the round's timer as "gen n"; nothing on the camera overlaps the timer
     await page.waitForFunction(() => (window.__training?.shownGen ?? 0) > 0, null, { timeout: 300_000 });
@@ -181,7 +184,7 @@ async function main() {
     await page.screenshot({ path: `${OUT}/train.png` });
     const tmid = await page.evaluate(() => ({ phase: window.__match!.phase, left: window.__phase!.left, red: window.__phase!.red, trained: window.__match!.trained }));
     check(tmid.trained !== null && genomeHash(tmid.trained) === genomeHash(trained), `the trained brain = Node's run of the same design, seed and budget (${genomeHash(trained)})`);
-    check(tmid.phase === 'train' || tmid.phase === 'race', `training done early: the view holds until the 10 s are up (${tmid.left} s left${tmid.red ? ', red' : ''})`);
+    check(tmid.phase === 'train' || tmid.phase === 'race', `training done early: the view holds until the 20 s are up (${tmid.left} s left${tmid.red ? ', red' : ''})`);
     await page.evaluate(() => window.__phase?.state === 'running' && window.__phase.skipTo(0.2));
 
     // 3. the race: grid, countdown, then 30 s
@@ -233,34 +236,38 @@ async function main() {
     }
 
     // 5. the standings after round 1, then round 2's build with the brain carried over
-    await page.click('#rcSkip');
-    await page.waitForFunction(() => window.__match?.phase === 'standings', null, { timeout: 30_000 });
+    await page.evaluate(() => window.__race!.seek(1e9)); // to the end (vs CPU has no Skip)
+    await page.waitForFunction(() => window.__match?.phase === 'standings', null, { timeout: 30_000, polling: 100 });
+    // the standings show for 8 s, less than this check's reading and screenshots take on SwiftShader: read the timer,
+    // then hold it (a check hook) until the check moves it on
+    const st8 = await page.evaluate(() => { const p = window.__phase!, r = { label: p.label, text: p.text, again: !(document.getElementById('rcAgain') as HTMLElement).hidden, back: !(document.getElementById('rcBack') as HTMLElement).hidden }; p.skipTo(600); return r; });
     await frames(page, 2);
     const rows = await standingsRows(page), d = node.cars.map((c) => c.dist);
     const ordr = NAMES.map((_, k) => k).sort((a, b) => d[b] - d[a] || a - b);
     const want = ordr.map((k, i) => [String(i + 1), NAMES[k], km(d[k]), km(d[k])]);
-    bt = await pt(page);
     check(JSON.stringify(rows) === JSON.stringify(want) && (await page.locator('#rcResT').innerText()) === 'Round 1 of 5 · Standings' && (await page.locator('#rcHead').innerText()).replace(/\s+/g, ' ').trim() === 'PLACE NAME ROUND 1 TOTAL',
       `standings: race and total distance (signed) = Node: ${rows.map((x) => `${x[1]} ${x[3]}`).join(' | ')}`);
-    check(bt.label === 'Round 2 of 5 in' && Number(bt.text) <= 8 && (await page.locator('#rcAgain').innerText()) === 'Next round' && await page.locator('#rcBack').isHidden(), `"${bt.label}" ${bt.text}, and Next round`);
+    check(st8.label === 'Round 2 of 5 in' && Number(st8.text) <= 8 && Number(st8.text) >= 6 && !st8.again && !st8.back, `"${st8.label}" ${st8.text}, and no buttons: the timer moves on`);
     await page.screenshot({ path: `${OUT}/standings.png` });
-    await page.click('#rcAgain');
-    await page.waitForFunction(() => window.__match?.phase === 'build' && window.__match.round === 2, null, { timeout: 10_000 });
+    await page.evaluate(() => window.__phase!.skipTo(0.1));
+    await page.waitForFunction(() => window.__match?.phase === 'build' && window.__match.round === 2, null, { timeout: 10_000, polling: 100 });
     bt = await pt(page);
     const g2 = await page.evaluate(() => window.__designer!.genome());
-    check(bt.label === 'Round 2 of 5 · Build' && Number(bt.text) <= 20 && Number(bt.text) >= 19 && /of 28%$/.test(await page.locator('#aBrain').innerText()) && genomeHash(g2) === genomeHash(trained),
-      `Next round: "${bt.label}" ${bt.text}, the budget 28%, and the brain is the one round 1 trained (weights carried over)`);
+    check(bt.label === 'Round 2 of 5 · Build' && Number(bt.text) <= 20 && Number(bt.text) >= 19 && /of 28%$/.test(await page.locator('#aBrain').innerText())
+      && JSON.stringify(g2.spec) === JSON.stringify(trained.spec) && g2.w.every((x) => x === 0),
+      `after 8 s: "${bt.label}" ${bt.text}, the budget 28%; round 1's design carries over with fresh weights, biases and fields (match-flow v2)`);
     // an upgrade keeps the trained weights: one more boundary cell
     await page.click('#tray [data-s="boundary"]');
     const g3 = await page.evaluate(() => window.__designer!.genome());
-    check(g3.spec.senses.boundary === 2 && g3.w.slice(0, 3).some((x) => x !== 0), 'an upgrade (another wall cell) keeps the trained weights; the new cell\'s start at 0');
+    const net3 = compile(g3), dirs = [net3.tune[0], net3.tune[4]];
+    check(g3.spec.senses.boundary === 2 && g3.w.every((x) => x === 0) && dirs[0] === -30 && dirs[1] === 30, `an upgrade (another wall cell): still untrained; the wall cells re-spread to the table for two (${dirs.join('°, ')}°)`);
     await page.screenshot({ path: `${OUT}/build-round2.png` });
     await page.click('#toTitle');
     await page.click('#lvGo');
     check(await page.locator('#title').isVisible() && await page.evaluate(() => window.__phase!.state === 'off' && window.__match!.phase === 'none'), 'Main menu → Leave: back to the title, the match and its timer gone');
     await page.context().close();
 
-    // 5b. without ?T= a round trains on the game's budget: T = the full-skill CPU's budget (CONFIG.train.T), all of it
+    // 5b. without ?T= a round trains on the round's budget: T = the full-skill CPU's (CONFIG.rounds.T), all of it if time allows
     page = await open(`?seed=${SEED}&race=${MATCH}`);
     await page.click('#toCpu');
     await page.evaluate(() => window.__phase!.skipTo(0.1));
@@ -268,10 +275,20 @@ async function main() {
     const real0 = await page.evaluate(() => ({ T: window.__training!.T, gens: window.__training!.generations }));
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
     const real = await page.evaluate(() => ({ gen: window.__training!.gen, used: window.__training!.ticksUsed, ms: window.__training!.ms ?? 0, workers: window.__training!.workers }));
-    check(real0.T === CONFIG.train.T && real0.T === rounds[0][8].budget && real.used >= 0.97 * real0.T && real.gen >= 50,
+    check(real0.T === CONFIG.rounds.T && real0.T === rounds[0][8].budget && real.used >= 0.97 * real0.T && real.gen >= 50,
       `a round's training (no ?T): T ${real0.T.toLocaleString('en')} = the full-skill CPU's budget; ${real.gen} generations (estimate ${real0.gens}), ${real.used.toLocaleString('en')} car-ticks, ${(real.ms / 1000).toFixed(1)} s on ${real.workers} workers here (SwiftShader container)`);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/train-full-T.png` });
+    await page.context().close();
+    // 5c. the hard stop: when the train timer reaches 0, training stops where it got to and keeps the best so far
+    page = await open(`?seed=${SEED}&race=${MATCH}`);
+    await page.click('#toCpu');
+    await page.evaluate(() => window.__phase!.skipTo(0.1));
+    await page.waitForFunction(() => (window.__training?.gen ?? 0) >= 3, null, { timeout: 120_000 });
+    await page.evaluate(() => window.__phase!.skipTo(0.1));
+    await page.waitForFunction(() => window.__match?.phase === 'race', null, { timeout: 60_000 });
+    const hs = await page.evaluate(() => ({ st: window.__training!.state, saved: window.__training!.savedOnStop, gen: window.__training!.gen, trained: window.__match!.trained }));
+    check(hs.st === 'stopped' && hs.saved === true && hs.trained !== null && hs.trained.w.some((x) => x !== 0), `time up mid-training: it stops at gen ${hs.gen} with the best so far, and the race starts on time`);
     await page.context().close();
 
     // 6. the last round, which you lead: the final standings and the winner music
@@ -282,16 +299,16 @@ async function main() {
     check(r.hash === nw.hash && r.place === 1, `round 5's race (hash = Node), you first`);
     await page.click('#rcState').catch(() => undefined);
     await page.waitForFunction(() => window.__audio?.ready === true && (window.__audio?.winnerS ?? 0) > 0, null, { timeout: 60_000 });
-    await page.click('#rcSkip');
+    await page.evaluate(() => window.__race!.seek(1e9));
     await page.waitForFunction(() => window.__match?.phase === 'over', null, { timeout: 30_000 });
     await page.waitForFunction(() => window.__audio?.phrase === 'winner', null, { timeout: 5000 }).catch(() => undefined);
     const fin = await page.evaluate(() => ({ t: document.getElementById('rcResT')!.textContent, again: document.getElementById('rcAgain')!.textContent, back: document.getElementById('rcBack')!.textContent, backOn: !(document.getElementById('rcBack') as HTMLElement).hidden, phrase: window.__audio!.phrase, timer: window.__phase!.state }));
-    check(fin.t === 'You won the match!' && fin.again === 'Play again' && fin.back === 'Back' && fin.backOn && fin.timer === 'off', `the final standings: "${fin.t}", Play again and Back (no next-round timer)`);
+    check(fin.t === 'You won the match!' && fin.again === 'Play again' && fin.back === 'Main menu' && fin.backOn && fin.timer === 'off', `the final standings: "${fin.t}", Play again and Main menu (the match is over; no next-round timer)`);
     check(fin.phrase === 'winner', `the winner music plays (${fin.phrase})`);
     await frames(page, 2);
     await page.screenshot({ path: `${OUT}/final.png` });
     await page.click('#rcBack');
-    check(await page.locator('#title').isVisible(), 'Back from the final standings: the title');
+    check(await page.locator('#title').isVisible(), 'Main menu from the final standings: the title');
     await page.context().close();
 
     // 7. the wrong-way reset in the page: your backwards car; its distance is signed
@@ -312,7 +329,7 @@ async function main() {
     const cm = (a: number, b: number) => Math.abs(a - b) < 0.05;
     check(pb.on && cm(pb.drawn[0], bwRec.x[bwReset]) && cm(pb.drawn[2], -bwRec.y[bwReset]) && bwRec.v[bwReset] === 0, `put back at tick ${bwReset}: drawn where the sim put it (at rest), still flashing "Wrong way"`);
     await page.evaluate(() => { window.__race!.hold = false; });
-    await page.click('#rcSkip');
+    await page.evaluate(() => window.__race!.seek(1e9));
     await page.waitForFunction(() => window.__match?.phase === 'standings', null, { timeout: 30_000 });
     const mine = await page.$eval('#rcRows tr.you td:nth-child(3)', (td) => td.textContent);
     check(mine === km(bw.cars[0].dist) && await page.locator('#rcWrong').isHidden(), `standings: your backwards car's distance is signed (${mine}); no "Wrong way" over them`);
@@ -328,9 +345,9 @@ async function main() {
     })()`) as { side: boolean; st: boolean; map: boolean; apart: boolean; sw: boolean };
     check(lay.side && lay.st && lay.map && lay.apart && lay.sw, `844×390: the sidebar a quarter wide with the status, list and map on screen; the brain card apart; no sideways scroll (${JSON.stringify(lay)})`);
     await page.screenshot({ path: `${OUT}/race-844x390.png` });
-    await page.click('#rcSkip');
+    await page.evaluate(() => window.__race!.seek(1e9));
     await page.waitForFunction(() => window.__match?.phase === 'standings', null, { timeout: 30_000 });
-    check(await page.evaluate(`(() => { const on = (id) => { const q = document.getElementById(id).getBoundingClientRect(); return q.width > 0 && q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; }; return on('rcResults') && on('rcAgain'); })()`) as boolean, '844×390: the standings fit on screen, Next round on it');
+    check(await page.evaluate(`(() => { const on = (id) => { const q = document.getElementById(id).getBoundingClientRect(); return q.width > 0 && q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; }; return on('rcResults') && on('rcResT'); })()`) as boolean, '844×390: the standings fit on screen');
     await page.screenshot({ path: `${OUT}/standings-844x390.png` });
     await page.context().close();
 

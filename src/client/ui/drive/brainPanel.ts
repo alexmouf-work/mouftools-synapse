@@ -2,6 +2,7 @@
 // sense cells on the left, a line per hidden layer, the four wheels on the right. Wires show their weights
 // (weights.ts: red −1, black 0, green +1; thicker and brighter with |w|). Every cell flashes yellow at its firing rate
 // (spikes.ts: 14 Hz × rate), or glows steadily with it under prefers-reduced-motion; wheels show their speed.
+import { SENSE_CODE } from '../../../common/sim/brain';
 import { columns, wireList } from '../../../common/sim/spec';
 import type { Net } from '../../../common/sim/brain';
 import { weightStyle, type WireStyle } from '../weights';
@@ -81,6 +82,14 @@ export class BrainPanel {
     }
     // wheel labels with their speed
     g.font = `${10 * pr}px Arial, Helvetica, sans-serif`; g.textBaseline = 'middle'; g.textAlign = 'left';
+    // a speed cell's signed value under it (its flashes show the rate, |value|; the sign says forwards or backwards)
+    for (let i = 0; i < this.net.nIn; i++) {
+      if (this.net.sense[i] !== SENSE_CODE.speed) continue;
+      const p = pos[i], v = vals[i];
+      g.fillStyle = muted; g.textAlign = 'center';
+      g.fillText((v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2), p.x, p.y + r + 7 * pr);
+      g.textAlign = 'left';
+    }
     for (let k = 0; k < 4; k++) {
       const p = pos[this.net.outStart + k];
       g.fillStyle = text;

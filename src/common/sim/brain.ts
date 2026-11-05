@@ -6,8 +6,8 @@ import { CONFIG, type Act } from '../config';
 import { log, PI, sigmoid, tanh, wrapAngle } from '../fmath';
 import { Hasher } from '../hash';
 import { energyRefusal, nodeCoefs, type Rule } from './energy';
-import { biasIndex, columns, FIELD_PARAMS, fieldCount, fieldIndex, inputIds, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
-import { FIELD_DIR_DEG, FIELD_LOG2, fieldOf, fieldWidthDeg, gridOf, GRID_ROT, GRID_SHIFT_M, gridScale, HD_STEP, hdOf, hdPreferred, SPEED_LOG2, speedGainOf, spreadDeg } from './senses';
+import { columns, FIELD_PARAMS, fieldCount, fieldIndex, inputIds, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
+import { FIELD_DIR_DEG, FIELD_LOG2, fieldOf, fieldWidthDeg, gridOf, GRID_ROT, GRID_SHIFT_M, gridScale, HD_STEP, hdOf, hdPreferred, SPEED_LOG2, speedGainOf, fieldDirDeg } from './senses';
 
 export const ACT_CODE: Record<Act, number> = { relu: 1, sigmoid: 2, tanh: 3, linear: 5 };
 const TANH = ACT_CODE.tanh;
@@ -186,49 +186,25 @@ export function signalOf(net: Net, vals: ArrayLike<number>, out = new Float64Arr
 export const zeroGenome = (spec: BrainSpec): Genome => ({ spec, w: new Array(paramCount(spec)).fill(0) });
 export const defaultGenome = (): Genome => zeroGenome(defaultSpec());
 
-// ---- edit ops (pure; the designer calls nothing else to change a brain). In the sandbox any edit leaves an untrained
-// brain: its weights go back to 0 (ruling 2026-11-04: wires are grey until trained, and any edit returns them to grey).
-// Under a match rule (vs CPU's rounds, rounds plan 2026-11-05 §1) the weights carry over: every wire and bias whose
-// cells are still there keeps its value, an added cell's start at 0, a removed cell's go. The input cells' learned
-// fields stay either way (plan §3ad): each keeps its field where it is; a new cell of a sense that has learned fields
-// goes in the widest gap between them; a sense that never learned keeps the even spread. ----
+// ---- edit ops (pure; the designer calls nothing else to change a brain). Any edit leaves an untrained brain: its
+// weights go back to 0 (ruling 2026-11-04: wires are grey until trained, and any edit returns them to grey; a match
+// trains every round from fresh weights anyway: match-flow v2 plan §2). The input cells' learned fields stay (plan
+// §3ad): each keeps its field where it is; a new cell of a sense that has learned fields goes in the widest gap between
+// them; a sense that never learned keeps the untrained spread for its count (boundary cells: the table). The rule
+// (sandbox, a room's 100%, a vs CPU round's budget) decides only what is refused. ----
 
 export type EditRefusal = 'full' | 'empty' | 'last-layer' | 'energy';
 export type EditResult = { ok: true; genome: Genome } | { ok: false; reason: EditRefusal; why?: string };
 
 const clone = (s: BrainSpec): BrainSpec => ({ v: 2, senses: { ...s.senses }, layers: s.layers.map((l) => ({ ...l })) });
-/** Old hidden layer index → its index after the edit (−1: removed). */
-type LayerMap = (L: number) => number;
-const SAME: LayerMap = (L) => L;
 /** `check` false for removals: taking cells away is never refused. */
-function done(s: BrainSpec, rule: Rule, from: Genome, lm: LayerMap = SAME, check = true): EditResult {
+function done(s: BrainSpec, rule: Rule, from: Genome, check = true): EditResult {
   validateSpec(s);
   const why = check ? energyRefusal(s, rule) : null;
   if (why) return { ok: false, reason: 'energy', why };
   const g = zeroGenome(s);
   carryFields(from, g);
-  if (rule !== 'sandbox') carryWeights(from, g, lm);
   return { ok: true, genome: g };
-}
-
-/** Copy old's wire weights and biases into g (a fresh genome of the edited spec) wherever both ends are still there. */
-export function carryWeights(old: Genome, g: Genome, lm: LayerMap = SAME): void {
-  const ren = (id: string): string | null => {
-    if (id[0] !== 'h') return id;
-    const c = id.indexOf(':'), L = lm(Number(id.slice(1, c)));
-    return L < 0 ? null : `h${L}${id.slice(c)}`;
-  };
-  const at = new Map<string, number>();
-  wireList(g.spec).forEach(([a, b], k) => at.set(`${a}>${b}`, k));
-  wireList(old.spec).forEach(([a, b], k) => {
-    const A = ren(a), B = ren(b), j = A !== null && B !== null ? at.get(`${A}>${B}`) : undefined;
-    if (j !== undefined) g.w[j] = old.w[k];
-  });
-  const nodes = new Set(columns(g.spec).slice(1).flat());
-  for (const id of columns(old.spec).slice(1).flat()) {
-    const n = ren(id);
-    if (n !== null && nodes.has(n)) g.w[biasIndex(g.spec, n)] = old.w[biasIndex(old.spec, id)];
-  }
 }
 
 const CAP = (): number => CONFIG.brain.weightCap;
@@ -275,9 +251,9 @@ export function carryFields(old: Genome, g: Genome): void {
       const a = fieldIndex(s, `i:${id}:${k}`), f = k < abs.length ? abs[k] : null;
       if (id === 'boundary' || id === 'landmark') {
         const dir = f ? f[0] : widestGap(abs.map((x) => x[0]));
-        g.w[a] = clampP(wrapDeg(dir - spreadDeg(k, n)) / FIELD_DIR_DEG);
+        g.w[a] = clampP(wrapDeg(dir - fieldDirDeg(id, k, n)) / FIELD_DIR_DEG);
         if (f) {
-          g.w[a + 1] = clampP(log2(f[1] / fieldWidthDeg(id, n)) / FIELD_LOG2);
+          g.w[a + 1] = clampP(log2(f[1] / fieldWidthDeg(id, n, k)) / FIELD_LOG2);
           g.w[a + 2] = clampP(log2(f[2] / (id === 'boundary' ? CONFIG.senses.boundary.rangeM : CONFIG.senses.landmark.rangeM)) / FIELD_LOG2);
         }
       } else if (id === 'hd') {
@@ -299,26 +275,26 @@ export function addSense(g: Genome, id: SenseId, rule: Rule = 'sandbox'): EditRe
 export function removeSense(g: Genome, id: SenseId, rule: Rule = 'sandbox'): EditResult {
   if (g.spec.senses[id] < 1) return { ok: false, reason: 'empty' };
   const s = clone(g.spec); s.senses[id]--;
-  return done(s, rule, g, SAME, false);
+  return done(s, rule, g, false);
 }
 /** A new hidden layer at position `at` (0 = right after the senses), with CONFIG.brain.newLayerNeurons tanh neurons. */
 export function insertLayer(g: Genome, at: number, rule: Rule = 'sandbox'): EditResult {
   if (g.spec.layers.length >= CONFIG.brain.maxLayers) return { ok: false, reason: 'full' };
   const i = Math.max(0, Math.min(at, g.spec.layers.length));
   const s = clone(g.spec); s.layers.splice(i, 0, { n: CONFIG.brain.newLayerNeurons, fn: 'tanh' });
-  return done(s, rule, g, (L) => (L >= i ? L + 1 : L));
+  return done(s, rule, g);
 }
 export function removeLayer(g: Genome, L: number, rule: Rule = 'sandbox'): EditResult {
   if (g.spec.layers.length <= 1) return { ok: false, reason: 'last-layer' };
   const s = clone(g.spec); s.layers.splice(L, 1);
-  return done(s, rule, g, (k) => (k === L ? -1 : k > L ? k - 1 : k), false);
+  return done(s, rule, g, false);
 }
 /** Grows or shrinks layer L at its end (shrinking drops its last neurons). */
 export function setLayerSize(g: Genome, L: number, n: number, rule: Rule = 'sandbox'): EditResult {
   if (n < 1) return { ok: false, reason: 'empty' };
   if (n > CONFIG.brain.maxPerLayer) return { ok: false, reason: 'full' };
   const s = clone(g.spec); s.layers[L].n = n;
-  return done(s, rule, g, SAME, n > g.spec.layers[L].n);
+  return done(s, rule, g, n > g.spec.layers[L].n);
 }
 export function setLayerFn(g: Genome, L: number, fn: Act, rule: Rule = 'sandbox'): EditResult {
   const s = clone(g.spec); s.layers[L].fn = fn;

@@ -7,7 +7,7 @@
 // covered), with the standings in the sidebar over a map of every car (sidebar plan 2026-11-05: places 1–3 and the
 // racers nearest you, 10 rows) and your live brain in the camera's corner; then the results (a room) or the round's
 // standings (vs CPU, shown by ui/rounds). Distances are signed (ruling 2026-11-05). A car going the wrong way for 3 s is put back by the sim (race.ts putBack); "Wrong way"
-// flashes over your car from 1 s of it until 1 s after. Your car is the drive view's yellow car with its beams; the nearest others (at most MAX_RIVALS) are solid
+// flashes over your car from 1 s of it until 1 s after. Your car is the drive view's yellow car (no beams: match-flow v2); the nearest others (at most MAX_RIVALS) are solid
 // cars in their own colours, the rest only dots on the map. Cars pass through each other. Finishing first plays the
 // winner music.
 import cpuData from '../../../assets/cpu/brains.json';
@@ -150,8 +150,6 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const net = compile(genomes[follow]), rec0 = cars[follow].rec, nN = net.nNodes, end = race.endTicks / HZ, goal = len.laps * track.len;
   const results: RaceRow[] = race.ranking.map((k, i) => ({ name: names[k], place: i + 1, finish: cars[k].finish, prog: cars[k].prog, slot: cars[k].slot, dist: cars[k].dist }));
   const place = mine ? race.ranking.indexOf(me) + 1 : 0;
-  const nB = mine ? genomes[me].spec.senses.boundary : 0;
-  const beams = Array.from({ length: nB }, (_, k) => net.tune[4 * k]), ranges = Array.from({ length: nB }, (_, k) => net.tune[4 * k + 2]);
   const grid = cars.map((c) => gridCar(track, c.slot));
   const colorOf = (k: number) => (k === me ? YOU : RACE_COLORS[(mine && k > me ? k - 1 : k) % RACE_COLORS.length]);
   const R = Math.min(MAX_RIVALS, n - 1);
@@ -166,12 +164,10 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   map.setTrack(track);
   $('rcTitle').textContent = setup.title;
   $('rcResults').hidden = true;
-  $('rcSkip').hidden = setup.kind !== 'cpu';
   $('rcAgain').hidden = !hooks.again;
   $('rcBack').textContent = setup.kind === 'room' ? 'Back to room' : 'Back';
   $('rcCars').textContent = `${n} cars`;
   $('rcLapK').textContent = timed ? 'Distance' : 'Lap';
-  $('rcSkip').textContent = timed ? 'Skip to standings' : 'Skip to results';
   $('rcLeave').hidden = !!hooks.ended; // a round: Main menu leaves the match
   // your live brain in the camera's corner (sidebar plan): its nodes are recorded for your car only
   $('rcBrainC').hidden = !mine;
@@ -192,7 +188,8 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const endCount = () => { cd.go = Math.min(cd.go, performance.now()); timers.forEach(clearTimeout); timers = []; showCount(''); };
 
   const wheels = new Float64Array(4);
-  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, f: track.startIdx, wheels, beams, ranges, stuck: false };
+  // no lasers (match-flow v2 plan §5): the car draws no boundary-cell beams
+  const pose: DrivePose = { x: 0, y: 0, hdg: 0, v: 0, idx: track.startIdx, f: track.startIdx, wheels, beams: [], stuck: false };
   const poses = cars.map(() => ({ x: 0, y: 0, hdg: 0, v: 0, f: 0 }));
   const rivals: RivalPose[] = Array.from({ length: R }, () => ({ x: 0, y: 0, hdg: 0, v: 0, f: 0, on: true, color: YOU }));
   /** Which car each rival slot shows this frame. */
@@ -283,7 +280,6 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const showResults = () => {
     if (shown) return;
     shown = true; status.state = 'results';
-    $('rcSkip').hidden = true;
     $('rcResT').textContent = !mine ? 'Results' : place === 1 ? 'You won!' : `You finished ${ord(place)} of ${n}`;
     $('rcHead').innerHTML = '<tr><th>Place</th><th>Name</th><th>Time</th><th>Distance</th></tr>';
     $('rcRows').innerHTML = results.map((r) => `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${fmtKm(shownDist(r.finish !== null ? goal : r.prog))}</td></tr>`).join('');
@@ -295,7 +291,6 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     hooks.result?.(mine ? results[place - 1] : null);
   };
   const cheer = () => { if (won) return; won = true; status.won = true; win(); };
-  $('rcSkip').onclick = () => { endCount(); playT = end + RESULTS_AFTER_S; };
   $('rcAgain').onclick = () => { leave(); hooks.again?.(); };
   $('rcBack').onclick = $('rcLeave').onclick = () => { leave(); hideArena(); hooks.back(); };
 
@@ -334,7 +329,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     if (status.go && !wentGo) { wentGo = true; hooks.go?.(); }
     if (playT >= end + RESULTS_AFTER_S) {
       if (!hooks.ended) showResults();
-      else if (!over) { over = true; status.state = 'results'; $('rcSkip').hidden = true; hooks.ended(race); }
+      else if (!over) { over = true; status.state = 'results'; hooks.ended(race); }
     }
     if (now - lastUi > 100) {
       lastUi = now;

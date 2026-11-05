@@ -35,12 +35,12 @@ if (!app) throw new Error('main: .app missing');
 let where: 'sandbox' | 'cpu' | 'room' = 'sandbox';
 const designerOff = () => { setActive(false); app!.hidden = true; showTitle(false); };
 /** The sandbox designer: from the title, and back from training or driving. */
-function sandbox() { stopPhaseTimer(); where = 'sandbox'; useMatchBrain(null); setDesignerMode('sandbox'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
+function sandbox() { stopPhaseTimer(); document.body.classList.remove('rounds'); where = 'sandbox'; useMatchBrain(null); setDesignerMode('sandbox'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('lounge'); }
 /** A room's Build your brain: the designer in match mode (100%), with the lobby's building music (sound plan). */
-function roomBuild() { stopPhaseTimer(); where = 'room'; useMatchBrain(null); setDesignerMode('match'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); }
+function roomBuild() { stopPhaseTimer(); document.body.classList.remove('rounds'); where = 'room'; useMatchBrain(null); setDesignerMode('match'); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); }
 /** vs CPU's views: each round's build in the designer (its own brain, the round's budget), training and the race. */
 const matchViews: MatchViews = {
-  build: (g, limit) => { where = 'cpu'; useMatchBrain(g); setDesignerMode('match', limit); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); },
+  build: (g, limit) => { where = 'cpu'; document.body.classList.add('rounds'); useMatchBrain(g); setDesignerMode('match', limit); showLobby(false); showTitle(false); app!.hidden = false; setActive(true); setMode('build'); },
   away: () => { designerOff(); setMode('race'); },
   timeUp,
   title: () => title(),
@@ -54,6 +54,7 @@ const back = () => (where === 'room' ? lobby() : sandbox());
 function title() {
   abortMatch(); leaveTraining(); leaveRace(); leaveDrive(); hideArena(); stopPhaseTimer();
   if (where === 'cpu') { useMatchBrain(null); where = 'sandbox'; }
+  document.body.classList.remove('rounds');
   showLobby(false); setActive(false); app!.hidden = true; showTitle(true); setMode('lounge');
 }
 /** Main menu (every screen but the title): mid-match or in a room it asks first, in the page. */

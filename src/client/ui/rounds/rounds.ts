@@ -1,9 +1,10 @@
-// vs CPU as a 5-round match (docs/plans/2026-11-05-rounds.md): each round builds (60 s in round 1, from the starting
-// brain; 20 s after, upgrading the same brain within that round's budget, weights carried over), trains for 10 s (the
-// fixed budget T, its view held until the time is up), then races nine CPU players for 30 s on a new track. The score
-// is the total signed distance; after each race the standings show this race's distance and the running total, and the
-// next build starts by itself after 8 s (or on Next round). After round 5 the final standings, with Play again or Back;
-// the winner music plays if you lead. Every phase has its big countdown (ui/phaseTimer.ts) at the top centre.
+// vs CPU as a 5-round match (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): each round builds (60 s in round 1,
+// from the starting brain; 20 s after, upgrading the same design within that round's budget), trains for 20 s (the
+// round's budget T, from fresh weights each round; at 20 s it stops where it got to), then races nine CPU players for
+// 30 s on a new track. Only the timers move it on (match-flow v2 plan, 2026-11-05): no Train, Skip or Next round. The
+// score is the total signed distance; after each race the standings show this race's distance and the running total
+// for 8 s, then the next build starts. After round 5 the final standings, with Play again or Main menu; the winner
+// music plays if you lead. Every phase has its big countdown (ui/phaseTimer.ts) at the top centre.
 import { CONFIG } from '../../../common/config';
 import { defaultGenome } from '../../../common/sim/brain';
 import { CPU_NAMES } from '../../../common/sim/cpu';
@@ -15,7 +16,8 @@ import { hideArena } from '../arena';
 import type { Saved } from '../designer/store';
 import { startPhaseTimer, stopPhaseTimer } from '../phaseTimer';
 import { fmtKm, leaveRace, newRaceSeed, openRace, roundSetup } from '../race/raceView';
-import { leaveTraining, openTraining } from '../training/trainingView';
+import { leaveTraining, openTraining, stopTraining } from '../training/trainingView';
+import { zeroGenome } from '../../../common/sim/brain';
 
 const R = CONFIG.rounds;
 const NAMES = ['You', ...CPU_NAMES];
@@ -100,7 +102,8 @@ export function matchTrain(saved: Saved): void {
   V.away();
   let up = false;
   const go = () => { if (M === m && m.phase === 'train' && up && m.trained) race(); };
-  startPhaseTimer({ label: label(m, 'Train'), seconds: R.train, red: 5, host: camHost(), onZero: () => { up = true; go(); } });
+  // at 0 training stops where it has got to and keeps the best so far, so a slow device still races on time
+  startPhaseTimer({ label: label(m, 'Train'), seconds: R.train, red: 5, host: camHost(), onZero: () => { up = true; if (!m.trained) stopTraining(); go(); } });
   const done = (next: Saved) => { if (M !== m || m.phase !== 'train') return; m.trained = next.genome; go(); };
   openTraining(saved, 0, 0, { save: () => undefined, back: () => undefined, drive: () => undefined, round: { n: m.round, seed: m.trainSeed, done } }, true)
     .catch((e) => { console.error(e); done(saved); });
@@ -132,10 +135,11 @@ function standings(res: RaceResult): void {
   $('rcHead').innerHTML = `<tr><th>Place</th><th>Name</th><th>Round ${m.round}</th><th>Total</th></tr>`;
   $('rcRows').innerHTML = ord0.map((k, i) => `<tr class="${k === 0 ? 'you' : ''}"><td>${i + 1}</td><td>${esc(NAMES[k])}</td><td>${fmtKm(d[k])}</td><td>${fmtKm(m.total[k])}</td></tr>`).join('');
   $('rcScroll').scrollTop = 0;
+  // only the timers move a match on (match-flow v2 §1): no Next round; after round 5, Play again / Main menu
   const again = $('rcAgain'), back = $('rcBack');
-  again.textContent = final ? 'Play again' : 'Next round';
-  back.textContent = 'Back';
-  back.hidden = !final; again.hidden = false;
+  again.textContent = 'Play again';
+  back.textContent = 'Main menu';
+  back.hidden = !final; again.hidden = !final;
   $('rcResults').hidden = false;
   if (final) {
     again.onclick = () => { leaveRace(); hideArena(); startMatch(V); };
@@ -146,10 +150,9 @@ function standings(res: RaceResult): void {
   const next = () => {
     if (M !== m || m.phase !== 'standings') return;
     stopPhaseTimer(); leaveRace(); hideArena();
-    m.round++; m.genome = m.trained!;
+    m.round++; m.genome = zeroGenome(m.trained!.spec); // the design carries over; the weights start fresh next round
     build();
   };
-  again.onclick = next;
   startPhaseTimer({ label: `Round ${m.round + 1} of ${R.count} in`, seconds: R.nextAfter, red: 0, pulse: 0, upText: 'Build!', upMs: 300, host: camHost(), onZero: next });
 }
 

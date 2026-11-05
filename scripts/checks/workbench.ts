@@ -132,6 +132,11 @@ async function main() {
     check((await spec(page)).senses.boundary === 1, 'the bin removes the cell');
     for (let k = 0; k < 2; k++) await page.click('#tray [data-s="speed"]', { force: true });
     check((await spec(page)).senses.speed === 1 && await page.locator('#tray [data-s="speed"]').isDisabled() && await page.locator('#tray [data-s="speed"] .plus').count() === 0, 'speed cells: one at most; the full tile dims and loses its "+"');
+    // the signed speed cell (principal 2026-11-05): its graph runs from −top to +top forward speed and −1 to +1
+    await page.evaluate(() => window.__designer!.select('i:speed:0'));
+    const sp = await page.evaluate(() => ({ axes: JSON.parse((document.querySelector('#insp #graph') as HTMLCanvasElement).dataset.axes ?? '{}'), desc: document.querySelector('#insp .desc')?.textContent }));
+    check(JSON.stringify(sp.axes.y) === '[-1,1]' && sp.axes.x[0] === -CONFIG.car.wheelSpeed && sp.axes.x[1] === CONFIG.car.wheelSpeed && sp.axes.xl === 'forward speed (m/s)' && sp.desc === '+1 at top speed forwards, −1 at top speed backwards.',
+      `the speed cell's graph: forward speed ${sp.axes.x?.join('…')} m/s against −1…+1 ("${sp.desc}")`);
 
     // 3a. the selected cell's own "−" (plan 2026-11-05 §1): none with nothing selected, none on a wheel, a layer or a
     //     layer's last neuron; top right of the cell, ~0.45× its size, a 32 px touch target; it (and Delete) remove it

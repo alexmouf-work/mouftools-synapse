@@ -31,7 +31,7 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track families, generator + validation, the figure eight's crossing and decks, wall grid, ray cast (grid DDA, skipping the other deck), nearest-sample search. |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
-| `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule the drive view's beams also use. |
+| `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule. |
 | `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, landmark, boundary range. |
 | `sim/race.ts` | `Runner`: one car for N ticks (from the start line, or a given start such as a grid slot), optional recording of frames and activations (or frames only), early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
 | `sim/match.ts` | vs CPU races (B7): the race seed's track (`raceTrackSeed`, a race track) and grid order (`gridOrder`), grid slots two by two behind the line (`gridPlace`, `gridCar`), `runRace` (every car its own run for the 120 s cap; finish time to a fraction of a tick after 2 laps), `rank` (finish time, then progress at the end, then slot) and the race hash. |
@@ -91,7 +91,10 @@ in match mode, on energy. Any edit leaves an untrained brain: every weight and b
 2026-11-04: wires are grey until trained, and any edit returns them to grey). The learned fields stay (§3ad,
 `carryFields`): each cell keeps its field, re-expressed against the new count's defaults; a new cell of a sense that
 has learned goes in the widest gap between the others (direction, or head-direction angle); a sense that never
-learned keeps the even spread.
+learned keeps its untrained spread for the new count. Boundary vector cells' untrained directions come from a fixed
+table by count (`senses.ts BOUNDARY_DIRS`, match-flow v2 plan §4: mirror-symmetric, weighted to the front, reaching the
+sides as the count grows; each width 0.6 × the gap to its nearest neighbour, 20–60°); landmark cells keep the even
+spread.
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws
@@ -144,9 +147,9 @@ ranking; names are not hashed (determinism goldens `match`: a lapped race of the
 race of the round-1 CPU brains; one race per golden seed).
 
 The nine CPU players (`src/assets/cpu/brains.json` v2, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008)
-have a brain per round (docs/plans/2026-11-05-rounds.md): each player's design grows with the edit ops, weights
-carried over, while the next step fits that round's energy budget, and is trained with evolution on its share of T a
-round (5, 10, 17, 25, 35, 47, 60, 80 and 100%) from its last round's brain. They are named after the people behind
+have a brain per round (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): each player's design grows with the edit
+ops while the next step fits that round's energy budget, and is trained with evolution from fresh weights on its share
+of the round's T (`CONFIG.rounds.T`, 12M; 5, 10, 17, 25, 35, 47, 60, 80 and 100%). They are named after the people behind
 the methods (principal 2026-11-05): McCulloch, Pitts, Hebb, Rosenblatt, Holland, Werbos, Barto, Sutton and Hopfield,
 in that order of skill (they replaced Axon … Hippo).
 
@@ -249,8 +252,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   music), 2 laps capped at 120 s, a status panel (position, lap, time, the standings live with each car's colour and
   finish time) and the corner map (`training/map.ts`: every car a dot, yours ringed), then the results over the scene
   (place, name, time, distance; "You won!" or your place) with Race again (a new race seed) and Back (the match
-  designer); Skip to results jumps there; Back in the panel leaves mid-race. Your car is the drive rig's yellow car
-  with its beams and engine; the others are solid cars in their own colours (`DriveRig.setRivals` / `placeRivals`, at
+  designer); a vs CPU round has no Skip (only the timers move a match on); Back (a room) and Main menu leave mid-race. Your car is the drive rig's yellow car
+  with its engine (no beams: match-flow v2 §5); the others are solid cars in their own colours (`DriveRig.setRivals` / `placeRivals`, at
   most `MAX_RIVALS` = 11, made once and reused; a car within 8 m of the chase camera is not drawn, or the one behind
   yours on the grid fills the screen). Finishing first plays the winner music as you cross the line (`win()`), or at
   the results if you lead at the cap. `?race=` picks the first race seed (the checks). Since B8 the view takes a
@@ -349,8 +352,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   the chase camera swings slowly round the car, whose wheels keep turning at their outputs. `brainPanel.ts` draws
   the brain's columns small on a canvas: wires in their weight colours (`weights.ts`), every cell flashing at
   14 Hz × its firing rate from the recording (`spikes.ts`; a short yellow flash; steady glow under reduced motion),
-  wheels with their speed. The beams follow each boundary cell's learned field (direction and range); their directions come from `sensors.bearingDir` (checked against the sim at
-  several poses). Drive is offered by the finished training view.
+  wheels with their speed. No beams are drawn from the car (match-flow v2 §5, "don't show lasers"); the drive check
+  asserts none. Drive is offered by the finished training view.
 - `bench/index.html` → `bench/main.ts` (dev only) runs one phase in the browser on `BrowserPool`; `vite build` leaves
   it out.
 - `audio/` — sound (plan: `docs/plans/2026-11-04-sound.md`); client only, src/common has none. `audio.ts`: one
@@ -437,8 +440,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   each after the minimum and starting further along, then the champion's lap, no main-thread spike, two finish
   flags, bloom audits at the start line, mid-run and in the finale, console clean; screenshots to `out/s3/`.
 - `scripts/checks/drive.ts` — train a tiny T, Drive: distance increases, drive hash = Node `runDrive` replay (also
-  after New track), render smoke, bloom audit = 0, the energy line = the recorded load and its speed share, one beam
-  per boundary cell along the sim's direction, every cell's spikes at 14 Hz × its rate, cameras, an untrained brain
+  after New track), render smoke, bloom audit = 0, the energy line = the recorded load and its speed share, no beams
+  drawn, every cell's spikes at 14 Hz × its rate, cameras, an untrained brain
   shows "Not moving" while the camera keeps moving, 844×390; screenshots to `out/s4/`.
 - `scripts/checks/preview.ts` — the production build: `vite build`, then `vite preview` (static with SPA fallback,
   as on Vercel): the designer loads, Train from the popup (25 generations; `?T=` ignored), phase hash = Node, drive hash = Node, render smoke on

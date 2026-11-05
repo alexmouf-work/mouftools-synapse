@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cos, sin } from '../../src/common/fmath';
 import { bearingDir, boundaryValue } from '../../src/common/sim/sensors';
-import { fieldAct, fieldWidthDeg, spreadDeg } from '../../src/common/sim/senses';
+import { BOUNDARY_DIRS, fieldAct, fieldDirDeg, fieldWidthDeg } from '../../src/common/sim/senses';
 import { startCar } from '../../src/common/sim/car';
 import { castRay, generateTrack } from '../../src/common/sim/track';
 import { CONFIG } from '../../src/common/config';
@@ -54,7 +54,7 @@ describe('boundary vector cells: one rule for the sensors and the beams', () => 
     for (const hdg of [0, 0.7, -2.1, 3.0]) {
       c.hdg = hdg;
       for (const n of [1, 3, 7]) for (let k = 0; k < n; k++) {
-        const deg = spreadDeg(k, n), w = fieldWidthDeg('boundary', n);
+        const deg = fieldDirDeg('boundary', k, n), w = fieldWidthDeg('boundary', n, k);
         const { dx, dy } = bearingDir(hdg, deg), a = hdg - deg * Math.PI / 180;
         expect(dx).toBeCloseTo(cos(a), 12); expect(dy).toBeCloseTo(sin(a), 12);
         let best = 0;
@@ -62,8 +62,16 @@ describe('boundary vector cells: one rule for the sensors and the beams', () => 
         expect(boundaryValue(c, tr, deg, w, R)).toBeCloseTo(best, 12);
       }
     }
-    // three cells spread left, ahead, right: the left one looks counter-clockwise of the heading
-    expect(spreadDeg(0, 3)).toBe(-90); expect(spreadDeg(1, 3)).toBe(0); expect(spreadDeg(2, 3)).toBe(90);
+    // three cells: left, ahead, right (match-flow v2 table); the left one looks counter-clockwise of the heading
+    expect(fieldDirDeg('boundary', 0, 3)).toBe(-45); expect(fieldDirDeg('boundary', 1, 3)).toBe(0); expect(fieldDirDeg('boundary', 2, 3)).toBe(45);
+    // the table: mirror-symmetric about the nose, ascending, reaching the sides as the count grows; neighbours cross at half activation
+    for (let n = 1; n < BOUNDARY_DIRS.length; n++) {
+      const d = BOUNDARY_DIRS[n];
+      expect(d.length).toBe(n);
+      d.forEach((x, k) => { expect(x + d[n - 1 - k]).toBe(0); if (k) expect(x).toBeGreaterThan(d[k - 1]); });
+      if (n > 2) expect(d[n - 1]).toBeGreaterThanOrEqual(BOUNDARY_DIRS[n - 1][n - 2] - 5);
+    }
+    expect(fieldWidthDeg('boundary', 1)).toBe(60); expect(fieldWidthDeg('boundary', 2, 0)).toBeCloseTo(36, 12);
     expect(bearingDir(0, -90).dy).toBeCloseTo(1, 12); expect(bearingDir(0, 90).dy).toBeCloseTo(-1, 12);
   });
 });

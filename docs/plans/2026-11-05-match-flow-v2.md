@@ -42,3 +42,39 @@ This replaces "weights carry over between rounds" (2026-10-30 and the rounds pla
 - The standings and totals are the same as vs CPU. Players who join mid-match watch until the next round's build.
 - Schema: add round-scoped brains and entries to the synapse_ objects, keeping the file idempotent. The principal
   re-runs it.
+
+## Built: M1 (2026-11-05)
+- **Timers only (vs CPU):** the designer has no Train button in vs CPU (`body.rounds #train`), the race view has no
+  Skip at all (removed; only vs CPU ever showed it), the standings have no buttons and move on after 8 s; the final
+  standings keep Play again / Main menu. Main menu asks first. Multiplayer keeps its buttons until M2 brings it onto
+  the timed rounds (rooms train once, by hand, as before).
+- **Fresh weights every round:** a match trains every round from fresh weights, biases and fields
+  (`trainingView.ts`: a match starts from `zeroGenome(design)`); the design carries over. The edit ops no longer carry
+  weights under a match rule (`carryWeights` removed): every edit leaves an untrained brain, as in the sandbox. The CPU
+  brains train the same way (each round's design from fresh).
+- **20 s training:** "Round n of 5 · Train" counts 20 (red under 5). A round spends `CONFIG.rounds.T` = 12,000,000
+  car-ticks (twice the S1 budget `CONFIG.train.T`, which stays 6M so S1 stays comparable). At 0 training stops where it
+  got to (`stopTraining`) and keeps the best agent so far; check:race stops one at gen 14 and the race starts on time.
+  Measured here (4-core container, 3 workers): evolution alone on the /bench page 6M in 3.70 s, 12M in 7.18 s; a whole
+  round in the game view (SwiftShader drawing the view on the same cores) 12M in 18.7 s, 101 generations. **Call:** the
+  plan's rule read on /bench alone would allow about 20M (12 s), but the game draws while it trains and 20M would hit
+  the 20 s stop on this machine, so T is 12M ("about 2×"). Lower it if devices are cut off at 20 s.
+- **CPU brains** regenerated at the round T with the same shares (5–100%), fresh each round: 12–121 generations,
+  7.1 min with 4 workers. Median 30 s distance alone on ten race tracks mostly 1.1–1.4 km; a few go the wrong way on
+  some tracks (Hopfield R1 −8 m, Hebb R4 50 m, Werbos R4 558 m, Hopfield R5 695 m). Not tuned.
+- **Boundary vector cells:** untrained directions from `senses.ts BOUNDARY_DIRS`, the proposed table as written
+  (1 → 0°; 2 → ±30°; … 7 → 0°, ±25°, ±55°, ±90°; 8 is in the table, the cap is 7); widths 0.6 × the gap to the nearest
+  neighbour (neighbours cross at half activation), 20–60°; one cell keeps 60°. Landmark cells keep the even spread.
+  Adding or removing a cell re-spreads the untrained ones to the table (as before for "never learned"). Not refined:
+  S1's brains have one boundary cell (0°, 60°, unchanged), so S1 can't compare tables.
+- **No lasers:** the drive and race views pass no beams to the car (`beams: []`); check:drive asserts none are drawn.
+- **Signed speed cell in the UI:** the designer's speed graph runs from −top to +top forward speed against −1..+1
+  ("forward speed (m/s)"), with the gain as before; the description reads "+1 at top speed forwards, −1 at top speed
+  backwards". The live brain card (drive, race, training) prints a speed cell's signed value under it (its flashes
+  show the rate, |value|, which is also what it costs). check:workbench asserts the graph's axes.
+- **S1, evolution** (seeds 1–20, T 6M, the default brain): identical to before, as its one boundary cell is at 0°, 60°
+  either way: (a) 1303 m ×27, (b) 12/20 (bar 15), (c) 19/20, (d) Minimal 16/20, gate 20/20. Not tuned.
+- **Goldens:** `raceHeavy` and `raceEight` change (the heavy brain's 3 boundary cells now point along the table),
+  `match` and `round` change (the regenerated CPU brains); track and every phase golden are unchanged.
+- **Checked** (principal 2026-11-05: the affected systems only): types, purity, unit, determinism, check:workbench,
+  check:training, check:drive, check:race. Not run: audio, preview, legal, icons, title, multiplayer, bench (untouched).

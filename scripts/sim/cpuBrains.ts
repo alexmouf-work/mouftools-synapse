@@ -1,8 +1,8 @@
 // The nine vs CPU players' brains, one per round (rounds plan 2026-11-05 §1; tracks plan §4 for the skill spread). Each
-// player has a budget share of T (5% to 100%, its skill) and a way of growing its design. Round 1: a small design within
-// round 1's budget, trained from scratch. Each later round: the last round's trained brain is grown with the same edit
-// ops a player uses (weights carried over, added cells at 0) while the next step still fits that round's budget, then
-// trained again from it on new tracks. Evolution, fixed seeds, so re-running this script writes the same file.
+// player has a budget share of the round's T (CONFIG.rounds.T; 5% to 100%, its skill) and a way of growing its design.
+// Round 1: a small design within round 1's budget. Each later round: the last round's design is grown with the same
+// edit ops a player uses while the next step still fits that round's budget. Every round trains from fresh weights,
+// biases and fields (match-flow v2 plan §2), on that round's tracks (phase r). Evolution, fixed seeds, so re-running this script writes the same file.
 // Writes src/assets/cpu/brains.json and prints each brain's median signed distance in a 30 s race alone from pole on ten
 // race tracks.
 //   npx tsx scripts/sim/cpuBrains.ts [--workers 4]
@@ -20,7 +20,7 @@ import { NodePool } from './nodePool';
 
 const i = process.argv.indexOf('--workers');
 const workers = i >= 0 ? Number(process.argv[i + 1]) : 4;
-const T = CONFIG.train.T, R = CONFIG.rounds;
+const T = CONFIG.rounds.T, R = CONFIG.rounds;
 
 /** One growth step: a sense cell, or a neuron on hidden layer L. */
 type Step = { sense: SenseId } | { neuron: number };
@@ -64,11 +64,11 @@ async function main() {
     const budget = R.budgets[r], out: CpuBrain[] = [];
     for (let k = 0; k < PLAN.length; k++) {
       const { share, style } = PLAN[k], st = STYLES[style];
-      const start = r === 0 ? grow(zeroGenome(st.base), st, budget) : grow(prev[k], st, budget);
+      const start = grow(zeroGenome(r === 0 ? st.base : prev[k].spec), st, budget);
       const why = energyRefusal(start.spec, budget);
       if (why) throw new Error(`cpuBrains: round ${r + 1} ${CPU_NAMES[k]} (${style}) can't race: ${why}`);
       const seed = 1000 + k, ticks = Math.round(share * T);
-      const res = await runPhase(pool, start.spec, seed, { T: ticks, phase: r, start: r === 0 ? 'fresh' : 'carry', genome: start });
+      const res = await runPhase(pool, start.spec, seed, { T: ticks, phase: r });
       const genome = JSON.parse(genomeToJSON(res.final)) as Genome;
       out.push({ name: CPU_NAMES[k], design: style, budget: ticks, seed, gens: res.gens.length, genome });
       // skill: signed distance in a 30 s race alone from pole on ten race tracks

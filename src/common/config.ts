@@ -183,7 +183,13 @@ export const CONFIG = {
     count: 5,
     /** Build time per round (s): round 1 from scratch, then upgrades. */
     build: [60, 20, 20, 20, 20],
-    train: 10, // s: the fixed budget T, its view held until then
+    train: 20, // s: the round's budget T below, its view held until then; at 20 s training stops where it got to (match-flow v2)
+    /**
+     * Car-ticks of evolution a round's training spends (match-flow v2 plan §3): the largest 0.5M multiple neuroevolution
+     * spends within about 12 s in headless Chrome on the 4-core build container (6M took 5.8 s there, with the view
+     * drawing): 12M, twice the S1 budget (CONFIG.train.T stays the S1 criterion's 6M).
+     */
+    T: 12_000_000,
     raceTicks: 600, // 30 s; the score is the signed distance covered by then (no laps to finish)
     /**
      * The most a design may use flat out each round (%): R1 is calibrated so 4 boundary cells + 5 tanh neurons (9

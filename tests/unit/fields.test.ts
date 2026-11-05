@@ -6,7 +6,7 @@ import { CONFIG } from '../../src/common/config';
 import { compile, setWeights, zeroGenome } from '../../src/common/sim/brain';
 import { startCar } from '../../src/common/sim/car';
 import { fieldGrads } from '../../src/common/sim/fieldgrad';
-import { FIELD_BOUNDS, fieldOf, fieldWidthDeg, gridOf, gridPhase, gridScale, hdOf, hdPreferred, speedGainOf, spreadDeg } from '../../src/common/sim/senses';
+import { FIELD_BOUNDS, fieldDirDeg, fieldOf, fieldWidthDeg, gridOf, gridPhase, gridScale, hdOf, hdPreferred, speedGainOf } from '../../src/common/sim/senses';
 import { readSensors } from '../../src/common/sim/sensors';
 import { FIELD_PARAMS, fieldCount, fieldIndex, inputIds, paramCount, type BrainSpec, type SenseId } from '../../src/common/sim/spec';
 import { generateTrack } from '../../src/common/sim/track';
@@ -20,8 +20,8 @@ describe('learned receptive fields', () => {
     inputIds(ALL).forEach((id, i) => {
       const [, s, kk] = id.split(':'), k = Number(kk), n = ALL.senses[s as SenseId], q = 4 * i;
       if (s === 'boundary' || s === 'landmark') {
-        expect(net.tune[q]).toBe(spreadDeg(k, n));
-        expect(net.tune[q + 1]).toBe(fieldWidthDeg(s, n));
+        expect(net.tune[q]).toBe(fieldDirDeg(s, k, n));
+        expect(net.tune[q + 1]).toBe(fieldWidthDeg(s, n, k));
         expect(net.tune[q + 2]).toBe(s === 'boundary' ? CONFIG.senses.boundary.rangeM : CONFIG.senses.landmark.rangeM);
       } else if (s === 'hd') expect(net.tune[q]).toBe(hdPreferred(k, n));
       else if (s === 'grid') { expect(net.tune[q]).toBe(gridScale(k)); expect(net.gridPhase[i]).toBe(gridPhase(k)); expect([net.tune[q + 1], net.tune[q + 2], net.tune[q + 3]]).toEqual([0, 0, 0]); }
