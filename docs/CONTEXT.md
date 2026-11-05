@@ -282,3 +282,8 @@ Rulings from the principal, verbatim where quoted. Newest last.
   development." (2026-11-05) → McCulloch, Pitts, Hebb, Rosenblatt, Holland, Werbos, Barto, Sutton, Hopfield.
 - "looks good. push to main" (2026-11-05) → main fast-forwarded to development (rounds, sidebar, Main menu, lobby,
   landscape only, wrong-way reset, synapse_ schema, CPU racers renamed).
+- 2026-11-05: "please change the interface so that in match mode (vs cpu, multiplayer), the user doesn't have buttons to
+  train or skip things. Also, when doing successive rounds, reset the brain's weights so that the training can effectively
+  make use of the added neurons. make the training 20s per round instead of 10." · "change the way the boundary vector
+  cells work so that they effectively pick useful directions to cover, rather than random directions. don't show lasers
+  coming out of the car." → `docs/plans/2026-11-05-match-flow-v2.md` (replaces weights carrying over between rounds).
