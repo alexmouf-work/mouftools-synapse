@@ -41,12 +41,13 @@ body.training { overflow: hidden; }
 .rc-side, .dv-side { grid-template-rows: auto minmax(0, 1fr); }
 .rc-side .kv, .dv-side .kv { font-size: 12px; gap: 2px 8px; } .rc-side .kv dd, .dv-side .kv dd { font-size: 12px; }
 .tv-info .btn.menu { margin-left: 0; }
-/* a phase's countdown (ui/phaseTimer.ts) at the camera's top centre; the generation number moves down under it */
+/* a phase's countdown (ui/phaseTimer.ts) at the camera's top centre */
 .cam-top { position: absolute; left: var(--tv-w); right: 0; top: 0; height: clamp(58px, 12vh, 92px); pointer-events: none; z-index: 4; }
-.cam-top .ptimer { top: 8px; bottom: 0; min-width: 170px; }
+.cam-top .ptimer { top: 8px; bottom: auto; min-width: 170px; padding: 6px 14px; } /* grows with its "gen n" line */
 .cam-top .ptimer b { font-size: clamp(30px, 7vh, 54px); }
 .cam-top .ptimer.up b { font-size: clamp(20px, 4.5vh, 34px); }
-body.timed .tv-big { top: calc(clamp(58px, 12vh, 92px) + 10px); }
+/* (while a countdown shows, the training view puts its generation in it as "gen n": the big number is empty) */
+.cam-top .ptimer small { font-size: clamp(11px, 2vh, 15px); }
 .tv-panel { position: absolute; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 0; box-shadow: var(--shadow); padding: 12px 14px; color: var(--text); }
 .tv-title { margin: 0; font-size: 17px; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .tv-name { font-weight: 400; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

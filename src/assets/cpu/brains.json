@@ -4,7 +4,7 @@
  "rounds": [
   [
    {
-    "name": "Axon",
+    "name": "McCulloch",
     "design": "even",
     "budget": 300000,
     "seed": 1000,
@@ -93,7 +93,7 @@
     }
    },
    {
-    "name": "Dendrite",
+    "name": "Pitts",
     "design": "eyes",
     "budget": 600000,
     "seed": 1001,
@@ -179,7 +179,7 @@
     }
    },
    {
-    "name": "Soma",
+    "name": "Hebb",
     "design": "pace",
     "budget": 1020000,
     "seed": 1002,
@@ -268,7 +268,7 @@
     }
    },
    {
-    "name": "Myelin",
+    "name": "Rosenblatt",
     "design": "deep",
     "budget": 1500000,
     "seed": 1003,
@@ -351,7 +351,7 @@
     }
    },
    {
-    "name": "Glia",
+    "name": "Holland",
     "design": "even",
     "budget": 2100000,
     "seed": 1004,
@@ -440,7 +440,7 @@
     }
    },
    {
-    "name": "Cortex",
+    "name": "Werbos",
     "design": "eyes",
     "budget": 2820000,
     "seed": 1005,
@@ -526,7 +526,7 @@
     }
    },
    {
-    "name": "Ganglion",
+    "name": "Barto",
     "design": "pace",
     "budget": 3600000,
     "seed": 1006,
@@ -615,7 +615,7 @@
     }
    },
    {
-    "name": "Thalamus",
+    "name": "Sutton",
     "design": "deep",
     "budget": 4800000,
     "seed": 1007,
@@ -698,7 +698,7 @@
     }
    },
    {
-    "name": "Hippo",
+    "name": "Hopfield",
     "design": "eyes",
     "budget": 6000000,
     "seed": 1008,
@@ -786,7 +786,7 @@
   ],
   [
    {
-    "name": "Axon",
+    "name": "McCulloch",
     "design": "even",
     "budget": 300000,
     "seed": 1000,
@@ -913,7 +913,7 @@
     }
    },
    {
-    "name": "Dendrite",
+    "name": "Pitts",
     "design": "eyes",
     "budget": 600000,
     "seed": 1001,
@@ -1037,7 +1037,7 @@
     }
    },
    {
-    "name": "Soma",
+    "name": "Hebb",
     "design": "pace",
     "budget": 1020000,
     "seed": 1002,
@@ -1164,7 +1164,7 @@
     }
    },
    {
-    "name": "Myelin",
+    "name": "Rosenblatt",
     "design": "deep",
     "budget": 1500000,
     "seed": 1003,
@@ -1278,7 +1278,7 @@
     }
    },
    {
-    "name": "Glia",
+    "name": "Holland",
     "design": "even",
     "budget": 2100000,
     "seed": 1004,
@@ -1405,7 +1405,7 @@
     }
    },
    {
-    "name": "Cortex",
+    "name": "Werbos",
     "design": "eyes",
     "budget": 2820000,
     "seed": 1005,
@@ -1529,7 +1529,7 @@
     }
    },
    {
-    "name": "Ganglion",
+    "name": "Barto",
     "design": "pace",
     "budget": 3600000,
     "seed": 1006,
@@ -1656,7 +1656,7 @@
     }
    },
    {
-    "name": "Thalamus",
+    "name": "Sutton",
     "design": "deep",
     "budget": 4800000,
     "seed": 1007,
@@ -1770,7 +1770,7 @@
     }
    },
    {
-    "name": "Hippo",
+    "name": "Hopfield",
     "design": "eyes",
     "budget": 6000000,
     "seed": 1008,
@@ -1896,7 +1896,7 @@
   ],
   [
    {
-    "name": "Axon",
+    "name": "McCulloch",
     "design": "even",
     "budget": 300000,
     "seed": 1000,
@@ -2080,7 +2080,7 @@
     }
    },
    {
-    "name": "Dendrite",
+    "name": "Pitts",
     "design": "eyes",
     "budget": 600000,
     "seed": 1001,
@@ -2266,7 +2266,7 @@
     }
    },
    {
-    "name": "Soma",
+    "name": "Hebb",
     "design": "pace",
     "budget": 1020000,
     "seed": 1002,
@@ -2450,7 +2450,7 @@
     }
    },
    {
-    "name": "Myelin",
+    "name": "Rosenblatt",
     "design": "deep",
     "budget": 1500000,
     "seed": 1003,
@@ -2624,7 +2624,7 @@
     }
    },
    {
-    "name": "Glia",
+    "name": "Holland",
     "design": "even",
     "budget": 2100000,
     "seed": 1004,
@@ -2808,7 +2808,7 @@
     }
    },
    {
-    "name": "Cortex",
+    "name": "Werbos",
     "design": "eyes",
     "budget": 2820000,
     "seed": 1005,
@@ -2994,7 +2994,7 @@
     }
    },
    {
-    "name": "Ganglion",
+    "name": "Barto",
     "design": "pace",
     "budget": 3600000,
     "seed": 1006,
@@ -3178,7 +3178,7 @@
     }
    },
    {
-    "name": "Thalamus",
+    "name": "Sutton",
     "design": "deep",
     "budget": 4800000,
     "seed": 1007,
@@ -3352,7 +3352,7 @@
     }
    },
    {
-    "name": "Hippo",
+    "name": "Hopfield",
     "design": "eyes",
     "budget": 6000000,
     "seed": 1008,
@@ -3540,7 +3540,7 @@
   ],
   [
    {
-    "name": "Axon",
+    "name": "McCulloch",
     "design": "even",
     "budget": 300000,
     "seed": 1000,
@@ -3795,7 +3795,7 @@
     }
    },
    {
-    "name": "Dendrite",
+    "name": "Pitts",
     "design": "eyes",
     "budget": 600000,
     "seed": 1001,
@@ -4050,7 +4050,7 @@
     }
    },
    {
-    "name": "Soma",
+    "name": "Hebb",
     "design": "pace",
     "budget": 1020000,
     "seed": 1002,
@@ -4303,7 +4303,7 @@
     }
    },
    {
-    "name": "Myelin",
+    "name": "Rosenblatt",
     "design": "deep",
     "budget": 1500000,
     "seed": 1003,
@@ -4537,7 +4537,7 @@
     }
    },
    {
-    "name": "Glia",
+    "name": "Holland",
     "design": "even",
     "budget": 2100000,
     "seed": 1004,
@@ -4792,7 +4792,7 @@
     }
    },
    {
-    "name": "Cortex",
+    "name": "Werbos",
     "design": "eyes",
     "budget": 2820000,
     "seed": 1005,
@@ -5047,7 +5047,7 @@
     }
    },
    {
-    "name": "Ganglion",
+    "name": "Barto",
     "design": "pace",
     "budget": 3600000,
     "seed": 1006,
@@ -5300,7 +5300,7 @@
     }
    },
    {
-    "name": "Thalamus",
+    "name": "Sutton",
     "design": "deep",
     "budget": 4800000,
     "seed": 1007,
@@ -5534,7 +5534,7 @@
     }
    },
    {
-    "name": "Hippo",
+    "name": "Hopfield",
     "design": "eyes",
     "budget": 6000000,
     "seed": 1008,
@@ -5791,7 +5791,7 @@
   ],
   [
    {
-    "name": "Axon",
+    "name": "McCulloch",
     "design": "even",
     "budget": 300000,
     "seed": 1000,
@@ -6066,7 +6066,7 @@
     }
    },
    {
-    "name": "Dendrite",
+    "name": "Pitts",
     "design": "eyes",
     "budget": 600000,
     "seed": 1001,
@@ -6350,7 +6350,7 @@
     }
    },
    {
-    "name": "Soma",
+    "name": "Hebb",
     "design": "pace",
     "budget": 1020000,
     "seed": 1002,
@@ -6634,7 +6634,7 @@
     }
    },
    {
-    "name": "Myelin",
+    "name": "Rosenblatt",
     "design": "deep",
     "budget": 1500000,
     "seed": 1003,
@@ -6930,7 +6930,7 @@
     }
    },
    {
-    "name": "Glia",
+    "name": "Holland",
     "design": "even",
     "budget": 2100000,
     "seed": 1004,
@@ -7205,7 +7205,7 @@
     }
    },
    {
-    "name": "Cortex",
+    "name": "Werbos",
     "design": "eyes",
     "budget": 2820000,
     "seed": 1005,
@@ -7489,7 +7489,7 @@
     }
    },
    {
-    "name": "Ganglion",
+    "name": "Barto",
     "design": "pace",
     "budget": 3600000,
     "seed": 1006,
@@ -7773,7 +7773,7 @@
     }
    },
    {
-    "name": "Thalamus",
+    "name": "Sutton",
     "design": "deep",
     "budget": 4800000,
     "seed": 1007,
@@ -8069,7 +8069,7 @@
     }
    },
    {
-    "name": "Hippo",
+    "name": "Hopfield",
     "design": "eyes",
     "budget": 6000000,
     "seed": 1008,

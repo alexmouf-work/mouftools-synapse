@@ -9,8 +9,8 @@ import { energyRefusal } from './energy';
 import { validateGenome, type Genome } from './spec';
 
 export const CPU_VERSION = 2;
-/** Fixed names on the brain theme (coordinator 2026-11-05), weakest budget first. */
-export const CPU_NAMES = ['Axon', 'Dendrite', 'Soma', 'Myelin', 'Glia', 'Cortex', 'Ganglion', 'Thalamus', 'Hippo'] as const;
+/** Named after the people behind the methods (principal 2026-11-05; they replace Axon … Hippo), weakest budget first. */
+export const CPU_NAMES = ['McCulloch', 'Pitts', 'Hebb', 'Rosenblatt', 'Holland', 'Werbos', 'Barto', 'Sutton', 'Hopfield'] as const;
 
 export interface CpuBrain {
   name: string;

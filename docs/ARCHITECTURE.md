@@ -136,15 +136,19 @@ row in which progress fell; on the 60th (`CONFIG.match.wrongWayTicks`, 3 s) the 
 so far (`maxProg`), on the centreline sample at or just behind it, facing along the track, at rest, its progress that
 sample's (so progress and position stay one), and the count starts again. The recording keeps the count per tick
 (`wrong`; 60 on the put-back tick), which the race view uses to flash "Wrong way" over your car (from 1 s of falling
-until 1 s after the put-back) and to jump the car without gliding. Shown distance is never below 0 (results, the
-room's result); the ranking uses the real progress. Training and the drive view never set it. The race hash covers the track, every car's frames, finish
-and progress, and the ranking (determinism golden `match`: the nine CPU brains, one race per golden seed).
+until 1 s after the put-back) and to jump the car without gliding. Distances are signed everywhere they are shown
+(ruling 2026-11-05). Training and the drive view never set it. A race is either lapped (Multiplayer: 2 laps capped at
+120 s) or timed (`ROUND_RACE`, a vs CPU round: 600 ticks, no laps, ranked by `RaceCar.dist`, the signed distance
+covered from the car's grid slot). The race hash covers the track, every car's frames, finish and progress, and the
+ranking; names are not hashed (determinism goldens `match`: a lapped race of the round-5 CPU brains; `round`: a timed
+race of the round-1 CPU brains; one race per golden seed).
 
-The nine CPU brains (`src/assets/cpu/brains.json`, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008) are
-trained with evolution from scratch at budgets of 5, 10, 17, 25, 35, 47, 60, 80 and 100% of T, alternating a random
-starter (seeds 11–14) and a sighted design (more boundary vector cells, a speed cell, wider or deeper layers), named
-Axon, Dendrite, Soma, Myelin, Glia, Cortex, Ganglion, Thalamus and Hippo in that order. Each is within the match energy
-limit.
+The nine CPU players (`src/assets/cpu/brains.json` v2, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008)
+have a brain per round (docs/plans/2026-11-05-rounds.md): each player's design grows with the edit ops, weights
+carried over, while the next step fits that round's energy budget, and is trained with evolution on its share of T a
+round (5, 10, 17, 25, 35, 47, 60, 80 and 100%) from its last round's brain. They are named after the people behind
+the methods (principal 2026-11-05): McCulloch, Pitts, Hebb, Rosenblatt, Holland, Werbos, Barto, Sutton and Hopfield,
+in that order of skill (they replaced Axon … Hippo).
 
 ### Training
 `runPhase(executor, spec, seed)` derives the phase's two training tracks and the unseen track from the seed; builds a `MeteredEnv` over an `Executor`; runs the trainer until it is done; hashes

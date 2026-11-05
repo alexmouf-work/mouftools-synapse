@@ -120,6 +120,8 @@ body.timed .rulebar { justify-content: flex-start; padding-left: 12px; }
 .ptimer span { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 .ptimer b { font-size: 32px; font-weight: 700; margin-top: 2px; }
 .ptimer.up b { font-size: 22px; }
+.ptimer small { font-size: 11px; font-weight: 700; letter-spacing: .04em; margin-top: 1px; }
+.ptimer small[hidden] { display: none; }
 .ptimer.red { background: #d9465b; color: #fff; }
 .ptimer.pulse { animation: pt-pulse .5s ease-out; }
 @keyframes pt-pulse { 0% { transform: translateX(-50%) scale(1.14); } 100% { transform: translateX(-50%) scale(1); } }

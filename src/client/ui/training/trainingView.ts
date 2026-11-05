@@ -7,6 +7,7 @@
 // track and every shown car in the bottom-right corner. Stop is the generation limit reached now: the best agent
 // evaluated so far is saved (the generation being evaluated is dropped), and Drive and Keep training appear.
 // Results never depend on speed: rendering, the worker count and the recording only change how it looks.
+import { phaseShowing, setPhaseSub } from '../phaseTimer';
 import { CONFIG } from '../../../common/config';
 import { compile, genomeHash, nodeRate, weightCount, zeroGenome, type Net } from '../../../common/sim/brain';
 import { newRecording, Runner } from '../../../common/sim/race';
@@ -339,7 +340,9 @@ function loop() {
     engine.set(sw.carV / CONFIG.car.wheelSpeed, sw.carTurn);
     const g = sw.shownGen, fin = sw.finale, st = window.__training;
     if (st) { st.shownGen = g; st.finale = fin; }
-    $('tvBig').textContent = g ? String(g) : '';
+    // a round's countdown at the top centre: the generation goes into it as "gen n" (nothing overlaps it)
+    if (phaseShowing()) { setPhaseSub(g ? `gen ${g}` : ''); $('tvBig').textContent = ''; }
+    else $('tvBig').textContent = g ? String(g) : '';
     $('tvCars').textContent = fin ? 'champion' : g ? `${sw.recordedCount} of ${CONFIG.train.population}` : '';
     $('tvBrainOf').textContent = fin ? `champion · gen ${g}` : g ? 'highlighted car' : '';
     // the highlighted car's brain at the tick on screen

@@ -4,8 +4,9 @@
 //   can't train (says why); red in the last 10 s; a pulse and a tick on the effects bus in the last 5; at 0 "Time's up",
 //   then Train starts itself with the design as it stands (jumped ahead with __phase.skipTo).
 // - Train: no popup and no buttons, "Round 1 of 5 · Train" from 10 (red under 5), the fixed budget (a small ?T= here)
-//   from the starting brain: the trained brain = Node's run of the same design, seed and budget; the race starts when
-//   the 10 s are up.
+//   from the starting brain: the trained brain = Node's run of the same design, seed and budget; the generation shows
+//   in the timer as "gen n" (nothing overlaps the timer); the race starts when the 10 s are up. Without ?T= a round
+//   spends the game's budget, T = the full-skill CPU's (all of it; generations and time reported).
 // - Race: ten cars on the grid two by two behind the line where the sim puts them (= Node gridCar), listed in grid
 //   order, the countdown 5…1 Go, then "Round 1 of 5 · Race" from 30; the race hash, the ranking by signed distance and
 //   each car's place on screen at 20 s = Node runRace (30 s, no laps); the sidebar a quarter of the width with the
@@ -160,6 +161,16 @@ async function main() {
     bt = await pt(page);
     check(!tr.popup && tr.T === T && tr.start === 'fresh' && tr.phase === 0 && tr.btns.length === 0 && tr.menu && bt.label === 'Round 1 of 5 · Train' && Number(bt.text) <= 10 && Number(bt.text) >= 8,
       `Train starts itself: no popup, the budget (T ${tr.T}, ${tr.start}, phase ${tr.phase}), "${bt.label}" ${bt.text}, no buttons but Main menu (${tr.btns.join(' ') || 'none'})`);
+    // the generation goes into the round's timer as "gen n"; nothing on the camera overlaps the timer
+    await page.waitForFunction(() => (window.__training?.shownGen ?? 0) > 0, null, { timeout: 300_000 });
+    await page.waitForTimeout(300);
+    const gl = await page.evaluate(`(() => {
+      const t = document.getElementById('phaseTimer').getBoundingClientRect(), sub = document.getElementById('ptSub');
+      const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+      const others = [...document.querySelectorAll('#trainOverlay .tv-cam > *')].filter((e) => e.offsetParent && e.textContent.trim() !== '').map((e) => e.getBoundingClientRect());
+      return { sub: sub.hidden ? '' : sub.textContent, big: document.getElementById('tvBig').textContent, shown: window.__training.shownGen, clear: others.every((r) => apart(t, r)) };
+    })()`) as { sub: string; big: string; shown: number; clear: boolean };
+    check(gl.sub === `gen ${gl.shown}` && gl.big === '' && gl.clear, `while the round's timer shows, the generation is in it ("${gl.sub}"), not under it; nothing on the camera overlaps the timer`);
     await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/train.png` });
@@ -242,6 +253,20 @@ async function main() {
     await page.click('#toTitle');
     await page.click('#lvGo');
     check(await page.locator('#title').isVisible() && await page.evaluate(() => window.__phase!.state === 'off' && window.__match!.phase === 'none'), 'Main menu → Leave: back to the title, the match and its timer gone');
+    await page.context().close();
+
+    // 5b. without ?T= a round trains on the game's budget: T = the full-skill CPU's budget (CONFIG.train.T), all of it
+    page = await open(`?seed=${SEED}&race=${MATCH}`);
+    await page.click('#toCpu');
+    await page.evaluate(() => window.__phase!.skipTo(0.1));
+    await page.waitForFunction(() => window.__training?.state === 'running', null, { timeout: 30_000 });
+    const real0 = await page.evaluate(() => ({ T: window.__training!.T, gens: window.__training!.generations }));
+    await page.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 300_000 });
+    const real = await page.evaluate(() => ({ gen: window.__training!.gen, used: window.__training!.ticksUsed, ms: window.__training!.ms ?? 0, workers: window.__training!.workers }));
+    check(real0.T === CONFIG.train.T && real0.T === rounds[0][8].budget && real.used >= 0.97 * real0.T && real.gen >= 50,
+      `a round's training (no ?T): T ${real0.T.toLocaleString('en')} = the full-skill CPU's budget; ${real.gen} generations (estimate ${real0.gens}), ${real.used.toLocaleString('en')} car-ticks, ${(real.ms / 1000).toFixed(1)} s on ${real.workers} workers here (SwiftShader container)`);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${OUT}/train-full-T.png` });
     await page.context().close();
 
     // 6. the last round, which you lead: the final standings and the winner music

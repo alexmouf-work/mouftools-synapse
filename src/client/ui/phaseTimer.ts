@@ -26,15 +26,15 @@ export interface PhaseOptions {
 type State = 'off' | 'running' | 'up';
 let state: State = 'off', deadline = 0, shown = -1, opts: PhaseOptions | null = null;
 let loop: ReturnType<typeof setInterval> | undefined, upTimer: ReturnType<typeof setTimeout> | undefined;
-let node: { box: HTMLElement; label: HTMLElement; num: HTMLElement } | null = null;
+let node: { box: HTMLElement; label: HTMLElement; num: HTMLElement; sub: HTMLElement } | null = null;
 
 function ensure(): NonNullable<typeof node> {
   if (node) return node;
-  const box = document.createElement('div'), label = document.createElement('span'), num = document.createElement('b');
+  const box = document.createElement('div'), label = document.createElement('span'), num = document.createElement('b'), sub = document.createElement('small');
   box.className = 'ptimer'; box.id = 'phaseTimer'; box.setAttribute('role', 'timer'); box.hidden = true;
-  num.id = 'ptN';
-  box.append(label, num);
-  return (node = { box, label, num });
+  num.id = 'ptN'; sub.id = 'ptSub'; sub.hidden = true;
+  box.append(label, num, sub);
+  return (node = { box, label, num, sub });
 }
 const left = () => Math.max(0, Math.ceil((deadline - performance.now()) / 1000 - 1e-9));
 
@@ -71,6 +71,7 @@ export function startPhaseTimer(o: PhaseOptions): void {
   if (n.box.parentElement !== o.host) o.host.appendChild(n.box);
   if (getComputedStyle(o.host).position === 'static') o.host.style.position = 'relative';
   n.label.textContent = o.label;
+  n.sub.textContent = ''; n.sub.hidden = true;
   state = 'running'; deadline = performance.now() + o.seconds * 1000; shown = -1;
   n.box.hidden = false;
   n.box.classList.remove('red', 'pulse', 'up');
@@ -78,6 +79,14 @@ export function startPhaseTimer(o: PhaseOptions): void {
   show();
   loop = setInterval(show, 100);
 }
+
+/** A second line under the number (the training view's "gen n"), or '' for none. No-op while no countdown shows. */
+export function setPhaseSub(text: string): void {
+  if (!node || state === 'off') return;
+  if (node.sub.textContent !== text) node.sub.textContent = text;
+  node.sub.hidden = !text;
+}
+export const phaseShowing = (): boolean => state !== 'off';
 
 /** Cancel it (the phase ended early, or the player left). */
 export function stopPhaseTimer(): void {
