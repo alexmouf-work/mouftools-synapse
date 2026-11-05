@@ -304,3 +304,10 @@ Rulings from the principal, verbatim where quoted. Newest last.
   (2026-11-05) → tracks-v2 plan, "No building before the match" (T2).
 - "make sure that when the player starts a game, the brain starts off randomly initiated and fresh." (2026-11-05) →
   tracks-v2 plan, "A fresh random brain at the start of every game" (T2).
+- 2026-11-05: "fix the workshop interface when loading back into it. it fixes itself if a neuron is added." · "race on the
+  same track that the car trains on." · "change the camera positions so that they're placed with direct line of sight to the
+  track, no trees or stands in the way." · "swap between broadcast and POV (camera on top of the back of the car so that
+  it looks like a car-mounted cam)" · "the race says finish before it actually finishes. make sure that time is measured
+  relative to the start timestamp." · "make it only 3 rounds, and do the best distance travelled rather than total." ·
+  "adjust the UI so that the map and the leaderboard are equal sizes, and make the main menu / music / sfx buttons much
+  larger and easier to interact with." → `docs/plans/2026-11-05-match-polish.md`.
