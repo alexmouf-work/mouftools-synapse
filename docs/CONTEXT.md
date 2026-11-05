@@ -278,3 +278,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   the brain during training, and keep it the same layout when in racing mode. The only difference will be that the
   training graph will swap places with the race competitor list (showing the top 3 then the nearest racers to the user,
   total of 10 racers shown). Make the sidebar take up 1/4 of the width rather than 1/5." → `docs/plans/2026-11-05-sidebar-and-main-menu.md`.
+- "name racers after the scientists who invented the various computational methods that are part of neural network
+  development." (2026-11-05) → McCulloch, Pitts, Hebb, Rosenblatt, Holland, Werbos, Barto, Sutton, Hopfield.

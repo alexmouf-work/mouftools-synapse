@@ -170,8 +170,10 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
   - The nine CPU brains are trained offline by a script with evolution, at budgets spread from about 5% to 100% of T,
     on a mix of random starters and sighted designs. They are stored as JSON in src/assets. Each race draws a random
     track from any family.
-  - Names: You, plus nine fixed CPU names on the brain theme (Axon, Dendrite, Soma, Myelin, Glia, Cortex,
-    Ganglion, Thalamus, Hippo).
+  - Names: You, plus nine CPU racers named after the people behind the methods (principal, 2026-11-05): McCulloch
+    and Pitts (the artificial neuron, 1943), Hebb (Hebbian learning), Rosenblatt (the perceptron), Holland (genetic
+    algorithms, as in Evolution), Werbos (backpropagation), Barto (A_RP, actor-critic), Sutton (temporal-difference
+    learning, actor-critic) and Hopfield (Hopfield networks). Surnames only; the skill order is unchanged.
   - Grid: two by two behind the line, about 8 m between rows and ±2.5 m across. Slot order is drawn from the race
     seed. No boost pad on the grid or in the first 50 m.
   - Cars pass through each other (no car-to-car contact): each car's sim runs independently, so it stays
