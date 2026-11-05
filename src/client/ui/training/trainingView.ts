@@ -38,8 +38,10 @@ export interface TrainingHooks {
   back(): void;
   /** Leave for the drive view with this (trained) brain. */
   drive(s: Saved): void;
-  /** vs CPU: race this (trained) brain. */
+  /** vs CPU: race this (trained) brain; a room: hand it in. */
   race?(s: Saved): void;
+  /** The label of that button ('Race', or 'Hand in' in a room). */
+  raceLabel?: string;
 }
 
 export interface TrainingStatus {
@@ -151,6 +153,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
 
   showArena('train');
   matchRun = match;
+  $('tvRace').textContent = hooks.raceLabel ?? 'Race';
   setButtons('running');
   note('Training…');
   $('tvGen').textContent = `gen 0 of ${generations}`;

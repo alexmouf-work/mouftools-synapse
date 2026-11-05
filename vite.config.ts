@@ -10,4 +10,10 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
   },
   worker: { format: 'es' },
+  // Multiplayer (B8): the Supabase project's URL and anon key (Vercel env) are the only variables the page gets; the
+  // service role key is never read here, so it can't reach the browser.
+  define: {
+    __SUPABASE_URL__: JSON.stringify(process.env.SUPABASE_PROJECT_URL ?? ''),
+    __SUPABASE_ANON_KEY__: JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+  },
 });

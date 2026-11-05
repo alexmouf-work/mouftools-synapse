@@ -3,7 +3,7 @@
 // output spin and sensor rays. Faces +Z.
 import * as THREE from 'three';
 
-export interface CarModel { car: THREE.Group; wheels: { spin: THREE.Group; r: number }[]; dispose(): void }
+export interface CarModel { car: THREE.Group; wheels: { spin: THREE.Group; r: number }[]; dispose(): void; setColor(hex: string): void }
 
 function extrudeProfile(pts: [number, number][], width: number, bevel = 0.1): THREE.BufferGeometry {
   const shape = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y)));
@@ -72,5 +72,7 @@ export function makeCar(primary: string, trimHex: string, glowTex: THREE.Texture
   const glowMat = M(new THREE.MeshBasicMaterial({ map: glowTex, color: new THREE.Color(primary).multiplyScalar(1.3), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
   const glow = new THREE.Mesh(G(new THREE.PlaneGeometry(3.6, 6.2).rotateX(-Math.PI / 2)), glowMat);
   glow.position.y = 0.06; glow.userData.glow = true; car.add(glow);
-  return { car, wheels, dispose: () => { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); } };
+  let shown = primary;
+  const setColor = (hex: string) => { if (hex === shown) return; shown = hex; paint.color.set(hex); glowMat.color.set(hex).multiplyScalar(1.3); };
+  return { car, wheels, setColor, dispose: () => { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); } };
 }

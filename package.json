@@ -11,7 +11,7 @@
     "check:purity": "tsx scripts/checks/purity.ts",
     "check:determinism": "tsx scripts/checks/determinism.ts",
     "check:bench": "tsx scripts/checks/bench.ts",
-    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench && npm run check:workbench && npm run check:training && npm run check:drive && npm run check:preview && npm run check:legal && npm run check:audio && npm run check:icons && npm run check:title && npm run check:race",
+    "check": "npm run check:types && npm run check:purity && npm run check:unit && npm run check:determinism && npm run check:bench && npm run check:workbench && npm run check:training && npm run check:drive && npm run check:preview && npm run check:legal && npm run check:audio && npm run check:icons && npm run check:title && npm run check:race && npm run check:multiplayer",
     "bench": "tsx scripts/sim/bench.ts",
     "bench:browser": "tsx scripts/checks/bench-browser.ts",
     "check:workbench": "tsx scripts/checks/workbench.ts",
@@ -23,7 +23,8 @@
     "check:audio": "tsx scripts/checks/audio.ts",
     "check:icons": "tsx scripts/checks/icons.ts",
     "check:title": "tsx scripts/checks/title.ts",
-    "check:race": "tsx scripts/checks/race.ts"
+    "check:race": "tsx scripts/checks/race.ts",
+    "check:multiplayer": "tsx scripts/checks/multiplayer.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

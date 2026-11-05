@@ -10,7 +10,8 @@ principal connects the project and the domain).
 
 ## Stack
 Vite + TypeScript, Three.js 0.160 (training view only, loaded on first Train), Vitest, tsx for Node scripts,
-Playwright (dev only: browser bench, workbench and training checks). No backend.
+Playwright (dev only: browser bench, workbench and training checks). Multiplayer (B8) uses a Supabase project's
+database through PostgREST functions (`supabase/schema.sql`); no server code of ours.
 
 ## src/common: the deterministic core
 Pure TypeScript: no DOM, no three, no clocks, no `Math.random`, no engine transcendental `Math.*`, no Float32. It runs
@@ -220,7 +221,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   `?quality=low|high` overrides the renderer's choice.
 - `ui/title/` — the title screen (B2c; a port of `reference/title-screen-mockup.html`), which the page opens on: the
   card ("Synapse", "Build a brain. Train it. Race it.", Multiplayer in blue and vs CPU in yellow, both disabled with
-  "soon" until B8, vs CPU live since B7, Sandbox plain), a quiet wired brain firing behind it (still under reduced
+  vs CPU live since B7, Multiplayer since B8, Sandbox plain), a quiet wired brain firing behind it (still under reduced
   motion), and the rail along its foot with Privacy · Terms · Cookies and the music credits (above the storage notice
   while it shows). Sandbox opens the designer; vs CPU opens it in match mode; the designer's "Synapse" wordmark comes
   back. `?view=sandbox|cpu|train|drive|race` skip it.
@@ -238,7 +239,11 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   with its beams and engine; the others are solid cars in their own colours (`DriveRig.setRivals` / `placeRivals`, at
   most `MAX_RIVALS` = 11, made once and reused; a car within 8 m of the chase camera is not drawn, or the one behind
   yours on the grid fills the screen). Finishing first plays the winner music as you cross the line (`win()`), or at
-  the results if you lead at the cap. `?race=` picks the first race seed (the checks). The drive and race views'
+  the results if you lead at the cap. `?race=` picks the first race seed (the checks). Since B8 the view takes a
+  `RaceSetup` (names, genomes, which car is yours or −1 to watch, seed, and for a room the shared Go), so vs CPU and
+  rooms share it: up to 100 cars, the nearest `MAX_RIVALS` = 11 to yours drawn as solid cars each frame (the drive
+  rig's pool of 11, each recoloured to the car it shows), every car a dot on the map, the standings' top ten plus you,
+  every car's row in the results. The drive and race views'
   panels, buttons, progress bars and the live-brain card have square corners, as the rest of the site (principal
   2026-11-04: "use square corners rather than squircles across the whole site"; the designer's bin stays round by its
   own ruling).
@@ -357,9 +362,26 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   drive view holds the car on the line until Go and then plays the recorded run from tick
   0 (hashes unchanged); in the training view the highlighted car (then the champion) has a quieter engine.
 
+- Multiplayer (B8): `net/rooms.ts` calls the database's functions (`create_room`, `join_room`, `room_state`,
+  `submit_brain`, `start_race`, `race_entries`, `submit_result`) over PostgREST with the anon key; the build maps
+  `SUPABASE_PROJECT_URL` and `SUPABASE_ANON_KEY` in through Vite `define` (`__SUPABASE_URL__`, `__SUPABASE_ANON_KEY__`,
+  declared in `env.d.ts`; empty: Multiplayer says it isn't set up); the service role key is read nowhere. Every reply
+  carries the server's clock, so Go is the same moment on every client. Nothing is stored in the browser: your player's
+  secret token lives in memory (the database keeps only its SHA-256). `ui/lobby/lobby.ts`: the title's Multiplayer
+  card (your name, Create a room, or join with a 4-letter code; up to 100 players) and the room's lobby on the title
+  screen (the code, every player and whether their brain is in, the host marked; Build and train, Start race for the
+  host, Leave room), polled every 1.5 s while you are in a room. Build and train is the match designer; training ends
+  with Hand in (your genome's canonical JSON goes to the room). The host's Start race freezes the entries (every player
+  with a brain in, in join order) and draws the seed, Go 12 s later; every client fetches the same entries, leaves out
+  anything that isn't a valid brain within the match limit (the same rule on every client), computes the race
+  itself and counts down to Go (`countdown.ts countdownTo`: the same two-beat spacing, blips on the effects bus; it
+  can't follow each client's music). A client that is late joins the race where it is. Results go back to the room
+  (place, time, distance). Back to room returns to the lobby.
+
 ## scripts
 - `scripts/sim/cpuBrains.ts` — trains the nine CPU brains (B7) and writes `src/assets/cpu/brains.json` (about 40 s on
   4 workers), printing each one's median progress in 120 s alone on ten race tracks.
+- `scripts/sim/raceCost.ts` — what a race costs to compute: 10 and 100 entries × the 120 s cap, best of 3 (B8).
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
 - `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`; a short phase of
   every trainer, inline = 4 workers), `bench.ts`
@@ -396,8 +418,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   a hidden tab keeps playing; the toggles are independent (music off: the music bus silent, blips and engine heard;
   effects off: no blip or engine, the music heard), agree across all five pairs and survive a reload; the old
   `off` / `on` migrates; locked, the countdown runs on the plain timer; console clean.
-- `scripts/checks/title.ts` — the title in headless Chromium: it opens first; Multiplayer (blue) disabled with
-  "soon", vs CPU (yellow) enabled; vs CPU → the match designer → wordmark → title; Sandbox → designer (sandbox mode); the rail's links resolve and carry the credits, the
+- `scripts/checks/title.ts` — the title in headless Chromium: it opens first; Multiplayer (blue) and vs CPU (yellow)
+  enabled; vs CPU → the match designer → wordmark → title; Sandbox → designer (sandbox mode); the rail's links resolve and carry the credits, the
   rule strip doesn't; an overlap audit at 1440×900 and 844×390, light and dark; the notice sits below the rail.
 - `scripts/checks/race.ts` — vs CPU in headless Chromium: the match designer refuses a design past 100% flat out;
   Train skips the popup and trains from scratch on the budget (saved = Node's run); training ends with Race and Back;
@@ -406,8 +428,18 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   and mid-race, Skip → the results table = Node, Race again (new seed), Back (still vs CPU); a race you win (the
   strongest CPU brain as yours) plays the winner music as you cross the line; 844×390 layout; screenshots to
   `out/race/`.
+- `scripts/checks/standin.ts` — a local stand-in for the Supabase project: the same functions as `supabase/schema.sql`
+  behind the same PostgREST shape, in memory, checking the anon key.
+- `scripts/checks/multiplayer.ts` — Multiplayer in headless Chromium against the stand-in: the card (a name needed,
+  a code with no room refused), create and join, both lobbies, a room on a landscape phone, Leave; both players train
+  in match mode (= Node) and hand in; 98 more players from Node fill the room to 100 (one with a brain past the limit)
+  and a 101st is refused; Start race: the same race on both clients = Node, Go at the same moment, 99 cars (the
+  over-limit one left out), the 11 drawn in 3-D are the nearest, 99 map dots; results = Node; results reach the room;
+  Back to room; the page's defines carry the URL and anon key, never the service role key; prints the page's compute
+  time for the race. Screenshots to `out/multiplayer/`.
 - `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench,
-  training, drive, production-build, legal, audio, icons, title and race checks.
+  training, drive, production-build (now also: the build carries the URL and anon key, never the service role key),
+  legal, audio, icons, title, race and multiplayer checks.
 
 ## Deploy
 Static site. `vite build` → `dist/` (`index.html`, hashed `assets/`: the app ~70 kB JS, the 3-D stage chunk with

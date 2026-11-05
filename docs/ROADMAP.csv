@@ -24,4 +24,4 @@ B2f,Random starter brain: 2-6 input cells (one always a boundary vector cell) fo
 B7,vs CPU: match designer (energy limit; Train from scratch on T; no popup); 10 cars on a grid two by two; countdown; players listed; 2 laps capped at 120 s; corner map; results; winner music on a win; nine CPU brains (scripts/sim/cpuBrains.ts → src/assets/cpu/brains.json); square corners in the drive and race views,review,docs/plans/2026-11-04-tracks-training-matches.md §4 (Built B7)
 T4,Learning Rule strip on every view + live trainer picker,later,"Learning Rule : [equation]" centred across the top; formula only
 M3,Lab (untimed),later,
-M5,Multiplayer,later,
+M5,Multiplayer (B8): rooms by 4-letter code; up to 100 players; lobby; hand in a trained brain; host starts; every client re-runs the race; nearest 11 cars in 3-D and the rest as map dots; countdown to the server's Go; results to the room; supabase/schema.sql (RLS; functions; 30-day purge),review,docs/plans/2026-11-04-tracks-training-matches.md §4 (Built B8); supabase/schema.sql for the principal to run

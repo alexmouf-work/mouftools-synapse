@@ -208,6 +208,28 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
     when the track is the other way. Player brains do the same (it is the S1 (b) gap, B5). A car going backwards ranks
     by its (negative) distance, shown as such in the results. Not tuned or hand-picked: the brains are what the
     script's fixed seeds give.
+- **Built (B8, 2026-11-05): Multiplayer**, per §4–5 and the legal plan. Rooms with a 4-letter code (A–Z), up to 100
+  players; your name (1–16 characters) on the card. Calls I made where the plans are silent (each can be overturned):
+  - Flow: Create or Join → the lobby on the title screen → Build and train (the match designer, the same fixed
+    budget from scratch as vs CPU) → Hand in → the host's Start race (enabled once one brain is in) → every client
+    computes and plays the race → results → Back to room; the host can start again (each player's latest brain).
+    The host is the room's creator. A race freezes its entries when it starts, so a brain handed in later waits for
+    the next. A client not in the lobby when a race starts isn't pulled into it (the lobby says so); one that arrives
+    late joins the race where it is.
+  - Go is 12 s after Start, on the server's clock; the countdown is the same two-beat 5…1 Go as vs CPU but timed to
+    that moment (it can't follow each client's music).
+  - A brain that isn't valid or is past the match limit is left out of the race by every client the same way.
+  - Drawn: the nearest 11 others to your car as solid cars (the vs CPU field fits), the rest as map dots. 11 is the
+    rig's pool, not a measured per-device number; the 3-D cost of each car was not measured per device.
+  - Results go back to the room (place, time, distance), as the privacy policy says. Nothing is kept in the browser.
+  - **Needs a ruling:** the grid stays two by two as planned, so 100 cars make 50 rows: the back row starts 396 m
+    behind the line, often round corners, and the pad-free zone covers only the first 40 m behind it (it was sized for
+    ten). A wider grid for big rooms, or a longer pad-free zone, would each change the plan.
+  - **Cost, measured** (`scripts/sim/raceCost.ts`, this 4-core Xeon VM, one thread): 10 cars × 120 s 135 ms, 100 cars
+    × 120 s 1.09 s in Node; in headless Chrome (check:multiplayer) about 1.2–1.5 s on the main thread. A phone was
+    not measured; at a few times slower it still fits inside the 12 s before Go, though the page is frozen while it
+    computes (a worker would fix that if it matters).
+  - Not done: the real Supabase project (the principal runs `supabase/schema.sql`); the checks use the local stand-in.
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.

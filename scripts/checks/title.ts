@@ -1,5 +1,5 @@
-// Title screen check (B2c, B7), headless Chromium: the page opens on the title; Multiplayer (blue) is disabled with
-// "soon"; vs CPU (yellow) opens the designer in match mode and Sandbox (plain) in sandbox mode, and the designer's
+// Title screen check (B2c, B7, B8), headless Chromium: the page opens on the title; Multiplayer (blue) is live (its
+// card and rooms: check:multiplayer); vs CPU (yellow) opens the designer in match mode and Sandbox (plain) in sandbox mode, and the designer's
 // wordmark comes back; the rail along
 // the foot carries Privacy · Terms · Cookies (resolving) and the music credits, and the designer's rule strip no longer
 // does; the storage notice sits below the rail, never over it; an overlap audit of the card, its buttons and the rail
@@ -44,12 +44,12 @@ async function main() {
     // 1. the page opens on the title; the buttons
     let page = await open(1440, 900, false);
     check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()) && !(await page.locator('#arena').isVisible()), 'the page opens on the title screen (not the designer)');
-    check((await page.locator('#title h1').innerText()) === 'Synapse' && (await page.locator('#title .tag').innerText()) === 'Build a brain. Train it. Race it.', 'the card: "Synapse", "Build a brain. Train it. Race it."');
+    check((await page.locator('#menuCard h1').innerText()) === 'Synapse' && (await page.locator('#menuCard .tag').innerText()) === 'Build a brain. Train it. Race it.', 'the card: "Synapse", "Build a brain. Train it. Race it."');
     const st = await page.evaluate(() => ['toMatch', 'toCpu', 'toSandbox'].map((id) => {
       const b = document.getElementById(id) as HTMLButtonElement, cs = getComputedStyle(b);
       return { text: b.textContent?.replace(/\s+/g, ' ').trim(), disabled: b.disabled, bg: cs.backgroundColor, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() };
     }));
-    check(st[0].text === 'Multiplayer soon' && st[0].disabled && st[0].bg === 'rgb(47, 111, 222)', `Multiplayer: blue, disabled, "soon" (${st[0].bg})`);
+    check(st[0].text === 'Multiplayer' && !st[0].disabled && st[0].bg === 'rgb(47, 111, 222)', `Multiplayer: blue, enabled (${st[0].bg})`);
     check(st[1].text === 'vs CPU' && !st[1].disabled && st[1].bg === 'rgb(255, 194, 26)', `vs CPU: yellow, enabled (${st[1].bg})`);
     check(st[2].text === 'Sandbox' && !st[2].disabled && st[2].bg === 'rgba(0, 0, 0, 0)', 'Sandbox: plain, enabled');
     await page.screenshot({ path: `${OUT}/title-1440.png` });
@@ -79,7 +79,7 @@ async function main() {
     //    desktop and landscape phone
     for (const [w, h, dark] of [[1440, 900, false], [1440, 900, true], [844, 390, false], [844, 390, true]] as const) {
       page = await open(w, h, dark);
-      const card = (await box(page, '#title .card'))!, r = (await box(page, '#title .rail'))!;
+      const card = (await box(page, '#menuCard'))!, r = (await box(page, '#title .rail'))!;
       const btns = await Promise.all(['#toMatch', '#toCpu', '#toSandbox'].map((s) => box(page, s)));
       const inside = (b: { x: number; y: number; width: number; height: number }) => b.x >= -0.5 && b.y >= -0.5 && b.x + b.width <= w + 0.5 && b.y + b.height <= h + 0.5;
       const ok = inside(card) && inside(r) && !over(card, r) && btns.every((b) => b && b.x >= card.x - 0.5 && b.x + b.width <= card.x + card.width + 0.5 && b.y + b.height <= card.y + card.height + 0.5)
@@ -98,7 +98,7 @@ async function main() {
     page = await open(844, 390, false, true);
     await page.waitForSelector('#notice');
     await page.waitForTimeout(300);
-    const nb = (await box(page, '#notice'))!, rb = (await box(page, '#title .rail'))!, cb = (await box(page, '#title .card'))!;
+    const nb = (await box(page, '#notice'))!, rb = (await box(page, '#title .rail'))!, cb = (await box(page, '#menuCard'))!;
     check(rb.y + rb.height <= nb.y + 0.5 && !over(cb, nb) && !over(cb, rb), `with the notice showing: the rail sits on top of it (rail bottom ${Math.round(rb.y + rb.height)} ≤ notice top ${Math.round(nb.y)}), the card clear of both`);
     await page.screenshot({ path: `${OUT}/title-844-notice.png` });
     await page.context().close();

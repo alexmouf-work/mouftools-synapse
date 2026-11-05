@@ -19,12 +19,22 @@
 <div id="title" hidden>
   <canvas id="titleNet" aria-hidden="true"></canvas>
   <span class="sounds ti-sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTi" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTi" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
-  <main class="card">
+  <main class="card" id="menuCard">
     <h1>Synapse</h1>
     <p class="tag">Build a brain. Train it. Race it.</p>
-    <button class="tbtn primary" type="button" id="toMatch" disabled>Multiplayer <span class="soon">soon</span></button>
+    <button class="tbtn primary" type="button" id="toMatch">Multiplayer</button>
     <button class="tbtn cpu" type="button" id="toCpu">vs CPU</button>
     <button class="tbtn plain" type="button" id="toSandbox">Sandbox</button>
+  </main>
+  <main class="card lobby" id="lobbyCard" hidden aria-label="Room">
+    <p class="tag lb-k">Room</p>
+    <h1 id="lbCode"></h1>
+    <p class="tag" id="lbCount"></p>
+    <ol class="lb-list" id="lbList"></ol>
+    <p class="lb-note" id="lbNote" aria-live="polite"></p>
+    <button class="tbtn primary" type="button" id="lbBuild">Build and train</button>
+    <button class="tbtn cpu" type="button" id="lbStart" hidden>Start race</button>
+    <button class="tbtn plain" type="button" id="lbLeave">Leave room</button>
   </main>
   <footer class="rail"><span class="legal-links"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a></span>
     <span class="credits">Music: DM DOKURO · “Airport Lounge” Kevin MacLeod (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)</span></footer>
@@ -56,6 +66,13 @@
 </div>
 <div id="rotate"><div><h1>Turn your phone sideways</h1><p class="note">Senses on the left, the car on the right.</p><button class="btn" id="stay" type="button">Continue in portrait</button></div></div>
 <dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><label class="count temp" id="tempRow"><span>Temperature</span><b id="tVal"></b><input id="tSlide" type="range" min="-2" max="2" step="0.25" value="0" aria-label="Temperature"><small id="tHint"></small></label><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
+<dialog id="mpDlg" aria-labelledby="mpT"><p id="mpT"><b>Multiplayer</b><br>Up to 100 players</p>
+  <label class="mp-row"><span>Your name</span><input id="mpName" maxlength="16" autocomplete="off" spellcheck="false"></label>
+  <button class="btn primary mp-wide" type="button" id="mpCreate">Create a room</button>
+  <p class="mp-or">or join with a room code</p>
+  <div class="mp-row"><input id="mpCode" maxlength="4" placeholder="ABCD" aria-label="Room code" autocomplete="off" spellcheck="false"><button class="btn" type="button" id="mpJoin">Join</button></div>
+  <p class="mp-err" id="mpErr" role="alert"></p>
+  <div class="cf"><button class="btn" type="button" id="mpBack">Back</button></div></dialog>
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>
@@ -88,7 +105,7 @@
   <div id="raceOverlay" hidden>
     <div class="dv-count" id="rcCount" aria-live="assertive"></div>
     <section class="tv-panel rc-status" aria-label="Race">
-      <h1 class="tv-title"><span>vs CPU</span><span class="tv-name" id="rcState"></span></h1>
+      <h1 class="tv-title"><span id="rcTitle">vs CPU</span><span class="tv-name" id="rcState"></span></h1>
       <dl class="kv">
         <dt>Position</dt><dd id="rcPos"></dd>
         <dt>Lap</dt><dd id="rcLap"></dd>

@@ -27,8 +27,8 @@ export interface DrivePose {
 }
 
 /** A race's other cars as drawn (B7): pose from their recordings, wheels turning with their speed. */
-export interface RivalPose { x: number; y: number; hdg: number; v: number; f: number; on: boolean }
-/** The most other cars drawn in 3-D at once (vs CPU: nine; the rest of a bigger race would be dots on the map). */
+export interface RivalPose { x: number; y: number; hdg: number; v: number; f: number; on: boolean; color: string }
+/** The most other cars drawn in 3-D at once (vs CPU: all nine; in a room, the nearest; the rest are dots on the map). */
 export const MAX_RIVALS = 11;
 
 /** Other cars closer than this to the camera (m) are not drawn. */
@@ -56,9 +56,8 @@ export class DriveRig {
   private track: Track | null = null;
   readonly rayDist = new Float64Array(MAX_BEAMS);
   private shown = 0;
-  /** The race's other cars (made on first use, at most MAX_RIVALS, each in its own colour). */
+  /** The race's other cars (a pool made on first use, at most MAX_RIVALS; each frame shows whichever car it is given). */
   readonly rivals: CarModel[] = [];
-  private readonly rivalCols: string[] = [];
   private readonly glowTex: THREE.Texture;
 
   constructor(glowTex: THREE.Texture, private readonly camera: THREE.PerspectiveCamera, dom: HTMLElement) {
@@ -89,20 +88,18 @@ export class DriveRig {
     return this.beams.slice(0, this.shown).map((b) => b.beam.getWorldDirection(v).toArray());
   }
 
-  /** The race's other cars, one colour each (none: the drive view). Cars are made once per colour slot and reused. */
-  setRivals(colors: readonly string[]): void {
-    if (colors.length > MAX_RIVALS) throw new Error(`render: ${colors.length} rivals wanted, the rig draws ${MAX_RIVALS}`);
-    colors.forEach((c, k) => {
-      if (this.rivals[k] && this.rivalCols[k] === c) return;
-      if (this.rivals[k]) { this.group.remove(this.rivals[k].car); this.rivals[k].dispose(); }
-      const m = makeCar(c, '#14161d', this.glowTex);
+  /** How many other cars to draw (0: the drive view). The pool grows to it once and is reused. */
+  setRivals(count: number): void {
+    if (count > MAX_RIVALS) throw new Error(`render: ${count} rivals wanted, the rig draws ${MAX_RIVALS}`);
+    while (this.rivals.length < count) {
+      const m = makeCar('#9aa3b5', '#14161d', this.glowTex);
       m.car.rotation.order = 'YXZ';
-      this.rivals[k] = m; this.rivalCols[k] = c;
+      this.rivals.push(m);
       this.group.add(m.car);
       this.onRivals(m.car);
-    });
-    this.rivals.forEach((m, k) => { m.car.visible = k < colors.length; });
-    this.nRivals = colors.length;
+    }
+    this.rivals.forEach((m, k) => { m.car.visible = k < count; });
+    this.nRivals = count;
   }
   private nRivals = 0;
   /** The stage scales a new car's lit materials as it does every other (set by the stage). */
@@ -118,6 +115,7 @@ export class DriveRig {
       const m = this.rivals[k], car = m.car;
       car.visible = p.on;
       if (!p.on) return;
+      m.setColor(p.color);
       const lift = liftAt(t, p.f);
       toWorld(p.x, p.y, lift.h, car.position);
       car.rotation.set(pitchOf(t, p.f, p.hdg, lift.slope), yawOf(p.hdg), 0);

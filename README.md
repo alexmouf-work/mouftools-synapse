@@ -25,7 +25,10 @@ The site is static: `vite build` writes `dist/`. `vercel.json` sets the build (`
 `dist`), a fallback of every unknown path to `index.html`, a one-year immutable cache for the hashed files in
 `/assets/` and no-cache for `index.html`.
 1. In Vercel: Add New → Project → import the GitHub repo `alexmouf-work/mouftools-synapse`. The settings come from
-   `vercel.json`; no environment variables are needed. Production branch: `main`.
+   `vercel.json`. Production branch: `main`. Multiplayer needs `SUPABASE_PROJECT_URL` and `SUPABASE_ANON_KEY` set in
+   Vercel (they are mapped into the page at build time); `SUPABASE_SERVICE_ROLE_KEY` is not used by the site.
 2. In the project's Settings → Domains add `synapse.mouftools.com`.
 3. At the DNS host of mouftools.com add a CNAME record: name `synapse`, value `cname.vercel-dns.com`.
 4. Every push to `main` then deploys; other branches get preview URLs.
+5. Multiplayer: run `supabase/schema.sql` once in the Supabase dashboard's SQL editor (tables, row-level security, the
+   room functions, and the daily job that deletes match data older than 30 days). Safe to run again.

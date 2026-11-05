@@ -114,3 +114,13 @@ dialog#confirm { width: 260px; }
 .btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }
 .btn.sound[aria-pressed="false"] { color: var(--muted); }
 
+
+/* Multiplayer (B8): the card's dialog (name, create, join by code) */
+#mpDlg { width: min(320px, calc(100% - 32px)); }
+#mpDlg .mp-row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+#mpDlg .mp-row span { flex: none; color: var(--muted); }
+#mpDlg input { flex: 1; min-width: 0; min-height: 30px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); padding: 0 8px; font: inherit; font-size: 13px; }
+#mpCode { text-transform: uppercase; letter-spacing: .2em; font-variant-numeric: tabular-nums; }
+#mpDlg .mp-wide { width: 100%; }
+#mpDlg .mp-or { margin: 10px 0 0; color: var(--muted); text-align: center; }
+#mpDlg .mp-err { margin: 4px 0 0; min-height: 1.3em; color: var(--minus); }

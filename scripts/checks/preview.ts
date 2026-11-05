@@ -3,9 +3,10 @@
 // the designer loads; Train (seed 7, 25 generations from the popup; ?T= ignored) finishes with the same phase hash as
 // Node; render smoke on the
 // training view; Drive: distance increases, drive hash = Node runDrive, render smoke, bloom audit on fixed frames;
-// an unknown path falls back to the app; the dev-only /bench page is not in the build; console clean.
+// an unknown path falls back to the app; the dev-only /bench page is not in the build; the build carries the Supabase
+// URL and anon key but never the service role key (B8); console clean.
 //   npx tsx scripts/checks/preview.ts
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright';
 import { build, preview } from 'vite';
 import { defaultSpec } from '../../src/common/sim/spec';
@@ -21,8 +22,16 @@ let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 
 async function main() {
+  // the keys as Vercel has them (sentinels here): the URL and anon key go into the page, the service role key never
+  process.env.SUPABASE_PROJECT_URL = 'https://sentinel-project.supabase.test';
+  process.env.SUPABASE_ANON_KEY = 'anon-key-sentinel';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-sentinel';
   await build({ logLevel: 'warn' });
   check(existsSync('dist/index.html') && !existsSync('dist/bench'), 'vite build: dist/index.html, no dev-only bench page');
+  const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(`${d}/${e.name}`) : [`${d}/${e.name}`]));
+  const shipped = files('dist').filter((f) => /\.(js|html|css|json|webmanifest)$/.test(f)).map((f) => readFileSync(f, 'utf8')).join('\n');
+  check(shipped.includes('anon-key-sentinel') && shipped.includes('https://sentinel-project.supabase.test') && !shipped.includes('service-role-sentinel'),
+    'the build carries the Supabase URL and anon key (define), never the service role key');
   const pool = new NodePool(4);
   const node = await runPhase(pool, defaultSpec(), SEED, { generations: GENS });
   await pool.close();
