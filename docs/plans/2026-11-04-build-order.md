@@ -18,6 +18,7 @@ the next. The mock-ups in `reference/` and the plans below are the spec; `docs/C
 | B5 | Track families (loop, kidney, hairpin, chicane, dogleg, clover, figure eight) and the figure eight's decks | `2026-11-04-tracks-training-matches.md` §1–2, `reference/track-shapes-mockup.html` |
 | B7 | Title screen (Multiplayer blue, vs CPU yellow, Sandbox plain) and vs CPU: 10 cars, countdown, winner music on a win | same plan §4–5, `reference/title-screen-mockup.html` |
 | B8 | Multiplayer: rooms with codes, up to 100 players, nearest cars drawn, corner map, countdown; Supabase | same plan §4, `2026-11-04-legal-pages.md` (keys) |
+| B9 | Multiplayer lobby (code → name screen → lobby with pop-in name chips, host can remove) and landscape only | `2026-11-05-lobby-and-landscape.md`, `reference/multiplayer-lobby-mockup.html` |
 
 Notes
 - B8 needs the database set up in the Supabase project (tables, row-level security). The builder writes the SQL; the

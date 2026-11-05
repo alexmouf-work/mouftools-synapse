@@ -253,3 +253,9 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - Wrong-way driving in races (2026-11-05), asked how to handle it → "Wrong-way reset (Recommended)": after about 3 s going
   backwards, "Wrong way" flashes and the car is put back at its furthest point, facing forwards; the same rule for every
   car; distance never shows below 0.
+- Multiplayer lobby (2026-11-05): "create a lobby before starting for multiplayer mode so that we can see usernames
+  joining the lobby. use a similar system to kahoot where the name of the user will pop up in a small container (which
+  fits the text neatly) and they all fill a space. this could be in a grid or just randomly with small overlaps. mock it
+  up, including the name entry before joining." · "make the name entry its own whole thing, separately shown after the
+  code entry once the code is entered." · "don't offer portrait mode." · "the mockups look really good. please build
+  when ready." → `docs/plans/2026-11-05-lobby-and-landscape.md` (B9).

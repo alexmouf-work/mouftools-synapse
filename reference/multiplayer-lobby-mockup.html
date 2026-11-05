@@ -1,0 +1,449 @@
+<title>Multiplayer Lobby</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one screen. Join and name cards sit centred; the lobby is a header band over a field the name chips fill. */
+:root {
+  --bg: #eef1f6; --panel: #ffffff; --field: #e4e9f3; --line: #d3d9e5; --text: #1d2330; --muted: #677085;
+  --accent: #2f6fde; --accent-ink: #ffffff; --accent-soft: #dbe6fb; --danger: #d6404a; --danger-ink: #ffffff;
+  --chip: #ffffff; --chip-line: #c9d1df; --shadow: 0 1px 2px rgba(29, 35, 48, .14);
+  --font: Arial, Helvetica, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15181e; --panel: #20252e; --field: #1a1e26; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-ink: #0e1420; --accent-soft: #24324d; --danger: #f06a72; --danger-ink: #1a0d0f;
+  --chip: #262c37; --chip-line: #3a4252; --shadow: 0 1px 2px rgba(0, 0, 0, .5); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15181e; --panel: #20252e; --field: #1a1e26; --line: #2f3541; --text: #e6e9ef; --muted: #98a1b2;
+  --accent: #6b9cff; --accent-ink: #0e1420; --accent-soft: #24324d; --danger: #f06a72; --danger-ink: #1a0d0f;
+  --chip: #262c37; --chip-line: #3a4252; --shadow: 0 1px 2px rgba(0, 0, 0, .5); color-scheme: dark; }
+
+* { box-sizing: border-box; border-radius: 0; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 var(--font); overflow: hidden; }
+.app { height: 100%; display: flex; flex-direction: column; }
+.screen { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* buttons: square, Arial, the site's look */
+button { font: 700 15px var(--font); cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 10px 16px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* join and name cards */
+.centre { flex: 1; display: grid; place-items: center; padding-block: 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); overflow: auto; }
+.card { width: min(380px, 100%); background: var(--panel); border: 1px solid var(--line); padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.card h1 { margin: 0; font-size: 24px; text-wrap: balance; }
+.card .sub { margin: -8px 0 0; color: var(--muted); font-size: 14px; }
+.lab { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.field-row { display: flex; flex-direction: column; gap: 6px; }
+input.code { font: 700 34px var(--font); letter-spacing: .35em; text-transform: uppercase; text-align: center;
+  padding: 10px 0 10px .35em; width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-variant-numeric: tabular-nums; }
+input.name { font: 700 20px var(--font); padding: 11px 12px; width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.hint { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.err { font-size: 13px; color: var(--danger); min-height: 18px; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.row { display: flex; gap: 8px; }
+.row > .grow { flex: 1; }
+.solo .centre { background: var(--field); }
+.solo-form { width: min(520px, 100%); display: flex; flex-direction: column; gap: 16px; }
+.solo-form h1 { margin: 0; font-size: clamp(26px, 5vw, 40px); line-height: 1.1; text-wrap: balance; }
+.solo-form input.name { font-size: clamp(24px, 4.4vw, 34px); padding: 14px 16px; background: var(--panel); }
+button.big { font-size: 20px; padding: 14px 18px; }
+.code.checking { opacity: .5; }
+.preview { --fs: 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+
+/* lobby header */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.roomcode { display: flex; flex-direction: column; }
+.roomcode b { font-size: 40px; line-height: 1; letter-spacing: .18em; font-variant-numeric: tabular-nums; }
+.where { font-size: 13px; color: var(--muted); max-width: 22ch; }
+.count { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
+.count b { font-size: 28px; line-height: 1.05; }
+.count span { font-size: 13px; color: var(--muted); }
+.bar .spacer { flex: 1; }
+.status { font-size: 14px; color: var(--muted); text-align: right; }
+.status b { color: var(--text); display: block; font-size: 16px; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; }
+.legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
+
+/* the field the chips fill */
+.field { position: relative; flex: 1; min-height: 0; background: var(--field); overflow: hidden; --fs: 16px; }
+.field.grid { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 8px; padding: 16px; overflow: auto; }
+.empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 16px; text-align: center; padding: 16px; pointer-events: none; }
+.chip { position: absolute; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font: 700 var(--fs) var(--font);
+  padding: .32em .62em; background: var(--chip); border: 1px solid var(--chip-line); box-shadow: var(--shadow); color: var(--text);
+  animation: pop .38s cubic-bezier(.2, .9, .3, 1.35) both; user-select: none; }
+.field.grid .chip { position: static; }
+.chip i { width: .55em; height: .55em; flex: none; border: 2px solid var(--c); background: transparent; }
+.chip.ready i { background: var(--c); }
+.chip.me { border: 2px solid var(--accent); background: var(--accent-soft); }
+.chip.host-tap { cursor: pointer; }
+.chip.picked { outline: 2px solid var(--danger); outline-offset: 1px; }
+.chip.leaving { animation: out .22s ease-in both; }
+@keyframes pop { 0% { transform: scale(.35); opacity: 0; } 65% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes out { to { transform: scale(.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .chip, .chip.leaving { animation: none; } }
+.kick { position: absolute; z-index: 9999; background: var(--danger); color: var(--danger-ink); border-color: var(--danger); font-size: 13px; padding: 6px 10px; }
+
+/* lobby footer (player and host actions) */
+.foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--panel); border-top: 1px solid var(--line);
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.foot .note { font-size: 13px; color: var(--muted); flex: 1; min-width: 12ch; }
+
+/* mock-only controls, kept visibly apart from the design */
+.mock { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: var(--muted);
+  border-top: 1px dashed var(--line); background: var(--bg);
+  padding-block: 7px calc(7px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.mock b { letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
+.mock button { font-size: 12px; padding: 4px 9px; font-weight: 400; }
+.mock button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.seg { display: inline-flex; }
+.seg button + button { border-left: 0; }
+
+@media (max-width: 560px) {
+  .roomcode b { font-size: 30px; }
+  .count b { font-size: 22px; }
+  .where, .legend { display: none; }
+  .bar { gap: 8px 16px; }
+}
+@media (max-height: 460px) {
+  .roomcode b { font-size: 28px; }
+  .bar { padding-block: 7px; }
+  .foot { padding-block: 6px; }
+  .card { padding: 16px; gap: 10px; }
+  input.code { font-size: 28px; padding-block: 6px; }
+}
+</style>
+
+<div class="app">
+  <!-- 1. Multiplayer: join with a code, or create a room -->
+  <section class="screen" id="sJoin">
+    <div class="centre">
+      <form class="card" id="joinForm" novalidate>
+        <h1>Multiplayer</h1>
+        <p class="sub">Up to 100 players in a room.</p>
+        <div class="field-row">
+          <label class="lab" for="codeIn">Room code</label>
+          <input class="code" id="codeIn" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" inputmode="text">
+          <div class="err" id="codeErr" role="alert"></div>
+        </div>
+        <div class="hint" id="codeHint"><span>The host has the code. You go straight in once all four letters are typed.</span></div>
+        <div class="or">or</div>
+        <div class="row">
+          <button type="button" class="grow" id="createBtn">Create a room</button>
+          <button type="button" id="backBtn">Back</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- 2. Your name, before you go in -->
+  <section class="screen solo" id="sName" hidden>
+    <header class="bar">
+      <div class="roomcode"><span class="lab">Room code</span><b id="nameCode">KQRT</b></div>
+      <div class="count"><b id="nameN">23</b><span id="nameSub">players in</span></div>
+      <div class="spacer"></div>
+      <button type="button" id="nameBack">Change code</button>
+    </header>
+    <div class="centre">
+      <form class="solo-form" id="nameForm" novalidate>
+        <h1 id="nameTitle">What should we call you?</h1>
+        <div class="field-row">
+          <label class="lab" for="nameIn">Your name</label>
+          <input class="name" id="nameIn" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="e.g. Priya">
+          <div class="hint"><span>Everyone in the room sees this.</span><span id="nameCount">0 / 16</span></div>
+          <div class="err" id="nameErr" role="alert"></div>
+        </div>
+        <div class="preview" aria-hidden="true">Shows as <span class="chip" id="namePreview" style="position: static; animation: none; --c: #f5b51b"><i></i><span>Your name</span></span></div>
+        <button class="primary big" id="goBtn" type="submit" disabled>Go in</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- 3. The lobby: names pop in as people join -->
+  <section class="screen" id="sLobby" hidden>
+    <header class="bar">
+      <div class="roomcode"><span class="lab">Room code</span><b id="lobbyCode">KQRT</b></div>
+      <div class="where">Join at synapse.mouftools.com, then Multiplayer.</div>
+      <div class="count"><b id="countN">0</b><span id="countSub">players · 0 ready</span></div>
+      <div class="legend"><span><i style="background: var(--muted)"></i>Brain handed in</span><span><i style="border: 2px solid var(--muted)"></i>Still building</span></div>
+      <div class="spacer"></div>
+      <div class="status" id="hostSide"><button class="primary" id="startBtn" disabled>Start race</button></div>
+      <div class="status" id="playerSide" hidden><b>You're in</b>Waiting for the host to start</div>
+    </header>
+    <div class="field" id="field" aria-live="polite" aria-label="Players in the room">
+      <div class="empty" id="empty">Waiting for players to join…</div>
+    </div>
+    <footer class="foot">
+      <button id="buildBtn" class="primary">Build your brain</button>
+      <span class="note" id="footNote">Build and train a brain, then hand it in. The race uses the brains that are in when the host starts.</span>
+      <button id="leaveBtn">Leave room</button>
+    </footer>
+  </section>
+
+  <div class="mock" aria-label="Mock-up controls">
+    <b>Mock-up</b>
+    <span class="seg" role="group" aria-label="Screen">
+      <button data-go="sJoin">1 Code</button><button data-go="sName" id="goName">2 Name</button><button data-go="sLobby">3 Lobby</button>
+    </span>
+    <span class="seg" role="group" aria-label="Viewing as">
+      <button id="asHost" aria-pressed="true">Host</button><button id="asPlayer" aria-pressed="false">Player</button>
+    </span>
+    <span class="seg" role="group" aria-label="Layout">
+      <button id="lScatter" aria-pressed="true">Scattered</button><button id="lGrid" aria-pressed="false">Rows</button>
+    </span>
+    <button id="add1">+1 player</button><button id="fill">Fill to 100</button><button id="reset">Empty room</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const COLOURS = ['#4fc35a', '#27c2d6', '#e25fc2', '#3c7ff0', '#f5b51b', '#9aa3b5', '#e5484d', '#2fb37f', '#a463f2', '#f08a3c'];
+  const FIRST = ['Priya', 'Tom', 'Aoife', 'Kwame', 'Chen', 'Isla', 'Yusuf', 'Ellie', 'Ravi', 'Hannah', 'Mo', 'Zara', 'Lewis', 'Sofia',
+    'Ben', 'Noor', 'Jack', 'Mei', 'Omar', 'Freya', 'Dan', 'Amara', 'Luca', 'Grace', 'Sam', 'Leila', 'Finn', 'Ana', 'Josh', 'Ruby',
+    'Theo', 'Hiro', 'Maya', 'Ollie', 'Nia', 'Adam', 'Erin', 'Kofi', 'Lily', 'Arjun'];
+  const FUN = ['axolotl', 'neuron nick', 'backprop bob', 'Dr Gradient', 'speedy', 'grid cell gal', 'tanh you', 'ReLU Rob', 'synaptic',
+    'fast & sigmoid', 'brainy_ben', 'wheelie', 'cortex', 'hairpin hero', 'lap 2 legend', 'zoom', 'el', 'Q', 'the hippocampus'];
+
+  // ---- state ----
+  let code = 'KQRT', host = true, layout = 'scatter', me = null, timer = 0, rng = 1;
+  const players = [];           // { name, colour, ready, el, fx, fy }
+  const taken = () => new Set(players.map((p) => p.name.toLowerCase()));
+
+  function rand() { rng = (rng * 16807) % 2147483647; return (rng - 1) / 2147483646; }
+  function pick(a) { return a[Math.floor(rand() * a.length)]; }
+  function newName() {
+    const t = taken();
+    for (let i = 0; i < 50; i++) {
+      let n = rand() < 0.3 ? pick(FUN) : pick(FIRST) + (rand() < 0.45 ? ' ' + String.fromCharCode(65 + Math.floor(rand() * 26)) : rand() < 0.3 ? String(Math.floor(rand() * 99)) : '');
+      if (!t.has(n.toLowerCase())) return n;
+    }
+    return 'Player ' + (players.length + 1);
+  }
+
+  // ---- screens ----
+  function show(id) {
+    for (const s of ['sJoin', 'sName', 'sLobby']) $(s).hidden = s !== id;
+    if (id === 'sJoin') setTimeout(() => $('codeIn').focus(), 0);
+    if (id === 'sName') { syncName(); setTimeout(() => $('nameIn').focus(), 0); }
+    if (id === 'sLobby') { relayout(); schedule(); } else clearTimeout(timer);
+  }
+  document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => (b.dataset.go === 'sName' ? nameScreen() : show(b.dataset.go))));
+
+  // 1. code
+  const codeIn = $('codeIn');
+  codeIn.addEventListener('input', () => {
+    codeIn.value = codeIn.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+    $('codeErr').textContent = '';
+    if (codeIn.value.length === 4) tryCode();
+  });
+  $('joinForm').addEventListener('submit', (e) => { e.preventDefault(); if (codeIn.value.length === 4) tryCode(); });
+  // the fourth letter checks the room; a real room moves straight on to the name screen
+  function tryCode() {
+    codeIn.classList.add('checking'); codeIn.readOnly = true;
+    setTimeout(() => {
+      codeIn.classList.remove('checking'); codeIn.readOnly = false;
+      if (codeIn.value === 'ZZZZ') { $('codeErr').textContent = 'No room with that code. Check it with the host.'; codeIn.select(); return; }
+      code = codeIn.value; setHost(false);
+      if (players.length < 2) { clearRoom(); seed(23); }
+      $('nameTitle').textContent = 'What should we call you?';
+      nameScreen();
+    }, 450);
+  }
+  function nameScreen() {
+    $('nameCode').textContent = code;
+    $('nameN').textContent = players.length;
+    $('nameSub').textContent = players.length === 1 ? 'player in' : 'players in';
+    show('sName');
+  }
+  $('createBtn').addEventListener('click', () => {
+    code = 'KQRT'; setHost(true); clearRoom();
+    $('nameTitle').textContent = 'Your room is ready. What should we call you?';
+    nameScreen();
+  });
+  $('backBtn').addEventListener('click', () => { codeIn.value = ''; $('codeErr').textContent = ''; });
+
+  // 2. name
+  const nameIn = $('nameIn');
+  function syncName() {
+    const v = nameIn.value.replace(/\s+/g, ' ').trimStart();
+    if (v !== nameIn.value) nameIn.value = v;
+    const n = v.trim();
+    $('nameCount').textContent = v.length + ' / 16';
+    $('namePreview').lastChild.textContent = n || 'Your name';
+    let err = '';
+    if (n && taken().has(n.toLowerCase())) err = 'Someone in this room is already called ' + n + '. Try another name.';
+    $('nameErr').textContent = err;
+    $('goBtn').disabled = !n || !!err;
+  }
+  nameIn.addEventListener('input', syncName);
+  $('nameForm').addEventListener('submit', (e) => {
+    e.preventDefault(); syncName();
+    if ($('goBtn').disabled) return;
+    me = nameIn.value.trim();
+    show('sLobby');
+    addPlayer(me, COLOURS[4], false, true);
+  });
+  $('nameBack').addEventListener('click', () => { codeIn.value = ''; show('sJoin'); });
+
+  // 3. lobby
+  const field = $('field');
+  function setHost(h) {
+    host = h;
+    $('asHost').setAttribute('aria-pressed', h); $('asPlayer').setAttribute('aria-pressed', !h);
+    $('hostSide').hidden = !h; $('playerSide').hidden = h;
+    $('lobbyCode').textContent = code;
+    players.forEach((p) => p.el.classList.toggle('host-tap', h && p.name !== me));
+    hideKick();
+  }
+  $('asHost').addEventListener('click', () => setHost(true));
+  $('asPlayer').addEventListener('click', () => setHost(false));
+
+  function counts() {
+    const n = players.length, r = players.filter((p) => p.ready).length;
+    $('countN').textContent = n + ' / 100';
+    $('countSub').textContent = (n === 1 ? 'player' : 'players') + ' · ' + r + ' ready';
+    $('startBtn').disabled = r < 2;
+    $('startBtn').textContent = r < 2 ? 'Start race' : 'Start race (' + r + ')';
+    $('empty').hidden = n > 0;
+    $('add1').disabled = $('fill').disabled = n >= 100;
+  }
+
+  function chipEl(p) {
+    const el = document.createElement('span');
+    el.className = 'chip' + (p.ready ? ' ready' : '') + (p.name === me ? ' me' : '');
+    el.style.setProperty('--c', p.colour);
+    el.title = p.name + (p.ready ? ': brain handed in' : ': still building');
+    const i = document.createElement('i'); const t = document.createElement('span'); t.textContent = p.name;
+    el.append(i, t);
+    if (host && p.name !== me) el.classList.add('host-tap');
+    el.addEventListener('click', (ev) => { if (host && p.name !== me) { ev.stopPropagation(); showKick(p); } });
+    return el;
+  }
+
+  // Font size follows how full the room is, so 100 names still fit a phone held sideways.
+  function fitFont() {
+    const W = field.clientWidth, H = field.clientHeight, n = Math.max(players.length, 8);
+    const fs = Math.max(11, Math.min(17, Math.sqrt((W * H) / n) / 6.2));
+    field.style.setProperty('--fs', fs.toFixed(1) + 'px');
+  }
+
+  // Scattered: try random spots and keep the one that overlaps least; small overlaps are allowed once it's busy.
+  function overlap(a, b) {
+    const x = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+    const y = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    return x * y;
+  }
+  function place(p) {
+    const pad = 10, W = field.clientWidth, H = field.clientHeight, w = p.el.offsetWidth, h = p.el.offsetHeight;
+    const spanX = Math.max(1, W - w - 2 * pad), spanY = Math.max(1, H - h - 2 * pad);
+    const others = players.filter((q) => q !== p && q.rect).map((q) => q.rect);
+    let best = null, bestScore = Infinity;
+    for (let k = 0; k < 80; k++) {
+      const r = { x: pad + rand() * spanX, y: pad + rand() * spanY, w, h };
+      let s = 0; for (const o of others) s += overlap(r, o);
+      s /= w * h;
+      if (s < bestScore) { best = r; bestScore = s; }
+      if (s === 0) break;
+    }
+    p.fx = (best.x - pad) / spanX; p.fy = (best.y - pad) / spanY;
+    apply(p);
+  }
+  function apply(p) {
+    const pad = 10, W = field.clientWidth, H = field.clientHeight, w = p.el.offsetWidth, h = p.el.offsetHeight;
+    const x = pad + p.fx * Math.max(1, W - w - 2 * pad), y = pad + p.fy * Math.max(1, H - h - 2 * pad);
+    p.el.style.left = x + 'px'; p.el.style.top = y + 'px';
+    p.rect = { x, y, w, h };
+  }
+  function relayout() {
+    if ($('sLobby').hidden) return;
+    field.classList.toggle('grid', layout === 'grid');
+    fitFont();
+    if (layout === 'grid') { players.forEach((p) => { p.el.style.left = p.el.style.top = ''; p.rect = null; }); return; }
+    players.forEach((p) => { p.rect = null; });
+    players.forEach((p) => (p.fx == null ? place(p) : apply(p)));
+  }
+
+  function addPlayer(name, colour, ready, mine) {
+    if (players.length >= 100) return;
+    const p = { name, colour: colour || COLOURS[players.length % COLOURS.length], ready: !!ready, fx: null, fy: null };
+    p.el = chipEl(p);
+    p.el.style.zIndex = String(players.length + 1);
+    field.appendChild(p.el);
+    players.push(p);
+    const before = parseFloat(getComputedStyle(field).getPropertyValue('--fs'));
+    fitFont();
+    if (Math.abs(parseFloat(getComputedStyle(field).getPropertyValue('--fs')) - before) > 0.4) relayout();
+    else if (layout === 'scatter') place(p);
+    counts();
+    if (!mine && !p.ready) setTimeout(() => markReady(p), 2500 + rand() * 9000);
+    return p;
+  }
+  function markReady(p) {
+    if (!players.includes(p) || p.ready) return;
+    p.ready = true; p.el.classList.add('ready'); p.el.title = p.name + ': brain handed in'; counts();
+  }
+  function removePlayer(p) {
+    const i = players.indexOf(p); if (i < 0) return;
+    players.splice(i, 1);
+    p.el.classList.add('leaving');
+    setTimeout(() => p.el.remove(), 230);
+    counts();
+  }
+
+  // host: tap a name to remove it
+  const kick = document.createElement('button');
+  kick.className = 'kick'; kick.hidden = true; field.appendChild(kick);
+  let kickFor = null;
+  function showKick(p) {
+    players.forEach((q) => q.el.classList.remove('picked'));
+    kickFor = p; p.el.classList.add('picked');
+    kick.textContent = 'Remove ' + p.name;
+    kick.hidden = false;
+    const r = p.el.getBoundingClientRect(), f = field.getBoundingClientRect();
+    const x = Math.min(Math.max(4, r.left - f.left), f.width - kick.offsetWidth - 4);
+    const y = r.bottom - f.top + 4 + kick.offsetHeight > f.height ? r.top - f.top - kick.offsetHeight - 4 : r.bottom - f.top + 4;
+    kick.style.left = x + 'px'; kick.style.top = y + 'px';
+  }
+  function hideKick() { kick.hidden = true; if (kickFor) kickFor.el.classList.remove('picked'); kickFor = null; }
+  kick.addEventListener('click', (e) => { e.stopPropagation(); if (kickFor) removePlayer(kickFor); hideKick(); });
+  field.addEventListener('click', hideKick);
+
+  // simulated arrivals
+  function schedule() {
+    clearTimeout(timer);
+    if ($('sLobby').hidden || players.length >= 100) return;
+    timer = setTimeout(() => { addPlayer(newName()); schedule(); }, 500 + rand() * 1500);
+  }
+  function seed(n) { for (let i = 0; i < n; i++) { const p = { name: newName() }; players.push(p); p.colour = COLOURS[(players.length - 1) % COLOURS.length]; p.ready = rand() < 0.6; p.fx = null; p.el = chipEl(p); p.el.style.zIndex = String(players.length); field.appendChild(p.el); } counts(); }
+  function clearRoom() { players.splice(0).forEach((p) => p.el.remove()); hideKick(); counts(); }
+
+  $('add1').addEventListener('click', () => addPlayer(newName()));
+  $('fill').addEventListener('click', () => {
+    if ($('sLobby').hidden) show('sLobby');
+    let k = 0; const go = () => { if (players.length < 100) { addPlayer(newName()); if (++k < 120) setTimeout(go, 35); } }; go();
+  });
+  $('reset').addEventListener('click', () => { clearRoom(); if (me && !$('sLobby').hidden) addPlayer(me, COLOURS[4], false, true); });
+  $('lScatter').addEventListener('click', () => { layout = 'scatter'; $('lScatter').setAttribute('aria-pressed', true); $('lGrid').setAttribute('aria-pressed', false); relayout(); });
+  $('lGrid').addEventListener('click', () => { layout = 'grid'; $('lGrid').setAttribute('aria-pressed', true); $('lScatter').setAttribute('aria-pressed', false); relayout(); });
+  $('buildBtn').addEventListener('click', () => { const p = players.find((q) => q.name === me); if (p) markReady(p); $('buildBtn').textContent = 'Brain handed in · Edit'; });
+  $('leaveBtn').addEventListener('click', () => { const p = players.find((q) => q.name === me); if (p) removePlayer(p); me = null; show('sJoin'); });
+  $('startBtn').addEventListener('click', () => { $('startBtn').textContent = 'Starting…'; $('startBtn').disabled = true; clearTimeout(timer); });
+
+  let rt = 0;
+  addEventListener('resize', () => { cancelAnimationFrame(rt); rt = requestAnimationFrame(relayout); });
+
+  // open on the lobby, mid-fill, as the host: the screen this mock-up is about
+  me = 'Alexander';
+  setHost(true);
+  show('sLobby');
+  addPlayer(me, COLOURS[4], true, true);
+  for (let i = 0; i < 17; i++) addPlayer(newName(), null, rand() < 0.55);
+  nameIn.value = '';
+})();
+</script>
