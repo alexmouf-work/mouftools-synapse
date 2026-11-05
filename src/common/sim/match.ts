@@ -1,8 +1,9 @@
 // A race between brains (vs CPU now, Multiplayer next; tracks plan §4 and the coordinator's vs CPU calls of
-// 2026-11-05): one race seed draws the track (any family, no boost pad on the grid or in the first 50 m) and the grid
-// order; every car starts in its slot, two by two behind the line, and drives 2 laps, capped at 120 s. Cars pass
-// through each other, so each car is its own deterministic run (Runner) and every client that re-runs a race gets the
-// same bits. Ranking: finish time (to a fraction of a tick, from where the car crossed the line), then progress at the
+// 2026-11-05): one race seed draws the track (any family, no boost pad on the whole grid for the race's number of cars
+// or in the first 50 m) and the grid order; every car starts in its slot, two by two behind the line, and drives 2
+// laps, capped at 120 s. A car whose progress has fallen for 3 s is put back at its furthest point, facing forwards
+// (the wrong-way reset, race.ts putBack). Cars pass through each other, so each car is its own deterministic run
+// (Runner) and every client that re-runs a race gets the same bits. Ranking: finish time (to a fraction of a tick, from where the car crossed the line), then progress at the
 // cap, then grid slot.
 import { CONFIG } from '../config';
 import { Hasher } from '../hash';
@@ -15,7 +16,7 @@ import { generateTrack, type Track } from './track';
 
 const M = CONFIG.match;
 
-/** The race's track seed (a race track: generateTrack(seed, true)). */
+/** The race's track seed (a race track: generateTrack(seed, cars)). */
 export const raceTrackSeed = (raceSeed: number): number => derive(raceSeed >>> 0, TAG.raceTrack);
 
 /** Grid slot of each car (car k starts in slot order[k]; slot 0 is pole), a seeded shuffle of the race seed. */
@@ -76,15 +77,15 @@ export function rank(cars: readonly Pick<RaceCar, 'slot' | 'finish' | 'prog'>[])
 
 /**
  * Run a race: car k is genomes[k]. `act(k)` says which cars keep every node's output per tick (the player's, for its
- * live brain); the rest record frames only. Every car drives the whole cap (after the flag it carries on, as on a
+ * live brain); the rest record frames only. Every car has the wrong-way reset. Every car drives the whole cap (after the flag it carries on, as on a
  * cool-down lap), so a race's recordings never depend on the other cars.
  */
 export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: number) => boolean = () => false): RaceResult {
-  const track = generateTrack(raceTrackSeed(raceSeed), true), order = gridOrder(raceSeed, genomes.length);
+  const track = generateTrack(raceTrackSeed(raceSeed), genomes.length), order = gridOrder(raceSeed, genomes.length);
   const goal = M.laps * track.len, runner = new Runner();
   const cars: RaceCar[] = genomes.map((g, k) => {
     const net = compile(g), rec = newRecording(net, M.capTicks, act(k));
-    runner.run(net, track, { ticks: M.capTicks, earlyStop: false, record: rec, start: gridCar(track, order[k]) });
+    runner.run(net, track, { ticks: M.capTicks, earlyStop: false, record: rec, start: gridCar(track, order[k]), wrongWay: true });
     let finish: number | null = null;
     for (let j = 0, prev = -gridPlace(track, order[k]).back; j < rec.ticks; prev = rec.prog[j], j++) {
       if (rec.prog[j] >= goal) { finish = j + (goal - prev) / (rec.prog[j] - prev); break; }

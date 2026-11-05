@@ -131,6 +131,15 @@ export class DriveRig {
     return [this.car.car, ...this.rivals.slice(0, this.nRivals).map((m) => m.car)].map((c) => [c.position.x, c.position.y, c.position.z, c.visible ? 1 : 0]);
   }
 
+  /** Where a point `up` m over your car is on screen, as fractions of the canvas (0..1, top-left), or null if off it. */
+  screenOf(up: number): { x: number; y: number } | null {
+    const q = this.v.copy(this.car.car.position);
+    q.y += up;
+    q.project(this.camera);
+    if (!(Number.isFinite(q.x) && Number.isFinite(q.y)) || q.z > 1 || q.x < -1 || q.x > 1 || q.y < -1 || q.y > 1) return null;
+    return { x: (q.x + 1) / 2, y: (1 - q.y) / 2 };
+  }
+
   setTrack(t: Track, tvSpots: { i: number; p: THREE.Vector3 }[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; }
 
   setMode(m: CamMode, reduceMotion: boolean): void {

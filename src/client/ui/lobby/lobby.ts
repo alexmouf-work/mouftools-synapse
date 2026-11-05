@@ -129,7 +129,7 @@ export async function handIn(s: Saved): Promise<void> {
 /** Your result, as the privacy policy says (place, time, distance). */
 export function reportResult(row: RaceRow | null, raceNo: number): void {
   if (!me || !row) return;
-  submitResult(me, JSON.stringify({ race: raceNo, place: row.place, finish: row.finish, prog: Math.round(row.prog) })).catch((e) => console.warn('lobby: result not sent', e));
+  submitResult(me, JSON.stringify({ race: raceNo, place: row.place, finish: row.finish, prog: Math.round(Math.max(0, row.prog)) })).catch((e) => console.warn('lobby: result not sent', e));
 }
 
 /** A race's entries as every client reads them: valid brains within the match limit, in join order. */

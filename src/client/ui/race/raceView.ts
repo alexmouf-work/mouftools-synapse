@@ -4,7 +4,8 @@
 // time: the grid two by two behind the line with the players listed, "5, 4, 3, 2, 1, Go" (vs CPU: the drive view's
 // countdown on the music's beat; a room: Go at the moment the server set, so every client starts together), 2 laps
 // capped at 120 s, the standings live beside a map of every car in the corner, then the results (place, time,
-// distance). Your car is the drive view's yellow car with its beams; the nearest others (at most MAX_RIVALS) are solid
+// distance; never below 0). A car going the wrong way for 3 s is put back by the sim (race.ts putBack); "Wrong way"
+// flashes over your car from 1 s of it until 1 s after. Your car is the drive view's yellow car with its beams; the nearest others (at most MAX_RIVALS) are solid
 // cars in their own colours, the rest only dots on the map. Cars pass through each other. Finishing first plays the
 // winner music.
 import cpuData from '../../../assets/cpu/brains.json';
@@ -32,12 +33,16 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 const HZ = CONFIG.tick.hz, M = CONFIG.match;
 const RESULTS_AFTER_S = 1.5; // the cars hold this long after the race ends, then the results show
 const LISTED = 10; // standings rows (yours added below them if you are further back)
+const WRONG_WAY = M.wrongWayTicks;
+const WRONG_SHOW = HZ; // "Wrong way" shows once progress has fallen this many ticks, and this long after the reset
 const YOU = '#ffc21a';
 /** The other cars' colours, in entry order (cycled past ten). Yellow is yours. */
 export const RACE_COLORS = ['#e8475f', '#3f8cff', '#2fc28a', '#b46cff', '#ff8a3d', '#29c6d6', '#f06bc1', '#9aa3b5', '#6fd14a', '#5b6cff'];
 const fmtT = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`;
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const ord = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+/** Distance as shown: from the line, never below 0 (a car still behind it, or going backwards, shows 0). */
+export const shownDist = (prog: number): number => (prog > 0 ? prog : 0);
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** One race to show: who drives (in entry order), which car is yours (−1: watching), the seed, and for a room when Go is. */
@@ -69,6 +74,8 @@ export interface RaceStatus {
   /** Playback time (s from Go), the race's end (s), frames drawn, whether Go has passed. */
   t: number; end: number; frames: number; go: boolean; webgl: boolean; goAt: number;
   countdown: string; countdownSeen: string[]; countdownMusic: boolean;
+  /** "Wrong way" is showing over your car this frame. */
+  wrongWay: boolean;
   /** The players as listed now ('Grid' before Go, then the standings): names in order. */
   listed: () => string[];
   /** Cars drawn in 3-D (yours or the one followed, then the others) as world [x, y, z, visible, car index], and map dots. */
@@ -168,7 +175,9 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
       return -1;
     }
     // recording j is the state after tick j + 1; time 0 is the grid
-    const kf = Math.min(pt * HZ, r.ticks) - 1, j = Math.floor(kf), u = kf - j, b = Math.min(j + 1, r.ticks - 1), a = Math.max(j, 0);
+    // a car put back (wrong way) jumps when its tick lands, without gliding there
+    const kf = Math.min(pt * HZ, r.ticks) - 1, j = Math.floor(kf), b = Math.min(j + 1, r.ticks - 1), a = Math.max(j, 0);
+    const u = b !== a && r.wrong[b] >= WRONG_WAY ? 0 : kf - j;
     const x0 = j < 0 ? g.x : r.x[a], y0 = j < 0 ? g.y : r.y[a], h0 = j < 0 ? g.hdg : r.hdg[a], p0 = j < 0 ? g.prog : r.prog[a];
     out.x = x0 + (r.x[b] - x0) * u; out.y = y0 + (r.y[b] - y0) * u;
     let dh = r.hdg[b] - h0; dh -= 2 * Math.PI * Math.round(dh / (2 * Math.PI));
@@ -184,7 +193,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const listOrder = () => (playT > 0 ? standings(Math.min(playT, end)) : cars.map((_, k) => k).sort((a, b) => cars[a].slot - cars[b].slot));
   const status: RaceStatus = {
     state: 'grid', kind: setup.kind, me, raceSeed, trackSeed: raceTrackSeed(raceSeed), family: track.family, hash: race.hash, names, slots: cars.map((c) => c.slot),
-    results, place, won: false, computeMs, t: 0, end, frames: 0, go: false, webgl: !!stage, goAt: cd.go, countdown: '', countdownSeen: [], countdownMusic: cd.music,
+    results, place, won: false, computeMs, t: 0, end, frames: 0, go: false, webgl: !!stage, goAt: cd.go, countdown: '', countdownSeen: [], countdownMusic: cd.music, wrongWay: false,
     listed: () => listOrder().map((k) => names[k]),
     drawn: () => (stage ? stage.drive.drawn().map((p, i) => [...p, i ? drawnIdx[i - 1] : follow]) : []), dots: () => dots.length,
     hold: false,
@@ -221,13 +230,26 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     return j;
   }
 
-  const leave = () => { cancelAnimationFrame(raf); raf = 0; engine.stop(); endCount(); };
+  /** Your car at recording index j: going the wrong way (or just put back) long enough to say so. */
+  const wrongNow = (j: number) => {
+    if (!mine || j < 0) return false;
+    const w = rec0.wrong;
+    if (w[j] >= WRONG_SHOW && w[j] < WRONG_WAY) return true;
+    for (let i = Math.max(0, j - WRONG_SHOW + 1); i <= j; i++) if (w[i] >= WRONG_WAY) return true;
+    return false;
+  };
+  const wrongEl = $('rcWrong');
+  let lastJ = -1;
+  const leave = () => { cancelAnimationFrame(raf); raf = 0; engine.stop(); endCount(); wrongEl.hidden = true; };
   const showResults = () => {
     if (shown) return;
     shown = true; status.state = 'results';
     $('rcSkip').hidden = true;
     $('rcResT').textContent = !mine ? 'Results' : place === 1 ? 'You won!' : `You finished ${ord(place)} of ${n}`;
-    $('rcRows').innerHTML = results.map((r) => `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${((r.finish !== null ? goal : r.prog) / 1000).toFixed(2)} km</td></tr>`).join('');
+    $('rcRows').innerHTML = results.map((r) => `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${(shownDist(r.finish !== null ? goal : r.prog) / 1000).toFixed(2)} km</td></tr>`).join('');
+    // the table scrolls (up to 100 rows) under the pinned title and buttons: open it on your row
+    const sc = $('rcScroll'), you = sc.querySelector<HTMLElement>('tr.you');
+    sc.scrollTop = you ? Math.max(0, you.offsetTop - sc.clientHeight / 2) : 0;
     $('rcResults').hidden = false;
     if (place === 1) cheer();
     hooks.result?.(mine ? results[place - 1] : null);
@@ -248,6 +270,16 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     if (status.go && status.state === 'grid') status.state = 'racing';
     status.t = playT;
     const pt = Math.min(playT, end), j = poseAll(pt, status.go ? dt : 0);
+    // your car put back since the last frame: the camera jumps with it instead of sweeping across the track
+    if (j >= 0 && lastJ >= 0 && j > lastJ) for (let i = lastJ + 1; i <= j; i++) if (rec0.wrong[i] >= WRONG_WAY) { stage?.drive.snapNow(); break; }
+    lastJ = j;
+    const wrong = wrongNow(j) && playT < end;
+    status.wrongWay = wrong;
+    if (wrong && stage) {
+      const at2 = stage.drive.screenOf(2.6);
+      if (at2) { wrongEl.style.left = `${(at2.x * 100).toFixed(2)}%`; wrongEl.style.top = `${(at2.y * 100).toFixed(2)}%`; }
+    }
+    if (wrongEl.hidden === wrong) wrongEl.hidden = !wrong;
     if (stage) { stage.frame(dt, (now - t0) / 1000, pose); frames++; status.frames = frames; }
     const ended = playT >= end;
     engine.set(ended || j < 0 ? 0 : pose.v / CONFIG.car.wheelSpeed, Math.abs((wheels[0] + wheels[2]) - (wheels[1] + wheels[3])) / 2);

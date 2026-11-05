@@ -173,8 +173,9 @@ export const CONFIG = {
     firstRow: 4, // m behind the line to the front row (my call: the plan gives the spacing, not the front row)
     rowGap: 8, // m between rows
     across: 2.5, // m either side of the centreline
-    clearBehind: 40, // m: no boost pad on the grid (the back row of ten cars sits 36 m behind the line) …
-    clearAhead: 50, // m: … or in the first 50 m
+    clearPast: 4, // m: no boost pad on the grid, from this far behind its back row (for the race's number of cars) …
+    clearAhead: 50, // m: … to 50 m after the line
+    wrongWayTicks: 60, // races: a car whose progress has fallen this many ticks in a row is put back (tracks plan §4)
   },
 
   race: {

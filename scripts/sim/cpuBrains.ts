@@ -47,8 +47,8 @@ async function main() {
     // skill: progress over 120 s alone from pole on ten race tracks
     const net = compile(genome), runner = new Runner(), got: number[] = [];
     for (let s = 1; s <= 10; s++) {
-      const t = generateTrack(raceTrackSeed(s), true);
-      got.push(runner.run(net, t, { ticks: CONFIG.match.capTicks, earlyStop: false, start: gridCar(t, 0) }).prog);
+      const t = generateTrack(raceTrackSeed(s), CONFIG.match.cars);
+      got.push(runner.run(net, t, { ticks: CONFIG.match.capTicks, earlyStop: false, start: gridCar(t, 0), wrongWay: true }).prog);
     }
     got.sort((a, b) => a - b);
     console.log(`${CPU_NAMES[k].padEnd(9)} ${design.padEnd(10)} budget ${(share * 100).toFixed(0).padStart(3)}% (${r.gens.length} gens) flat out ${maxLoad(spec).toFixed(1)}%  median 120 s ${Math.round((got[4] + got[5]) / 2)} m  ${genomeHash(genome)}`);

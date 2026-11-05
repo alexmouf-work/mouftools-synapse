@@ -154,7 +154,8 @@ async function main() {
     await host.waitForFunction((f) => (window.__race?.frames ?? 0) > f + 1, (await race(host))!.frames, { timeout: 30_000 });
     const r = (await race(host))!;
     // the nearest others to your car at the time of the frame read, by Node's recordings
-    const posAt = (k: number) => { const c = node.cars[k].rec, kf = r.t * HZ - 1, j = Math.floor(kf), u = kf - j; return [c.x[j] + (c.x[j + 1] - c.x[j]) * u, c.y[j] + (c.y[j + 1] - c.y[j]) * u]; };
+    // (a car put back by the wrong-way reset on tick j + 1 jumps there when the tick lands: no glide)
+    const posAt = (k: number) => { const c = node.cars[k].rec, kf = r.t * HZ - 1, j = Math.floor(kf), u = c.wrong[j + 1] >= CONFIG.match.wrongWayTicks ? 0 : kf - j; return [c.x[j] + (c.x[j + 1] - c.x[j]) * u, c.y[j] + (c.y[j + 1] - c.y[j]) * u]; };
     const me0 = posAt(0), d2 = node.cars.map((_, k) => { const p = posAt(k); return k === 0 ? Infinity : (p[0] - me0[0]) ** 2 + (p[1] - me0[1]) ** 2; });
     const want = node.cars.map((_, k) => k).sort((a, b) => d2[a] - d2[b] || a - b).slice(0, MAX_RIVALS).sort((a, b) => a - b);
     const got = r.drawn.slice(1).map((p) => p[4]);
@@ -167,6 +168,20 @@ async function main() {
     const rows = await host.$$eval('#rcRows tr td:nth-child(2)', (td) => td.map((d) => d.textContent));
     check(rows.length === 99 && JSON.stringify(rows) === JSON.stringify(node.ranking.map((k) => racing[k].name)), `results: 99 rows in Node's order (${rows.slice(0, 3).join(', ')} …)`);
     await host.screenshot({ path: `${OUT}/results-100.png` });
+    // 99 rows: the table scrolls inside the panel; the title and Back stay on screen without scrolling
+    const lay = async (p: Page) => p.evaluate(`(() => {
+      const on = (id) => { const q = document.getElementById(id).getBoundingClientRect(); return q.width > 0 && q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; };
+      const sc = document.getElementById('rcScroll'), dist = [...document.querySelectorAll('#rcRows td:nth-child(4)')].map((d) => d.textContent);
+      return { pinned: on('rcResults') && on('rcResT') && on('rcBack'), scrolls: sc.scrollHeight > sc.clientHeight + 50, page: document.documentElement.scrollHeight <= innerHeight, neg: dist.filter((d) => d.startsWith('-')).length };
+    })()`) as Promise<{ pinned: boolean; scrolls: boolean; page: boolean; neg: number }>;
+    for (const [p, who] of [[host, 'host'], [guest, 'guest']] as const) {
+      const l = await lay(p);
+      check(l.pinned && l.scrolls && l.page && l.neg === 0, `${who}: 99 results, the table scrolls and the title and Back stay on screen (pinned ${l.pinned}, scrolls ${l.scrolls}); no distance below 0`);
+    }
+    await host.$eval('#rcScroll', (e) => { e.scrollTop = e.scrollHeight; });
+    const end = await lay(host);
+    check(end.pinned, 'scrolled to the last row, Back is still on screen');
+    await host.screenshot({ path: `${OUT}/results-100-scrolled.png` });
     await host.waitForFunction(() => true);
     await new Promise((res) => setTimeout(res, 1000));
     const res = si.players.filter((p) => p.name === 'Host' || p.name === 'Guest').map((p) => p.result ? JSON.parse(p.result) as { place: number } : null);

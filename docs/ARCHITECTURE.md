@@ -116,9 +116,11 @@ boundary ray skips the other layer's walls (`castRay(…, skip)`, `hiddenLayer`)
 its parapets and a car on it doesn't see the road below. Outside the crossing a ray sees every wall, so nothing
 changes at a deck's end. A car finds its sample within ±3 of its last one and hits its own road's wall, so it never
 jumps or cuts across. No start, gate or pad near the crossing.
-A race track (`generateTrack(seed, true)`, B7) also keeps its pads off the grid and the first 50 m: no pad sample
-from 40 m behind the line (`CONFIG.match.clearBehind`; the back row of ten sits 36 m back) to 50 m after it
-(`clearAhead`). Only races ask for race tracks, so training and drive tracks (and their goldens) are unchanged.
+A race track (`generateTrack(seed, cars)`, B7) also keeps its pads off the whole grid and the first 50 m: no pad
+sample from 4 m behind the back row (`gridDepth(cars)` + `CONFIG.match.clearPast`: 40 m for ten cars, 400 m for 100)
+to 50 m after the line (`clearAhead`). So a race track depends on the number of cars as well as the seed (a 100-car
+track's pads differ from the ten-car track's on most seeds). Only races ask for race tracks, so training and drive
+tracks (and their goldens) are unchanged.
 
 ### Races (vs CPU, B7; tracks plan §4)
 `runRace(genomes, raceSeed)`: the race seed derives the track (any family) and a seeded shuffle of grid slots. Slot s
@@ -127,7 +129,14 @@ the centreline, facing along the track; its progress starts negative, so it coun
 each other: each car is its own `Runner` run for the whole cap (2400 ticks, 120 s; after the flag it carries on), so a
 car's recording never depends on the others. A car finishes when its progress reaches 2 laps; its finish time is the
 tick plus the fraction of the last tick before the line. The race ends with the last finisher, else at the cap.
-Ranking: finish time, then progress at the end, then slot. The race hash covers the track, every car's frames, finish
+Ranking: finish time, then progress at the end, then slot.
+The wrong-way reset (races only, `RunOpts.wrongWay`, `putBack` in sim/race.ts): after each tick, a count of ticks in a
+row in which progress fell; on the 60th (`CONFIG.match.wrongWayTicks`, 3 s) the car is put back at its furthest point
+so far (`maxProg`), on the centreline sample at or just behind it, facing along the track, at rest, its progress that
+sample's (so progress and position stay one), and the count starts again. The recording keeps the count per tick
+(`wrong`; 60 on the put-back tick), which the race view uses to flash "Wrong way" over your car (from 1 s of falling
+until 1 s after the put-back) and to jump the car without gliding. Shown distance is never below 0 (results, the
+room's result); the ranking uses the real progress. Training and the drive view never set it. The race hash covers the track, every car's frames, finish
 and progress, and the ranking (determinism golden `match`: the nine CPU brains, one race per golden seed).
 
 The nine CPU brains (`src/assets/cpu/brains.json`, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008) are

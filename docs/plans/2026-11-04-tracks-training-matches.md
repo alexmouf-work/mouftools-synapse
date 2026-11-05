@@ -234,6 +234,24 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
   progress has fallen for about 3 s (60 ticks) is put back, in the sim, at its furthest point so far, on the centre line
   and facing forwards, at rest. "Wrong way" flashes over the player's own car. It is one rule for every car and is
   deterministic, so every client agrees. Shown distance never goes below 0.
+  - **Built (2026-11-05)** as ruled: in the sim (`race.ts` `putBack`, `RunOpts.wrongWay`), races only. "Fallen for
+    60 ticks" is read as 60 ticks in a row in which progress fell (a car that stops or creeps forwards starts the count
+    again). It lands on the centreline sample at or just behind its furthest point, its progress that sample's. "Wrong
+    way" (red, flashing; steady with reduced motion) sits over your car from 1 s of falling progress until 1 s after it
+    is put back (**my call**: the ruling gives the flash, not its timing); the car and the camera jump, no glide.
+    Distance shows max(0, progress) in the results and in the result sent to the room; the ranking still uses the real
+    progress, so of two cars behind the line the one less far back places higher.
+  - **Measured** (check:race, each CPU brain alone from pole on ten race tracks, median 120 s progress without → with
+    the reset): Myelin −5409 → 5400 m (ahead on 10/10), Soma −4696 → −10 m (3/10), Ganglion −5287 → −16 m (0/10);
+    the other six unchanged. Ganglion, and Soma on most tracks, turn round again each time they are put back (about 25
+    resets in a race), so they no longer lose kilometres but they don't make progress either: what they do facing
+    forwards is their own. Not tuned. The match golden changed (the backwards cars' recordings).
+- **Pads off the whole grid (2026-11-05):** the pad-free zone behind the line follows the race's number of cars:
+  `gridDepth(cars)` (the back row: 4 m + 8 m per row of two) + 4 m, so 40 m for ten (as before, so vs CPU tracks are
+  unchanged) and 400 m for 100. A race track now depends on the number of cars; 300 race seeds all give a 100-car track
+  (unit test: 2, 10, 37 and 100 cars).
+- **Results with 100 rows (2026-11-05):** the title and Race again / Back stay on screen; only the table scrolls (its
+  header sticks), and it opens on your row.
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.

@@ -8,6 +8,9 @@
 //   (place, name, time, distance in Node's order); Race again draws a new race; Back returns to the match designer.
 // - A race the player wins (the strongest CPU brain as your brain, on a race seed where you finish first): the winner
 //   music plays as you cross the line.
+// - The wrong-way reset (Node): each CPU brain alone from pole on ten race tracks with and without it; the ones that
+//   went backwards no longer lose kilometres. In the page, a brain that drives backwards: "Wrong way" flashes over
+//   your car, the car jumps back (no glide), and its distance shows 0.00 km, never below.
 // - 844×390: the status panel, the map and the results on screen and apart, no sideways scroll. Console clean.
 // Screenshots → out/race/.
 //   npx tsx scripts/checks/race.ts
@@ -16,10 +19,12 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
 import cpuData from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
-import { genomeHash, zeroGenome } from '../../src/common/sim/brain';
+import { compile, defaultGenome, genomeHash, zeroGenome } from '../../src/common/sim/brain';
 import { CPU_NAMES, cpuBrains } from '../../src/common/sim/cpu';
-import { gridCar, runRace } from '../../src/common/sim/match';
-import { defaultSpec, type BrainSpec, type Genome } from '../../src/common/sim/spec';
+import { gridCar, raceTrackSeed, runRace } from '../../src/common/sim/match';
+import { Runner } from '../../src/common/sim/race';
+import { biasIndex, defaultSpec, OUTPUTS, type BrainSpec, type Genome } from '../../src/common/sim/spec';
+import { generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { runPhase } from '../../src/common/train/phase';
 import { NO_TRAINING, parse, SAVE_KEY, serialize } from '../../src/client/ui/designer/store';
@@ -46,6 +51,34 @@ async function main() {
   let WIN = -1;
   for (let s = 1; s <= 60 && WIN < 0; s++) if (runRace([strong, ...cpu], s).ranking[0] === 0) WIN = s;
   check(WIN > 0, `a race seed where the strongest brain, raced as yours, wins: ${WIN}`);
+
+  // the wrong-way reset: each CPU brain alone from pole on ten race tracks, without it (as B7 measured) and with it
+  const W = CONFIG.match.wrongWayTicks, med = (x: number[]) => { const y = [...x].sort((a, b) => a - b); return (y[4] + y[5]) / 2; };
+  let bounded = true;
+  const went: string[] = [];
+  cpuBrains(cpuData).forEach((b) => {
+    const net = compile(b.genome), run = new Runner(), off: number[] = [], on: number[] = [];
+    for (let s = 1; s <= 10; s++) {
+      const t = generateTrack(raceTrackSeed(s), CONFIG.match.cars), o = { ticks: CONFIG.match.capTicks, earlyStop: false };
+      off.push(run.run(net, t, { ...o, start: gridCar(t, 0) }).prog);
+      const r = run.run(net, t, { ...o, start: gridCar(t, 0), wrongWay: true });
+      on.push(r.prog);
+      // at most 3 s of reversing behind its best point
+      bounded &&= r.prog > r.maxProg - (W / HZ) * CONFIG.car.wheelSpeed;
+    }
+    const pos = on.filter((p) => p > 0).length;
+    console.log(`     ${b.name.padEnd(9)} median ${Math.round(med(off)).toString().padStart(6)} m → ${Math.round(med(on)).toString().padStart(6)} m with the reset; ahead of the line on ${pos}/10`);
+    if (med(off) < 0) went.push(`${b.name} ${Math.round(med(off))} → ${Math.round(med(on))} m (${pos}/10 ahead)`);
+    if (med(off) < 0) bounded &&= med(on) > med(off) + 4000;
+  });
+  check(went.length > 0 && bounded, `the CPU brains that drove backwards no longer lose kilometres: ${went.join('; ')}`);
+  // a brain that drives backwards (every wheel's bias at the cap), raced as yours
+  const back: Genome = defaultGenome();
+  for (const o of OUTPUTS) back.w[biasIndex(back.spec, o.id)] = -CONFIG.brain.weightCap;
+  const bw = runRace([back, ...cpu], RACE), bwRec = bw.cars[0].rec;
+  const bwShow = bwRec.wrong.findIndex((w) => w >= HZ && w < W); // "Wrong way" showing: 1 s of falling progress
+  const bwReset = bwRec.wrong.findIndex((w) => w >= W);
+  check(bwShow > 0 && bwReset > bwShow && bw.cars[0].prog < 0, `a backwards brain: falling 1 s at tick ${bwShow}, put back at tick ${bwReset}; ends at ${bw.cars[0].prog.toFixed(1)} m`);
 
   const server = await createServer({ server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
@@ -130,7 +163,8 @@ async function main() {
     r = (await race(page))!;
     // where Node's recording has each car at the playback time of the frame read (between two recorded ticks)
     const posOk = r.drawn.every((p, k) => {
-      const c = node.cars[k].rec, kf = r.t * HZ - 1, j = Math.floor(kf), u = kf - j, b = j + 1;
+      // a car put back on tick b jumps there when the tick lands (no glide)
+      const c = node.cars[k].rec, kf = r.t * HZ - 1, j = Math.floor(kf), b = j + 1, u = c.wrong[b] >= W ? 0 : kf - j;
       return near(p[0], c.x[j] + (c.x[b] - c.x[j]) * u) && near(p[2], -(c.y[j] + (c.y[b] - c.y[j]) * u));
     });
     check(posOk && r.dots === 10 && r.t >= 20, `at ${r.t.toFixed(2)} s every car is drawn where Node's race has it, and ten dots on the map`);
@@ -148,7 +182,7 @@ async function main() {
     await page.waitForFunction(() => window.__race?.state === 'results', null, { timeout: 30_000 });
     const rows = await page.$$eval('#rcRows tr', (trs) => trs.map((t) => [...t.querySelectorAll('td')].map((d) => d.textContent ?? '')));
     const goal = CONFIG.match.laps * node.track.len;
-    const want = node.ranking.map((k, i) => [String(i + 1), r.names[k], node.cars[k].finish !== null ? `${Math.floor(node.cars[k].finish! / HZ / 60)}:${((node.cars[k].finish! / HZ) % 60).toFixed(2).padStart(5, '0')}` : '–', `${((node.cars[k].finish !== null ? goal : node.cars[k].prog) / 1000).toFixed(2)} km`]);
+    const want = node.ranking.map((k, i) => [String(i + 1), r.names[k], node.cars[k].finish !== null ? `${Math.floor(node.cars[k].finish! / HZ / 60)}:${((node.cars[k].finish! / HZ) % 60).toFixed(2).padStart(5, '0')}` : '–', `${(Math.max(0, node.cars[k].finish !== null ? goal : node.cars[k].prog) / 1000).toFixed(2)} km`]);
     check(JSON.stringify(rows) === JSON.stringify(want), `results: ${rows.map((x) => x.join(' ')).join(' | ')}`);
     await page.screenshot({ path: `${OUT}/results.png` });
 
@@ -181,7 +215,36 @@ async function main() {
     await page.screenshot({ path: `${OUT}/win.png` });
     await page.context().close();
 
-    // 8. landscape phone: panels apart and on screen, results fit
+    // 8. the wrong-way reset in the page: your backwards car
+    page = await open(`?view=race&race=${RACE}`, 1440, 900, back);
+    await page.waitForFunction(() => (window.__race?.frames ?? 0) > 1, null, { timeout: 60_000 });
+    await page.evaluate(() => { window.__race!.hold = true; });
+    r = (await race(page))!;
+    const gridWrong = await page.evaluate(() => window.__race!.wrongWay);
+    check(r.hash === bw.hash && !gridWrong && await page.locator('#rcWrong').isHidden(), `backwards brain: race hash = Node ${bw.hash}; no "Wrong way" on the grid`);
+    const wrongAt = async (tick: number) => {
+      await page.evaluate((x) => window.__race!.seek(x), (tick + 1.5) / HZ);
+      await frames(page, 3);
+      return page.evaluate(`(() => { const e = document.getElementById('rcWrong'), q = e.getBoundingClientRect(); return { on: window.__race.wrongWay, shown: !e.hidden && q.width > 0, x: (q.left + q.right) / 2 / innerWidth, y: q.bottom / innerHeight, text: e.textContent, drawn: window.__race.drawn()[0] }; })()`) as Promise<{ on: boolean; shown: boolean; x: number; y: number; text: string; drawn: number[] }>;
+    };
+    const ww = await wrongAt(bwShow + 5);
+    // the chase camera keeps your car in the middle, a little below centre: the label sits just over it
+    check(ww.on && ww.shown && ww.text === 'Wrong way' && Math.abs(ww.x - 0.5) < 0.1 && ww.y > 0.2 && ww.y < 0.75, `"Wrong way" flashes over your car while it goes backwards (label at ${(ww.x * 100).toFixed(0)}% across, bottom ${(ww.y * 100).toFixed(0)}% down)`);
+    await page.screenshot({ path: `${OUT}/wrong-way.png` });
+    const pb = await wrongAt(bwReset - 0.499); // just after the put-back tick lands
+    const cm = (a: number, b: number) => Math.abs(a - b) < 0.05;
+    check(pb.on && cm(pb.drawn[0], bwRec.x[bwReset]) && cm(pb.drawn[2], -bwRec.y[bwReset]) && bwRec.v[bwReset] === 0,
+      `put back at tick ${bwReset}: drawn where the sim put it (at rest), still flashing "Wrong way"`);
+    await page.screenshot({ path: `${OUT}/wrong-way-reset.png` });
+    await page.evaluate(() => { window.__race!.hold = false; });
+    await page.click('#rcSkip');
+    await page.waitForFunction(() => window.__race?.state === 'results', null, { timeout: 30_000 });
+    const bwRows = await page.$$eval('#rcRows tr', (trs) => trs.map((t) => [...t.querySelectorAll('td')].map((d) => d.textContent ?? '')));
+    const mine = await page.$eval('#rcRows tr.you td:nth-child(4)', (d) => d.textContent);
+    check(mine === '0.00 km' && bwRows.every((x) => !x[3].startsWith('-')) && await page.locator('#rcWrong').isHidden(), `results: your backwards car shows ${mine}; no distance below 0; no "Wrong way" over the results`);
+    await page.context().close();
+
+    // 9. landscape phone: panels apart and on screen, results fit
     page = await open(`?view=race&race=${RACE}`, 844, 390, trained);
     await page.waitForFunction(() => (window.__race?.frames ?? 0) > 1, null, { timeout: 60_000 });
     const lay = (a: string, b: string) => page.evaluate(`(() => {
@@ -193,7 +256,7 @@ async function main() {
     await page.screenshot({ path: `${OUT}/race-844x390.png` });
     await page.click('#rcSkip');
     await page.waitForFunction(() => window.__race?.state === 'results', null, { timeout: 30_000 });
-    check(await page.evaluate(() => { const q = document.getElementById('rcResults')!.getBoundingClientRect(); return q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; }), '844×390: the results fit on screen');
+    check(await page.evaluate(`(() => { const on = (id) => { const q = document.getElementById(id).getBoundingClientRect(); return q.width > 0 && q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; }; return on('rcResults') && on('rcAgain') && on('rcBack'); })()`) as boolean, '844×390: the results fit on screen, Race again and Back on it');
     await page.screenshot({ path: `${OUT}/results-844x390.png` });
     await page.context().close();
 

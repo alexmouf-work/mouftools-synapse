@@ -99,9 +99,20 @@ body.training #rotate { display: none !important; }
 .rc-list li small { color: var(--muted); font-size: 11px; }
 .rc-list li.you { background: var(--accent-soft); font-weight: 700; }
 .rc-mini { pointer-events: none; }
-.rc-results { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: auto;
+/* the title and the buttons stay put; only the table scrolls (a room's race lists up to 100) */
+.rc-results { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: hidden;
   display: flex; flex-direction: column; gap: 10px; z-index: 2; }
-.rc-results h2 { margin: 0; font-size: 18px; }
+.rc-results h2 { margin: 0; font-size: 18px; flex: none; }
+.rc-results .tv-actions { flex: none; }
+.rc-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; position: relative; overscroll-behavior: contain; }
+.rc-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+/* "Wrong way" over your car (raceView places it there each frame) */
+.rc-wrong { position: fixed; left: 50%; top: 45%; transform: translate(-50%, -100%); pointer-events: none; z-index: 3;
+  padding: 6px 14px; background: var(--minus); color: #fff; font: 700 clamp(16px, 3.2vh, 26px)/1.1 Arial, Helvetica, sans-serif;
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; animation: rc-flash .5s steps(2, jump-none) infinite; }
+.rc-wrong[hidden] { display: none; }
+@keyframes rc-flash { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .rc-wrong { animation: none; } }
 .rc-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .rc-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 3px 6px; border-bottom: 1px solid var(--line); }
 .rc-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); }

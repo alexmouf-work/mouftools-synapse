@@ -1,19 +1,21 @@
-// vs CPU races (B7, tracks plan §4): the grid, pads off it, the ranking rule, determinism, the stored CPU brains.
+// vs CPU races (B7, tracks plan §4): the grid, pads off it, the ranking rule, determinism, the wrong-way reset, the
+// stored CPU brains.
 import { describe, expect, it } from 'vitest';
 import data from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
 import { compile, defaultGenome } from '../../src/common/sim/brain';
-import { newRecording, Runner } from '../../src/common/sim/race';
+import { newRecording, putBack, Runner } from '../../src/common/sim/race';
+import { biasIndex, OUTPUTS, type Genome } from '../../src/common/sim/spec';
 import { CPU_NAMES, cpuBrains } from '../../src/common/sim/cpu';
 import { maxLoad } from '../../src/common/sim/energy';
 import { gridCar, gridOrder, gridPlace, rank, raceTrackSeed, runRace } from '../../src/common/sim/match';
-import { generateTrack } from '../../src/common/sim/track';
+import { generateTrack, gridDepth } from '../../src/common/sim/track';
 
 const M = CONFIG.match;
 
 describe('the grid', () => {
   it('rows of two 8 m apart behind the line, 2.5 m either side, facing along the track', () => {
-    const t = generateTrack(raceTrackSeed(3), true);
+    const t = generateTrack(raceTrackSeed(3), M.cars);
     for (let s = 0; s < M.cars; s++) {
       const c = gridCar(t, s), p = gridPlace(t, s), row = Math.floor(s / 2);
       expect(Math.abs(-c.prog - (M.firstRow + row * M.rowGap))).toBeLessThan(t.ds / 2 + 1e-9);
@@ -31,12 +33,18 @@ describe('the grid', () => {
     expect(gridOrder(5, M.cars)).toEqual(a);
     expect(gridOrder(6, M.cars)).not.toEqual(a);
   });
-  it('no boost pad on the grid or in the first 50 m on any race track', () => {
-    for (let s = 1; s <= 200; s++) {
-      const t = generateTrack(raceTrackSeed(s), true);
-      for (const p of t.pads) for (let j = 0; j < p.n; j++) {
-        const d = ((p.i0 + j - t.startIdx) % t.n + t.n) % t.n;
-        expect(d * t.ds > M.clearAhead && (t.n - d) * t.ds > M.clearBehind).toBe(true);
+  it('no boost pad on the whole grid (for the number of cars, up to 100) or in the first 50 m on any race track', () => {
+    expect(gridDepth(10)).toBe(36);
+    expect(gridDepth(100)).toBe(396);
+    for (const cars of [2, 10, 37, 100]) {
+      for (let s = 1; s <= (cars === 100 ? 200 : 60); s++) {
+        const t = generateTrack(raceTrackSeed(s), cars);
+        const back = gridPlace(t, cars - 1).back; // the back row as placed (rounded to samples)
+        expect(back).toBeLessThan(gridDepth(cars) + M.clearPast);
+        for (const p of t.pads) for (let j = 0; j < p.n; j++) {
+          const d = ((p.i0 + j - t.startIdx) % t.n + t.n) % t.n;
+          expect(d * t.ds > M.clearAhead && (t.n - d) * t.ds > gridDepth(cars) + M.clearPast).toBe(true);
+        }
       }
     }
   });
@@ -62,7 +70,7 @@ describe('a race', () => {
     expect(b.cars[0].rec.act.length).toBe(0);
     // car 5 alone from its slot drives exactly the same: the other cars change nothing
     const net = compile(genomes[5]), rec = newRecording(net, M.capTicks, false);
-    new Runner().run(net, a.track, { ticks: M.capTicks, earlyStop: false, record: rec, start: gridCar(a.track, a.cars[5].slot) });
+    new Runner().run(net, a.track, { ticks: M.capTicks, earlyStop: false, record: rec, start: gridCar(a.track, a.cars[5].slot), wrongWay: true });
     expect(Array.from(rec.x)).toEqual(Array.from(a.cars[5].rec.x));
     expect(a.cars[5].rec.ticks).toBe(M.capTicks);
     expect(a.ranking.length).toBe(M.cars);
@@ -81,6 +89,66 @@ describe('a race', () => {
       expect(r.endTicks).toBe(fin.length === r.cars.length ? Math.ceil(Math.max(...fin.map((c) => c.finish as number))) : M.capTicks);
       expect(r.cars.every((c) => Number.isFinite(c.prog))).toBe(true);
     }
+  });
+});
+
+/** A brain that drives backwards: every wheel's bias at the cap (tanh(−4) ≈ −1), nothing else. */
+function backwards(): Genome {
+  const g = defaultGenome();
+  for (const o of OUTPUTS) g.w[biasIndex(g.spec, o.id)] = -CONFIG.brain.weightCap;
+  return g;
+}
+
+describe('the wrong-way reset (races only)', () => {
+  const W = M.wrongWayTicks;
+  it('a car whose progress has fallen for 60 ticks is put back at its furthest point, on the centre line, facing forwards, at rest', () => {
+    const r = runRace([backwards(), defaultGenome()], 9), c = r.cars[0], rec = c.rec, t = r.track, start = -gridPlace(t, c.slot).back;
+    const resets: number[] = [];
+    for (let k = 0; k < rec.ticks; k++) if (rec.wrong[k] >= W) resets.push(k);
+    expect(resets.length).toBeGreaterThan(10);
+    let best = start;
+    for (let k = 0, prev = start, fell = 0; k < rec.ticks; k++) {
+      const p = rec.prog[k];
+      // the count is the rule: ticks in a row of falling progress, put back on the 60th
+      fell = p < prev || rec.wrong[k] >= W ? fell + 1 : 0;
+      expect(rec.wrong[k]).toBe(fell);
+      if (rec.wrong[k] >= W) {
+        fell = 0;
+        // put back: at rest, on the centreline sample at or just behind its best point, facing along the track
+        const a = ((t.startIdx * t.ds + best) % t.len + t.len) % t.len, i = Math.min(Math.floor(a / t.ds), t.n - 1);
+        expect(rec.v[k]).toBe(0);
+        expect(rec.x[k]).toBe(t.px[i]);
+        expect(rec.y[k]).toBe(t.py[i]);
+        expect(rec.hdg[k]).toBe(t.th[i]);
+        expect(p).toBeLessThanOrEqual(best);
+        expect(best - p).toBeLessThan(t.ds + 1e-9);
+      }
+      if (p > best) best = p;
+      prev = p;
+    }
+    // it never gets more than about 3 s of reversing behind the grid: no more kilometres backwards
+    for (let k = 0; k < rec.ticks; k++) expect(rec.prog[k]).toBeGreaterThan(start - W / CONFIG.tick.hz * CONFIG.car.wheelSpeed);
+    expect(Number.isFinite(c.prog)).toBe(true);
+  });
+  it('training and the drive view are unchanged: no reset unless a race asks for it', () => {
+    const t = generateTrack(raceTrackSeed(9), M.cars), net = compile(backwards()), rec = newRecording(net, 400, false);
+    const res = new Runner().run(net, t, { ticks: 400, earlyStop: false, record: rec });
+    expect(res.prog).toBeLessThan(-100);
+    expect(rec.wrong.every((w) => w === 0)).toBe(true);
+  });
+  it('putBack keeps progress and position one', () => {
+    const t = generateTrack(raceTrackSeed(4), M.cars), c = gridCar(t, 3);
+    c.maxProg = 777.7; c.prog = 700; c.v = -12;
+    putBack(c, t);
+    expect(c.v).toBe(0);
+    expect(c.off).toBe(0);
+    expect(c.prog).toBeLessThanOrEqual(777.7);
+    expect(777.7 - c.prog).toBeLessThan(t.ds);
+    expect(((t.startIdx * t.ds + c.prog) % t.len + t.len) % t.len).toBeCloseTo(c.idx * t.ds, 6);
+  });
+  it('is deterministic: the same race gives the same bits', () => {
+    const g = [backwards(), ...cpuBrains(data).map((b) => b.genome)];
+    expect(runRace(g, 77).hash).toBe(runRace(g, 77).hash);
   });
 });
 
