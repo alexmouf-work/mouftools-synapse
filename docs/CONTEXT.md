@@ -311,3 +311,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
   relative to the start timestamp." · "make it only 3 rounds, and do the best distance travelled rather than total." ·
   "adjust the UI so that the map and the leaderboard are equal sizes, and make the main menu / music / sfx buttons much
   larger and easier to interact with." → `docs/plans/2026-11-05-match-polish.md`.
+- 2026-11-05: "while in the lobby waiting for the game to start in multiplayer, use the same music as the title screen." ·
+  "default the processing method to linear." · "swap the landmark cell for a long-range boundary vector cell. come up
+  with an appropriate icon for it." · "make the head direction cell's icon rotate the correct direction (following the
+  arrow around)" → `docs/plans/2026-11-05-senses-and-lobby-music.md`.
