@@ -29,6 +29,23 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const ord = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
+export const ordinal = ord;
+
+/** One standings row: a name, this round's signed distance, the total; `you` marks your row. */
+export interface StandingsRow { name: string; dist: number; total: number; you: boolean }
+/**
+ * The round's standings in the race view's results panel (rows already in order, best total first), opened at the top;
+ * Play again / Main menu are hidden here (the final standings show them).
+ */
+export function showStandings(title: string, round: number, rows: StandingsRow[]): void {
+  $('rcResT').textContent = title;
+  $('rcHead').innerHTML = `<tr><th>Place</th><th>Name</th><th>Round ${round}</th><th>Total</th></tr>`;
+  $('rcRows').innerHTML = rows.map((r, i) => `<tr class="${r.you ? 'you' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td>${fmtKm(r.dist)}</td><td>${fmtKm(r.total)}</td></tr>`).join('');
+  $('rcScroll').scrollTop = 0;
+  $('rcAgain').hidden = true; $('rcBack').hidden = true;
+  $('rcResults').hidden = false;
+}
+
 /** What the match asks of the page (main.ts routes the views). */
 export interface MatchViews {
   /** The designer in match mode on this brain, held to this round's budget. */
@@ -131,16 +148,13 @@ function standings(res: RaceResult): void {
   d.forEach((x, k) => { m.total[k] += x; });
   const final = m.round >= R.count, ord0 = order(m), you = ord0.indexOf(0) + 1;
   m.phase = final ? 'over' : 'standings';
-  $('rcResT').textContent = final ? (you === 1 ? 'You won the match!' : `Final standings: you finished ${ord(you)} of ${NAMES.length}`) : `Round ${m.round} of ${R.count} · Standings`;
-  $('rcHead').innerHTML = `<tr><th>Place</th><th>Name</th><th>Round ${m.round}</th><th>Total</th></tr>`;
-  $('rcRows').innerHTML = ord0.map((k, i) => `<tr class="${k === 0 ? 'you' : ''}"><td>${i + 1}</td><td>${esc(NAMES[k])}</td><td>${fmtKm(d[k])}</td><td>${fmtKm(m.total[k])}</td></tr>`).join('');
-  $('rcScroll').scrollTop = 0;
+  showStandings(final ? (you === 1 ? 'You won the match!' : `Final standings: you finished ${ord(you)} of ${NAMES.length}`) : `Round ${m.round} of ${R.count} · Standings`,
+    m.round, ord0.map((k) => ({ name: NAMES[k], dist: d[k], total: m.total[k], you: k === 0 })));
   // only the timers move a match on (match-flow v2 §1): no Next round; after round 5, Play again / Main menu
   const again = $('rcAgain'), back = $('rcBack');
   again.textContent = 'Play again';
   back.textContent = 'Main menu';
   back.hidden = !final; again.hidden = !final;
-  $('rcResults').hidden = false;
   if (final) {
     again.onclick = () => { leaveRace(); hideArena(); startMatch(V); };
     back.onclick = () => { leaveRace(); hideArena(); M = null; V.title(); };

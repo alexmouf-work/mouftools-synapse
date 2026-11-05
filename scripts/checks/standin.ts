@@ -1,12 +1,20 @@
 // A local stand-in for the Supabase project (B8, B9 lobby): the same functions as supabase/schema.sql, behind the same
 // PostgREST shape (POST /rest/v1/rpc/<name>, JSON arguments, the anon key in `apikey` and `Authorization: Bearer`),
 // in memory. The multiplayer check runs the app against it; the real service is first tried on the preview.
-// `clock` lets a check move the server's time; `seed` makes race seeds reproducible.
+// `skew` lets a check move the server's time; `seed` makes race and match seeds reproducible. A match's rounds follow
+// the same schedule as the schema's synapse_round_start / synapse_round_freeze (src/common/schedule.ts).
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { CONFIG } from '../../src/common/config';
+import { matchOverMs, roundTimes } from '../../src/common/schedule';
 
-interface Player { id: string; room: string; name: string; tokenHash: string; brain: string | null; result: string | null; joined: number }
-interface Room { code: string; hostHash: string; created: number; raceNo: number; raceSeed: number | null; startAt: number | null; entries: string | null }
+interface Player { id: string; room: string; name: string; tokenHash: string; brain: string | null; result: string | null; joined: number; joinedAt: number }
+interface Room {
+  code: string; hostHash: string; created: number; raceNo: number; raceSeed: number | null; startAt: number | null; entries: string | null;
+  matchNo: number; matchSeed: number | null; matchAt: number | null;
+  /** Round brains of the current match, by round then player id; frozen entries by round. */
+  brains: Map<number, Map<string, string>>; frozen: Map<number, string>;
+}
 
 const hash = (t: string) => createHash('sha256').update(t).digest('hex');
 const MAX_PLAYERS = 100;
@@ -34,11 +42,21 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
   const join = (code: string, n: unknown, t: unknown) => {
     const v = name(n);
     if (inRoom(code).some((p) => p.name.toLowerCase() === v.toLowerCase())) fail('name taken');
-    const p: Player = { id: randomUUID(), room: code, name: v, tokenHash: hash(token(t)), brain: null, result: null, joined: ++joinClock };
+    const p: Player = { id: randomUUID(), room: code, name: v, tokenHash: hash(token(t)), brain: null, result: null, joined: ++joinClock, joinedAt: now() };
     players.push(p);
     return p;
   };
-  const drop = (p: Player | undefined) => { if (p) players.splice(players.indexOf(p), 1); };
+  // leaving takes your round brains with you (the schema's on delete cascade), until a round's entries are frozen
+  const drop = (p: Player | undefined) => {
+    if (!p) return;
+    players.splice(players.indexOf(p), 1);
+    for (const b of rooms.get(p.room)?.brains.values() ?? []) b.delete(p.id);
+  };
+  const roundOk = (r: Room, matchNo: unknown, round: unknown): number => {
+    const n = Number(round);
+    if (r.matchAt === null || r.matchNo !== matchNo || !Number.isInteger(n) || n < 1 || n > CONFIG.rounds.count) fail('no such round');
+    return n;
+  };
   const inRoom = (code: string) => players.filter((p) => p.room === code).sort((a, b) => a.joined - b.joined || (a.id < b.id ? -1 : 1));
   const mine = (id: unknown, t: unknown) => players.find((p) => p.id === id && p.tokenHash === hash(String(t))) ?? fail('not your player');
   const fns: Record<string, (a: Record<string, unknown>) => unknown> = {
@@ -46,7 +64,7 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
       token(a.p_token);
       let code = '';
       do code = Array.from({ length: 4 }, () => String.fromCharCode(65 + Math.floor(rnd() * 26))).join(''); while (rooms.has(code));
-      rooms.set(code, { code, hostHash: hash(String(a.p_token)), created: now(), raceNo: 0, raceSeed: null, startAt: null, entries: null });
+      rooms.set(code, { code, hostHash: hash(String(a.p_token)), created: now(), raceNo: 0, raceSeed: null, startAt: null, entries: null, matchNo: 0, matchSeed: null, matchAt: null, brains: new Map(), frozen: new Map() });
       return { code, now: now() };
     },
     synapse_join_room: (a) => {
@@ -55,7 +73,7 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
       if (!rooms.has(code)) fail('no such room');
       if (inRoom(code).length >= MAX_PLAYERS) fail('room full');
       const p = join(code, a.p_name, a.p_token);
-      return { code, player: p.id, name: p.name, now: now() };
+      return { code, player: p.id, name: p.name, joined: p.joinedAt, now: now() };
     },
     synapse_leave_room: (a) => { drop(players.find((p) => p.id === a.p_player && p.tokenHash === hash(String(a.p_token)))); return undefined; },
     synapse_remove_player: (a) => {
@@ -67,7 +85,7 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
     synapse_room_state: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null, host: p.tokenHash === r.hostHash })) };
+      return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, match_no: r.matchNo, match_seed: r.matchSeed, match_at: r.matchAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null, host: p.tokenHash === r.hostHash, joined: p.joinedAt })) };
     },
     synapse_submit_brain: (a) => {
       const b = String(a.p_brain ?? '');
@@ -81,6 +99,35 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
       r.raceNo++; r.raceSeed = Math.floor(rnd() * 4294967296); r.startAt = now() + 12_000;
       r.entries = JSON.stringify(inRoom(r.code).filter((p) => p.brain !== null).map((p) => ({ id: p.id, name: p.name, brain: p.brain })));
       return { race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now() };
+    },
+    synapse_start_match: (a) => {
+      const r = rooms.get(String(a.p_code ?? '').toUpperCase());
+      if (!r || r.hostHash !== hash(String(a.p_token))) return fail('not the host');
+      if (r.matchAt !== null && now() < r.matchAt + matchOverMs()) return fail('match on');
+      r.matchNo++; r.matchSeed = Math.floor(rnd() * 4294967296); r.matchAt = now(); r.brains = new Map(); r.frozen = new Map();
+      return { match_no: r.matchNo, match_seed: r.matchSeed, match_at: r.matchAt, now: now() };
+    },
+    synapse_submit_round_brain: (a) => {
+      const p = mine(a.p_player, a.p_token), r = rooms.get(p.room)!, n = roundOk(r, a.p_match_no, a.p_round), t = roundTimes(n);
+      if (p.joinedAt > r.matchAt! + t.start) fail('not in this round');
+      if (now() < r.matchAt! + t.start) fail('too early');
+      if (now() >= r.matchAt! + t.freeze || r.frozen.has(n)) fail('too late');
+      const b = String(a.p_brain ?? '');
+      if (b.length > 32000) fail('brain');
+      if (!r.brains.has(n)) r.brains.set(n, new Map());
+      r.brains.get(n)!.set(p.id, b);
+      return undefined;
+    },
+    synapse_round_entries: (a) => {
+      const r = rooms.get(String(a.p_code ?? '').toUpperCase());
+      const n = Number(a.p_round);
+      if (!r || r.matchAt === null || r.matchNo !== a.p_match_no || !Number.isInteger(n) || n < 1 || n > CONFIG.rounds.count) return null;
+      if (!r.frozen.has(n)) {
+        if (now() < r.matchAt + roundTimes(n).freeze) return null;
+        const b = r.brains.get(n) ?? new Map<string, string>();
+        r.frozen.set(n, JSON.stringify(inRoom(r.code).filter((p) => b.has(p.id)).map((p) => ({ id: p.id, name: p.name, brain: b.get(p.id) }))));
+      }
+      return r.frozen.get(n)!;
     },
     synapse_race_entries: (a) => { const r = rooms.get(String(a.p_code ?? '').toUpperCase()); return r && r.raceNo === a.p_race_no ? r.entries : null; },
     synapse_submit_result: (a) => {

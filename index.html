@@ -72,10 +72,9 @@
     <header class="mp-bar">
       <div class="mp-roomcode"><span class="mp-lab">Room code</span><b id="lbCode"></b></div>
       <div class="mp-where">Join at synapse.mouftools.com, then Multiplayer.</div>
-      <div class="mp-count"><b id="lbCount">0 / 100</b><span id="lbCountSub">players · 0 ready</span></div>
-      <div class="mp-legend"><span><i class="in"></i>Brain handed in</span><span><i></i>Still building</span></div>
+      <div class="mp-count"><b id="lbCount">0 / 100</b><span id="lbCountSub">players</span></div>
       <div class="mp-spacer"></div>
-      <div class="mp-status" id="lbHostSide"><button class="btn primary" type="button" id="lbStart" disabled>Start race</button></div>
+      <div class="mp-status" id="lbHostSide"><button class="btn primary" type="button" id="lbStart" disabled>Start match</button></div>
       <div class="mp-status" id="lbPlayerSide" hidden><b>You're in</b>Waiting for the host to start</div>
     </header>
     <div class="mp-field" id="lbField" aria-live="polite" aria-label="Players in the room">
@@ -83,7 +82,6 @@
       <button class="btn mp-kick" type="button" id="lbKick" hidden></button>
     </div>
     <footer class="mp-foot">
-      <button class="btn primary" type="button" id="lbBuild">Build your brain</button>
       <span class="mp-note" id="lbNote" aria-live="polite"></span>
       <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicLb" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxLb" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
       <button class="btn" type="button" id="lbLeave">Leave room</button>

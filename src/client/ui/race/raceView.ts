@@ -35,7 +35,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   return e as T;
 };
 const HZ = CONFIG.tick.hz, M = CONFIG.match;
-const RESULTS_AFTER_S = 1.5; // the cars hold this long after the race ends, then the results show
+const RESULTS_AFTER_S = CONFIG.rounds.hold; // the cars hold this long after the race ends, then the results show
 const LISTED = 10; // racers list rows: places 1–3, then the racers nearest you (sidebar plan 2026-11-05)
 const WRONG_WAY = M.wrongWayTicks;
 const WRONG_SHOW = HZ; // "Wrong way" shows once progress has fallen this many ticks, and this long after the reset
@@ -72,8 +72,10 @@ export interface RaceSetup {
   goAt?: number;
   /** A room's race number (its result is reported with it). */
   raceNo?: number;
-  /** Laps in a capped time (a room), or a timed race (a vs CPU round). */
+  /** Laps in a capped time, or a timed race (a round, vs CPU or a room's). */
   len?: RaceLength;
+  /** The race already computed with these genomes, seed and length (recording car `me`): not run again. */
+  result?: RaceResult;
 }
 export interface RaceRow { name: string; place: number; finish: number | null; prog: number; slot: number; dist: number }
 export interface RaceStatus {
@@ -143,7 +145,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const { names, genomes, me, raceSeed } = setup, n = genomes.length;
   const c0 = performance.now();
   const len = setup.len ?? LAPPED, timed = len.laps === 0;
-  const race: RaceResult = runRace(genomes, raceSeed, (k) => k === me, len);
+  const race: RaceResult = setup.result ?? runRace(genomes, raceSeed, (k) => k === me, len);
   const computeMs = performance.now() - c0;
   const { track, cars } = race;
   const follow = me >= 0 ? me : 0, mine = me >= 0;

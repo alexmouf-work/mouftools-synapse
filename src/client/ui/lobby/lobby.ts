@@ -2,23 +2,21 @@
 // a screen of its own over the page. 1. The room code: one 4-letter field; the fourth letter checks the room and a
 // real one moves straight on (or Create a room). 2. Your name, on its own screen: the room's code and how many are in,
 // "What should we call you?", 1–16 characters (spaces collapsed), a name already in the room refused (the server
-// checks too), a preview of your chip, Go in. 3. The lobby: the code, how many are in and ready, the host's Start race
-// (2 or more ready); a field of name chips that fit their text and pop in, scattered where they overlap least (rows
-// on a short screen once more than 60 are in), filled once that player's brain is in; the host taps a name to remove
-// that player; Build your brain, Leave room. While you are in a room it is polled every 1.5 s; when the host starts a
-// race, every client fetches the same frozen entries and seed, computes the whole race itself (deterministic, so
-// every client sees the same race) and counts down to the server's Go. Nothing is kept in the browser's storage:
-// closing the tab leaves the room.
+// checks too), a preview of your chip, Go in. 3. The lobby: the code, how many are in, the host's Start match (2 or
+// more in); a field of name chips that fit their text and pop in, scattered where they overlap least (rows on a short
+// screen once more than 60 are in); the host taps a name to remove that player; Leave room. While you are in a room it
+// is polled every 1.5 s; when the host starts a match, every client follows its 5 timed rounds from the server's
+// clock (ui/rounds/roomRounds.ts, match-flow v2 §M2): no buttons until the final standings. Joined mid-match, you
+// watch from here until the next round's build. Nothing is kept in the browser's storage: closing the tab leaves the
+// room.
 import './lobby.css';
-import { genomeToJSON } from '../../../common/sim/brain';
-import { energyRefusal } from '../../../common/sim/energy';
-import { validateGenome, type Genome } from '../../../common/sim/spec';
+import { matchOverMs } from '../../../common/schedule';
 import {
-  cleanName, joinRoom, leaveRoom, online, openRoom, perfOf, raceEntries, removePlayer, roomState, serverNow, startRace, submitBrain,
-  submitResult, ticketFor, validCode, type Me, type RoomPlayer, type RoomState, type Ticket,
+  cleanName, joinRoom, leaveRoom, online, openRoom, removePlayer, roomState, serverNow, startMatch,
+  ticketFor, validCode, type Me, type RoomPlayer, type RoomState, type Ticket,
 } from '../../net/rooms';
-import type { Saved } from '../designer/store';
-import { RACE_COLORS, type RaceRow, type RaceSetup } from '../race/raceView';
+import { RACE_COLORS } from '../race/raceView';
+import type { RoomMatchInfo } from '../rounds/roomRounds';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const e = document.getElementById(id);
@@ -26,8 +24,6 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   return e as T;
 };
 const POLL_MS = 1500;
-/** A race can still be joined (watched from where it is) this long after Go. */
-const JOIN_LATE_MS = 125_000;
 const MAX = 100;
 const NAME_MAX = 16;
 /** Your chip's colour: your car's yellow. The others take the race colours in join order. */
@@ -44,10 +40,10 @@ const taken = (n: string) => `Someone in this room is already called ${n}. Try a
 export interface LobbyHooks {
   /** Multiplayer's screen is showing (hide the rest) or closed (back to the title). */
   show(on: boolean): void;
-  /** Build your brain: the designer in match mode, in this room. */
-  build(): void;
-  /** A race has started: show it. */
-  race(setup: RaceSetup): void;
+  /** The host started a match (or one is under way as you come in): follow it. */
+  match(info: RoomMatchInfo): void;
+  /** You are out of the room mid-match (removed, or the room closed): stop following it. */
+  lost(): void;
 }
 
 type Screen = 'join' | 'name' | 'lobby';
@@ -59,7 +55,9 @@ let st: RoomState | null = null;
 /** The room as the name screen last saw it (its count, and the names already taken). */
 let peek: RoomState | null = null;
 let timer = 0, nameTimer = 0;
-let seenRace = 0;
+let seenMatch = 0;
+/** Joined mid-match: the lobby says so while you watch. */
+let watching = '';
 let screen: Screen | null = null;
 let gone = '';
 let hooks: LobbyHooks;
@@ -77,12 +75,12 @@ export const lobbyShown = (): boolean => screen === 'lobby';
 declare global {
   interface Window {
     __room?: {
-      me: Me | null; state: RoomState | null; shown: boolean; error: string; handedIn: boolean;
+      me: Me | null; state: RoomState | null; shown: boolean; error: string; watching: string;
       screen: Screen | null; layout: 'scatter' | 'rows'; fontPx: number;
     };
   }
 }
-const status = { me: null as Me | null, state: null as RoomState | null, shown: false, error: '', handedIn: false, screen: null as Screen | null, layout: layout as 'scatter' | 'rows', fontPx };
+const status = { me: null as Me | null, state: null as RoomState | null, shown: false, error: '', watching: '', screen: null as Screen | null, layout: layout as 'scatter' | 'rows', fontPx };
 window.__room = status;
 
 function show(s: Screen | null): void {
@@ -129,13 +127,12 @@ export function startLobby(h: LobbyHooks): void {
   $('mpNameF').addEventListener('submit', (e) => { e.preventDefault(); void goIn(); });
   $('mpNameBack').onclick = () => { ticket = null; peek = null; openMultiplayer(); };
   // 3. the lobby
-  $('lbBuild').onclick = () => hooks.build();
   $('lbLeave').onclick = () => leave();
   $('lbStart').onclick = () => {
     if (!me) return;
     starting = true;
     render();
-    startRace(me).then(() => poll()).catch((e) => { note(`Couldn’t start: ${msgOf(e)}`); starting = false; render(); });
+    playAgain().catch((e) => { note(`Couldn’t start: ${msgOf(e)}`); starting = false; render(); });
   };
   $('lbKick').onclick = (e) => {
     e.stopPropagation();
@@ -235,7 +232,7 @@ async function goIn(): Promise<void> {
 }
 
 function enter(m: Me): void {
-  me = m; status.me = m; st = null; seenRace = 0; status.handedIn = false; gone = ''; starting = false;
+  me = m; status.me = m; st = null; seenMatch = 0; watching = ''; status.watching = ''; gone = ''; starting = false;
   ticket = null; peek = null;
   for (const c of chips.values()) c.el.remove();
   chips.clear();
@@ -262,31 +259,42 @@ function leave(): void {
 
 /** Show the lobby (back from building or a race), or close Multiplayer's screen. Removed meanwhile: the code screen says so. */
 export function showLobby(on: boolean): void {
-  if (!on) { show(null); return; }
+  if (!on) { watching = ''; status.watching = ''; show(null); return; }
   if (me) show('lobby');
   else openMultiplayer(gone);
 }
 
+/** Joined mid-match: the lobby, saying when you join in, until the round's race (roomRounds). */
+export function watchMatch(text: string): void {
+  watching = text; status.watching = text;
+  showLobby(true);
+}
+/** The room's players as last polled. */
+export const roomPlayers = (): RoomPlayer[] => st?.players ?? [];
+/** The host's Start match (and the final standings' Play again): the match starts on every client from the next poll. */
+export async function playAgain(): Promise<void> {
+  if (!me) return;
+  await startMatch(me);
+  await poll();
+}
+
 function note(t: string): void { $('lbNote').textContent = t; }
 
-const BASE_NOTE = 'Build and train a brain, then hand it in. The race uses the brains that are in when the host starts.';
+const BASE_NOTE = 'When the host starts, everyone plays 5 timed rounds together: build, train, race.';
 
 function render(): void {
   if (!me || screen !== 'lobby') return;
   $('lbCode').textContent = me.code;
   const ps = st?.players ?? [];
-  const ready = ps.filter((p) => p.ready).length, mineIn = ps.some((p) => p.id === me!.player && p.ready);
   $('lbCount').textContent = `${ps.length} / ${MAX}`;
-  $('lbCountSub').textContent = `${ps.length === 1 ? 'player' : 'players'} · ${ready} ready`;
-  $('lbHostSide').hidden = !me.host;
-  $('lbPlayerSide').hidden = me.host;
+  $('lbCountSub').textContent = ps.length === 1 ? 'player' : 'players';
+  $('lbHostSide').hidden = !me.host || !!watching;
+  $('lbPlayerSide').hidden = me.host && !watching;
+  $('lbPlayerSide').innerHTML = watching ? '<b>Watching</b>A match is on' : '<b>You\'re in</b>Waiting for the host to start';
   const start = $<HTMLButtonElement>('lbStart');
-  start.disabled = starting || ready < 2;
-  start.textContent = starting ? 'Starting…' : ready < 2 ? 'Start race' : `Start race (${ready})`;
-  $('lbBuild').textContent = mineIn ? 'Brain handed in · Edit' : 'Build your brain';
-  if (!$('lbNote').textContent || /^(Build and train|Your brain is in)/.test($('lbNote').textContent!)) {
-    note(!mineIn ? BASE_NOTE : me.host ? 'Your brain is in. Start the race when two or more are ready.' : 'Your brain is in. You can still edit it until the host starts.');
-  }
+  start.disabled = starting || ps.length < 2;
+  start.textContent = starting ? 'Starting…' : 'Start match';
+  note(watching || (me.host && ps.length < 2 ? `${BASE_NOTE} Start when someone else is in.` : BASE_NOTE));
   $('lbEmpty').hidden = ps.length > 0;
   chipsOf(ps);
 }
@@ -330,10 +338,10 @@ function chipsOf(ps: RoomPlayer[]): void {
       fresh.push(c);
     }
     const mine = p.id === me?.player;
-    c.el.className = `chip${p.ready ? ' ready' : ''}${mine ? ' me' : ''}${host && !mine ? ' tap' : ''}${kickFor === p.id ? ' picked' : ''}`;
+    c.el.className = `chip${mine ? ' me' : ''}${host && !mine ? ' tap' : ''}${kickFor === p.id ? ' picked' : ''}`;
     c.el.style.setProperty('--c', col.get(p.id)!);
     c.el.style.zIndex = String(k + 1);
-    c.el.title = `${p.name}${p.host ? ' (host)' : ''}: ${p.ready ? 'brain handed in' : 'still building'}`;
+    c.el.title = `${p.name}${p.host ? ' (host)' : ''}`;
   });
   const before = fontPx, mode = layout;
   fit(ps.length);
@@ -406,35 +414,6 @@ function hideKick(): void {
   kickFor = null;
 }
 
-/** Hand in a trained brain for the next race (the training view's Hand in). */
-export async function handIn(s: Saved): Promise<void> {
-  if (!me) return;
-  const text = genomeToJSON(s.genome);
-  await submitBrain(me, text);
-  status.handedIn = true;
-  await poll();
-}
-
-/** Your result, as the privacy policy says (place, time, distance). */
-export function reportResult(row: RaceRow | null, raceNo: number): void {
-  if (!me || !row) return;
-  submitResult(me, JSON.stringify({ race: raceNo, place: row.place, finish: row.finish, prog: Math.round(row.prog) }) /* signed (ruling 2026-11-05) */).catch((e) => console.warn('lobby: result not sent', e));
-}
-
-/** A race's entries as every client reads them: valid brains within the match limit, in join order. */
-export function setupOf(code: string, entries: { id: string; name: string; brain: string }[], raceSeed: number, goServer: number, mine: string): RaceSetup {
-  const ok: { id: string; name: string; genome: Genome }[] = [];
-  for (const e of entries) {
-    try {
-      const g = JSON.parse(e.brain) as Genome;
-      validateGenome(g);
-      if (energyRefusal(g.spec, 'match')) continue;
-      ok.push({ id: e.id, name: e.name, genome: g });
-    } catch { /* not a brain: left out, the same on every client */ }
-  }
-  return { kind: 'room', title: `Room ${code}`, names: ok.map((e) => e.name), genomes: ok.map((e) => e.genome), me: ok.findIndex((e) => e.id === mine), raceSeed, goAt: perfOf(goServer) };
-}
-
 async function poll(first = false): Promise<void> {
   if (!me) return;
   let s: RoomState | null;
@@ -443,21 +422,19 @@ async function poll(first = false): Promise<void> {
   // removed by the host, or the room is gone: out of the room (the code screen says so, now or when you come back)
   if (!s || !s.players.some((p) => p.id === me!.player)) {
     gone = s ? REMOVED : 'That room has closed.';
+    const playing = screen !== 'lobby' || !!watching;
     stop();
-    if (screen === 'lobby') openMultiplayer(gone);
+    if (playing) hooks.lost();
+    if (screen === 'lobby' || playing) openMultiplayer(gone);
     return;
   }
   st = s; status.state = s;
-  if (first) seenRace = s.start_at !== null && serverNow() - s.start_at > JOIN_LATE_MS ? s.race_no : 0;
+  // a match already over as you come in is not yours; one under way is (you watch until the next round's build)
+  if (first && s.match_at !== null && serverNow() - s.match_at >= matchOverMs()) seenMatch = s.match_no;
   if (screen === 'lobby') render();
-  if (s.race_no > seenRace && s.race_seed !== null && s.start_at !== null && serverNow() - s.start_at < JOIN_LATE_MS) {
-    seenRace = s.race_no;
-    const raceNo = s.race_no, seed = s.race_seed, goAt = s.start_at, code = me.code, player = me.player;
-    const entries = await raceEntries(code, raceNo);
-    if (!me || !entries.length) return;
-    starting = false;
-    const setup = setupOf(code, entries, seed, goAt, player);
-    if (screen === 'lobby') { show(null); hooks.race({ ...setup, raceNo }); }
-    else note(`A race started while you were away (race ${raceNo}).`);
+  if (s.match_no > seenMatch && s.match_at !== null && s.match_seed !== null) {
+    seenMatch = s.match_no;
+    starting = false; watching = ''; status.watching = '';
+    hooks.match({ me: me, matchNo: s.match_no, seed: s.match_seed, at: s.match_at });
   }
 }

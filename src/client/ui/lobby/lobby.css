@@ -46,15 +46,14 @@
 #mp .mp-roomcode { display: flex; flex-direction: column; }
 #mp .mp-roomcode b { font-size: 40px; line-height: 1; letter-spacing: .18em; font-variant-numeric: tabular-nums; }
 #mp .mp-where { font-size: 13px; color: var(--muted); max-width: 22ch; }
+/* watching a match (joined mid-match): the round's countdown sits in the bar's centre, over the joining hint */
+body.timed #mp .mp-where { visibility: hidden; }
 #mp .mp-count { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
 #mp .mp-count b { font-size: 28px; line-height: 1.05; }
 #mp .mp-count span { font-size: 13px; color: var(--muted); }
 #mp .mp-spacer { flex: 1; }
 #mp .mp-status { font-size: 14px; color: var(--muted); text-align: right; }
 #mp .mp-status b { color: var(--text); display: block; font-size: 16px; }
-#mp .mp-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; }
-#mp .mp-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; border: 2px solid var(--muted); }
-#mp .mp-legend i.in { background: var(--muted); }
 
 /* the field the chips fill: scattered (each chip placed where it overlaps least), or rows on a short, busy screen */
 #mp .mp-field { position: relative; flex: 1; min-height: 0; background: var(--field); overflow: hidden; --fs: 16px; }
@@ -66,7 +65,6 @@
 #mp .chip.still { position: static; animation: none; }
 #mp .mp-field.rows .chip { position: static; }
 #mp .chip i { width: .55em; height: .55em; flex: none; border: 2px solid var(--c); background: transparent; }
-#mp .chip.ready i { background: var(--c); }
 #mp .chip.me { border: 2px solid var(--accent); background: var(--accent-soft); }
 #mp .chip.tap { cursor: pointer; }
 #mp .chip.picked { outline: 2px solid var(--minus); outline-offset: 1px; }
@@ -84,7 +82,7 @@
 @media (max-width: 560px) {
   #mp .mp-roomcode b { font-size: 30px; }
   #mp .mp-count b { font-size: 22px; }
-  #mp .mp-where, #mp .mp-legend { display: none; }
+  #mp .mp-where { display: none; }
   #mp .mp-bar { gap: 8px 16px; }
 }
 @media (max-height: 540px) {

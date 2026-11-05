@@ -78,3 +78,67 @@ This replaces "weights carry over between rounds" (2026-10-30 and the rounds pla
   `match` and `round` change (the regenerated CPU brains); track and every phase golden are unchanged.
 - **Checked** (principal 2026-11-05: the affected systems only): types, purity, unit, determinism, check:workbench,
   check:training, check:drive, check:race. Not run: audio, preview, legal, icons, title, multiplayer, bench (untouched).
+
+## Built: M2 (2026-11-05)
+- **One schedule on the server's clock** (`src/common/schedule.ts`): the host's Start match sets the match's start
+  (`match_at`, the server's now); every phase follows at a fixed time. Round 1: build 60 s, train 20 s; rounds 2–5:
+  build 20 s, train 20 s; then, every round, hand in 3 s, the race's countdown 5 s (the entries freeze as it begins),
+  the race 30 s, the cars hold 1.5 s (as vs CPU), standings 8 s. The final standings start 469.5 s after Start match.
+  Each client runs one 100 ms ticker against its estimate of the server's clock (`net/rooms.ts serverNow`, from every
+  reply) and moves the match on from it; the phase timers only show the time left and are re-set to the schedule
+  whenever they drift more than 0.3 s (`phaseTimer.ts retimePhase`). `ui/rounds/roomRounds.ts` runs it.
+- **No buttons:** a room's match uses vs CPU's views (`body.rounds`: no Train; the training view and standings without
+  buttons). Each round: the designer in match mode under `CONFIG.rounds.budgets` (the design carries over, fresh
+  weights every round; round 1 starts from the starting brain), Train at the build's 0, training on `CONFIG.rounds.T`
+  that stops at the train phase's end and keeps the best so far, which is handed in then
+  (`synapse_submit_round_brain`). A design still over the budget at 0 never trains and sits the round out.
+- **Entries:** the server freezes a round's entries as its countdown begins: the first `synapse_round_entries` request
+  after the freeze time writes them (under the room's row lock, in join order) and every later request gets the same
+  text; a brain is refused after the freeze ("too late"), before the round ("too early"), and from a player who
+  joined after the round's build began ("not in this round"). Every client keeps the valid brains within the round's
+  budget, computes the race (`ROUND_RACE`, track seed `derive(match seed, 0x50d5, n)` as vs CPU) and counts down to
+  the server's Go. Anyone with nothing in, or a brain left out, has 0 m that round.
+- **Standings and totals as vs CPU** (signed distance; the table and title shared via `rounds.ts showStandings`): every
+  player in the round (the entries, plus everyone in the room from the round's build), best total first, then this
+  round's distance, then the name (unique in a room), so every client lists them in the same order. Each player's
+  round result (match, round, place, distance, total) goes to the room as before.
+- **Joining mid-match:** you watch from the lobby ("Watching"; the round's countdown in its bar; "You join at round n's
+  build"), then the round's race without a car, and its standings (the rounds before you came are run from their
+  frozen entries); you play from the next round's build. Joined during round 5's build or later: you watch to the end.
+- **Main menu** asks "Leave the room?" first, everywhere in the match. After round 5 the final standings stay with Play
+  again (the host: the next match for everyone in the room; the server refuses one while a match is still being
+  raced) and Main menu; the winner music plays if you lead.
+- **Lobby:** Start match (the host, 2 or more in the room) replaces Build your brain, Hand in and Start race; the
+  "brain handed in" legend and filled chips are gone.
+- **Schema** (`supabase/schema.sql`, still idempotent; **the principal re-runs it**): `synapse_rooms` gains `match_no`,
+  `match_seed`, `match_at`; new tables `synapse_round_brains` (a player's brain per round, deleted with the player
+  until frozen) and `synapse_round_entries` (each round's frozen entries), both with row-level security and no grants,
+  deleted with the room (the 30-day purge covers them); new functions `synapse_start_match`,
+  `synapse_submit_round_brain`, `synapse_round_entries` (anon) and helpers `synapse_round_start`,
+  `synapse_round_freeze`, `synapse_match_over` (not callable); `synapse_join_room` returns when you joined and
+  `synapse_room_state` the match and each player's join time. Tested on a local Postgres 16 (stub `anon` and
+  `authenticated` roles, pgcrypto in `extensions`, a stub `cron` schema; the `pg_cron` line left out there): run over
+  the previous version with a room and a race in it, then twice more, and twice on an empty database, with no errors;
+  then as `anon`: every refusal above, entries null before the freeze and identical after, a brain withdrawn by
+  leaving before the freeze, a new match clearing the last one's brains, the helpers and tables not reachable.
+  `tests/unit/schedule.test.ts` checks the schema's numbers against `CONFIG`. `scripts/checks/standin.ts` implements
+  the same rules.
+- **Calls made:** hand in 3 s and countdown 5 s (the plan names neither: 3 s covers the stop and the request, the
+  race takes about 0.4 s to compute for 96 brains); Start match needs 2 in the room (as Start race did); round 1's
+  build starts at the press, without a lead-in. The single-race functions (`synapse_submit_brain`,
+  `synapse_start_race`, `synapse_race_entries`) and their columns are kept, because the build on `main` still calls
+  them; drop them once `main` has moved on.
+- **check:multiplayer** now plays a whole match, jumping ahead with `__phase.skipTo` (in a room it moves that client's
+  view of the server's clock as far; the check moves the stand-in's clock to match, and holds the standings while it
+  reads them): Start match → round 1's build on both (60 s, no Train), Train by itself, no buttons, the best brain
+  handed in at the train phase's end, refusals for a later round and after the freeze, the race = Node on every page
+  (97 in; one bot past the budget left out, one with nothing in at 0 m), Go at the server's moment, the 100-car
+  drawing and sidebar checks, standings = Node with no buttons for 8 s; a latecomer in round 2's build watches, then
+  plays rounds 3–5; Main menu asks "Leave the room?"; the final standings = Node's totals with Play again for the host
+  only; Play again starts match 2 on every page; Leave. The latecomer's page makes its 3-D stage first (a vs CPU
+  round's race, then Main menu): SwiftShader took about 25 s to make one mid-match, while the server's clock ran on.
+  Noted, not fixed: a page whose first tap is in a `?view=race` race (checks only) gets a music error, as the audio
+  clock is still near 0.
+- **Checked** (the affected systems): types, purity, unit, determinism, check:multiplayer, check:race (shared standings,
+  race view and phase timer), check:title (main.ts routing). Not run: workbench, training, drive, preview, legal,
+  audio, icons, bench.

@@ -178,7 +178,8 @@ export const CONFIG = {
     wrongWayTicks: 60, // races: a car whose progress has fallen this many ticks in a row is put back (tracks plan §4)
   },
 
-  // vs CPU as five rounds (docs/plans/2026-11-05-rounds.md): build → train → race each round, weights carried over.
+  // vs CPU and Multiplayer as five rounds (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): build → train → race
+  // each round, fresh weights every round.
   rounds: {
     count: 5,
     /** Build time per round (s): round 1 from scratch, then upgrades. */
@@ -198,6 +199,14 @@ export const CONFIG = {
      */
     budgets: [20, 28, 40, 52, 64],
     nextAfter: 8, // s: the standings, then the next build starts by itself
+    hold: 1.5, // s: the cars hold this long after the race's end, then the standings (or results) show
+    /**
+     * Multiplayer on the same rounds (match-flow v2 plan §M2): every phase starts at a fixed time on the server's clock
+     * (common/schedule.ts; supabase/schema.sql has the same numbers). After training, `handIn` s to hand the brain in,
+     * then the server freezes the round's entries as the race's countdown begins, `lead` s before Go (each client
+     * fetches them, computes the race and shows the grid and 5…1 meanwhile).
+     */
+    room: { handIn: 3, lead: 5 },
   },
 
   race: {

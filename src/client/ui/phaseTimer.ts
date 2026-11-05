@@ -88,6 +88,20 @@ export function setPhaseSub(text: string): void {
 }
 export const phaseShowing = (): boolean => state !== 'off';
 
+/**
+ * A Multiplayer match's timers follow the server's clock: set the running countdown to `seconds` left if it is more
+ * than 0.3 s off (a better clock estimate, or a check's skip). No-op unless one is running.
+ */
+export function retimePhase(seconds: number): void {
+  if (state !== 'running') return;
+  const want = performance.now() + seconds * 1000;
+  if (Math.abs(want - deadline) > 300) { deadline = want; shown = -1; show(); }
+}
+
+/** A Multiplayer match follows the server's clock: a check's skipTo moves that clock on too (ms skipped). */
+let skipped: ((ms: number) => void) | null = null;
+export function onPhaseSkip(fn: ((ms: number) => void) | null): void { skipped = fn; }
+
 /** Cancel it (the phase ended early, or the player left). */
 export function stopPhaseTimer(): void {
   clearInterval(loop); clearTimeout(upTimer);
@@ -99,13 +113,21 @@ export function stopPhaseTimer(): void {
 // for checks (Playwright): the countdown as shown, and a way to jump it ahead (phases are wall-clock seconds)
 declare global {
   interface Window {
-    __phase?: { state: State; label: string; left: number; text: string; red: boolean; pulse: boolean; skipTo(seconds: number): void };
+    /** `ms` is the time left to 0; skipTo returns the ms it skipped (a room's checks move the server's clock as much). */
+    __phase?: { state: State; label: string; left: number; ms: number; text: string; red: boolean; pulse: boolean; skipTo(seconds: number): number };
   }
 }
 Object.defineProperty(window, '__phase', {
   get: () => ({
-    state, label: node?.label.textContent ?? '', left: state === 'running' ? left() : 0, text: node?.num.textContent ?? '',
-    red: node?.box.classList.contains('red') ?? false, pulse: node?.box.classList.contains('pulse') ?? false,
-    skipTo: (s: number) => { if (state === 'running') { deadline = performance.now() + s * 1000; show(); } },
+    state, label: node?.label.textContent ?? '', left: state === 'running' ? left() : 0, ms: state === 'running' ? deadline - performance.now() : 0,
+    text: node?.num.textContent ?? '', red: node?.box.classList.contains('red') ?? false, pulse: node?.box.classList.contains('pulse') ?? false,
+    skipTo: (s: number) => {
+      if (state !== 'running') return 0;
+      const was = deadline;
+      deadline = performance.now() + s * 1000;
+      skipped?.(was - deadline);
+      show();
+      return was - deadline;
+    },
   }),
 });
