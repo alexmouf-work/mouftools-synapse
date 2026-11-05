@@ -9,7 +9,7 @@ import {
   addSense, ACT_CODE, insertLayer, removeLayer, removeSense, restRate, setLayerFn, setLayerSize, transfer, weightCount,
   type EditResult,
 } from '../../../common/sim/brain';
-import { cellMax, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
+import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode } from '../../../common/sim/energy';
 import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
 import { biasIndex, columns, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
@@ -30,7 +30,9 @@ const el = (t: string, a: Attrs = {}, p?: Element): SVGElement => {
   return e;
 };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-const MODE: Mode = 'sandbox'; // vs CPU and Multiplayer will pass 'match' (refuses a design past 100% flat out)
+/** sandbox: no energy limit, Train asks how many generations · match (vs CPU, B7): a design past 100% flat out is
+ * refused, and Train spends the fixed budget T straight away (no popup), so every racer trains on the same budget. */
+let MODE: Mode = 'sandbox';
 
 /** Functions as the designer shows them (one per hidden layer; wheels fixed to tanh). */
 export const FX: Record<Act, { n: string; g: string }> = {
@@ -496,6 +498,14 @@ export function setActive(on: boolean): void {
   active = on;
   if (on) { fit(); buildTray(); buildTrainers(); render(); }
 }
+/** vs CPU opens the designer in match mode, Sandbox in sandbox mode. A brain past the limit says so on entering. */
+export function setDesignerMode(m: Mode): void {
+  MODE = m;
+  document.body.classList.toggle('match', m === 'match');
+  const why = energyRefusal(spec(), m);
+  if (why) toast(`${why} Remove cells to race.`, 4000);
+}
+export const designerMode = (): Mode => MODE;
 export function replaceSaved(s: Saved): void { W.saved = s; persist(); if (active) render(); }
 
 export function start(o: { onTrain: (s: Saved, generations: number, temperature: number) => void }): void {
@@ -503,7 +513,15 @@ export function start(o: { onTrain: (s: Saved, generations: number, temperature:
   const sl = $('tSlide') as HTMLInputElement;
   sl.min = String(TEMP_MIN); sl.max = String(TEMP_MAX); sl.step = String(TEMP_STEP);
   sl.addEventListener('input', () => { W.temp = Number(sl.value); showTemp(); });
-  $('train').onclick = () => { buildGens(); showTemp(); ($('trainDlg') as HTMLDialogElement).showModal(); };
+  $('train').onclick = () => {
+    if (MODE === 'match') { // the fixed budget, no popup (temperature ×1)
+      const why = energyRefusal(spec(), 'match');
+      if (why) { toast(`${why} Remove cells to race.`, 4000); return; }
+      onTrain(W.saved, 0, 0);
+      return;
+    }
+    buildGens(); showTemp(); ($('trainDlg') as HTMLDialogElement).showModal();
+  };
   $('tdNo').onclick = () => ($('trainDlg') as HTMLDialogElement).close();
   $('tdGo').onclick = () => { ($('trainDlg') as HTMLDialogElement).close(); onTrain(W.saved, W.gens, W.saved.trainer === 'backprop' ? 0 : W.temp); };
   $('reset').onclick = () => ($('confirm') as HTMLDialogElement).showModal();

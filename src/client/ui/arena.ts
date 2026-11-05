@@ -1,4 +1,4 @@
-// The arena: one full-screen canvas and one 3-D stage, shared by the training view and the drive view (each with
+// The arena: one full-screen canvas and one 3-D stage, shared by the training, drive and race views (each with
 // its own overlay). The stage is created on first use (three.js loads then) and kept; if WebGL is unavailable the
 // views carry on without it and say so.
 import type { Stage } from '../render/stage';
@@ -32,14 +32,15 @@ export async function getStage(): Promise<Stage | null> {
   return stage;
 }
 
-/** Every change of race view (training ↔ drive, a new run, a new track) starts from silence: no leftover effects. */
-export function showArena(which: 'train' | 'drive'): void {
+/** Every change of race view (training ↔ drive ↔ race, a new run, a new track) starts from silence: no leftover effects. */
+export function showArena(which: 'train' | 'drive' | 'race'): void {
   stopRacingSounds();
   document.body.classList.add('training');
   el('arena').hidden = false;
   el('arena').classList.toggle('train', which === 'train'); // the training view's camera sits right of its panel
   el('trainOverlay').hidden = which !== 'train';
   el('driveOverlay').hidden = which !== 'drive';
+  el('raceOverlay').hidden = which !== 'race';
   stage?.resize();
 }
 

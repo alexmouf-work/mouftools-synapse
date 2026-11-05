@@ -1,5 +1,6 @@
-// Title screen check (B2c), headless Chromium: the page opens on the title; Multiplayer (blue) and vs CPU (yellow)
-// are disabled with "soon", Sandbox (plain) opens the designer and the designer's wordmark comes back; the rail along
+// Title screen check (B2c, B7), headless Chromium: the page opens on the title; Multiplayer (blue) is disabled with
+// "soon"; vs CPU (yellow) opens the designer in match mode and Sandbox (plain) in sandbox mode, and the designer's
+// wordmark comes back; the rail along
 // the foot carries Privacy · Terms · Cookies (resolving) and the music credits, and the designer's rule strip no longer
 // does; the storage notice sits below the rail, never over it; an overlap audit of the card, its buttons and the rail
 // at 1440×900 and 844×390, light and dark; console clean. Screenshots → out/title/.
@@ -49,7 +50,7 @@ async function main() {
       return { text: b.textContent?.replace(/\s+/g, ' ').trim(), disabled: b.disabled, bg: cs.backgroundColor, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() };
     }));
     check(st[0].text === 'Multiplayer soon' && st[0].disabled && st[0].bg === 'rgb(47, 111, 222)', `Multiplayer: blue, disabled, "soon" (${st[0].bg})`);
-    check(st[1].text === 'vs CPU soon' && st[1].disabled && st[1].bg === 'rgb(255, 194, 26)', `vs CPU: yellow, disabled, "soon" (${st[1].bg})`);
+    check(st[1].text === 'vs CPU' && !st[1].disabled && st[1].bg === 'rgb(255, 194, 26)', `vs CPU: yellow, enabled (${st[1].bg})`);
     check(st[2].text === 'Sandbox' && !st[2].disabled && st[2].bg === 'rgba(0, 0, 0, 0)', 'Sandbox: plain, enabled');
     await page.screenshot({ path: `${OUT}/title-1440.png` });
 
@@ -62,9 +63,14 @@ async function main() {
     }
     check(await page.locator('.rulebar .legal-links').count() === 0, 'the Learning Rule strip has no legal line any more');
 
-    // 3. Sandbox → the designer → the wordmark → the title
+    // 3. vs CPU → the designer in match mode → the wordmark → the title; Sandbox → the designer in sandbox mode → back
+    await page.click('#toCpu');
+    check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.evaluate(() => document.body.classList.contains('match')), 'vs CPU opens the designer in match mode');
+    await page.click('#toTitle');
+    check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()), 'the wordmark goes back to the title from vs CPU');
     await page.click('#toSandbox');
-    check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.locator('#net g.cell').count() > 0, 'Sandbox opens the designer');
+    check(await page.locator('.app').isVisible() && !(await page.locator('#title').isVisible()) && await page.locator('#net g.cell').count() > 0
+      && !(await page.evaluate(() => document.body.classList.contains('match'))), 'Sandbox opens the designer (sandbox mode)');
     await page.click('#toTitle');
     check(await page.locator('#title').isVisible() && !(await page.locator('.app').isVisible()), 'the designer\'s "Synapse" wordmark goes back to the title');
     await page.context().close();

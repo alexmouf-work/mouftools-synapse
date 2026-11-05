@@ -31,7 +31,9 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule the drive view's beams also use. |
 | `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, landmark, boundary range. |
-| `sim/race.ts` | `Runner`: one car for N ticks, optional recording of frames and activations, early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
+| `sim/race.ts` | `Runner`: one car for N ticks (from the start line, or a given start such as a grid slot), optional recording of frames and activations (or frames only), early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
+| `sim/match.ts` | vs CPU races (B7): the race seed's track (`raceTrackSeed`, a race track) and grid order (`gridOrder`), grid slots two by two behind the line (`gridPlace`, `gridCar`), `runRace` (every car its own run for the 120 s cap; finish time to a fraction of a tick after 2 laps), `rank` (finish time, then progress at the end, then slot) and the race hash. |
+| `sim/cpu.ts` | The nine CPU brains' names and the check every stored set passes (`cpuBrains`: nine valid genomes within the match energy limit). |
 | `sim/teacher.ts` | The scripted pure-pursuit teacher backprop copies (`teacherWheels`), and `driveTeacher` (the teacher alone, a reference for tests and the bench). |
 | `train/trainer.ts` | Trainer interface, events, probe channels, registry with each trainer's label and refusal (`trainerRefusal`). |
 | `train/env.ts` | Metered environment: the only way a trainer reaches the sim; throws before any overrun of T. |
@@ -113,6 +115,25 @@ boundary ray skips the other layer's walls (`castRay(…, skip)`, `hiddenLayer`)
 its parapets and a car on it doesn't see the road below. Outside the crossing a ray sees every wall, so nothing
 changes at a deck's end. A car finds its sample within ±3 of its last one and hits its own road's wall, so it never
 jumps or cuts across. No start, gate or pad near the crossing.
+A race track (`generateTrack(seed, true)`, B7) also keeps its pads off the grid and the first 50 m: no pad sample
+from 40 m behind the line (`CONFIG.match.clearBehind`; the back row of ten sits 36 m back) to 50 m after it
+(`clearAhead`). Only races ask for race tracks, so training and drive tracks (and their goldens) are unchanged.
+
+### Races (vs CPU, B7; tracks plan §4)
+`runRace(genomes, raceSeed)`: the race seed derives the track (any family) and a seeded shuffle of grid slots. Slot s
+is in row ⌊s/2⌋, 4 m + 8 m per row behind the line (rounded to whole samples), 2.5 m left (even slots) or right (odd) of
+the centreline, facing along the track; its progress starts negative, so it counts from the line. Cars pass through
+each other: each car is its own `Runner` run for the whole cap (2400 ticks, 120 s; after the flag it carries on), so a
+car's recording never depends on the others. A car finishes when its progress reaches 2 laps; its finish time is the
+tick plus the fraction of the last tick before the line. The race ends with the last finisher, else at the cap.
+Ranking: finish time, then progress at the end, then slot. The race hash covers the track, every car's frames, finish
+and progress, and the ranking (determinism golden `match`: the nine CPU brains, one race per golden seed).
+
+The nine CPU brains (`src/assets/cpu/brains.json`, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008) are
+trained with evolution from scratch at budgets of 5, 10, 17, 25, 35, 47, 60, 80 and 100% of T, alternating a random
+starter (seeds 11–14) and a sighted design (more boundary vector cells, a speed cell, wider or deeper layers), named
+Axon, Dendrite, Soma, Myelin, Glia, Cortex, Ganglion, Thalamus and Hippo in that order. Each is within the match energy
+limit.
 
 ### Training
 `runPhase(executor, spec, seed)` derives the phase's two training tracks and the unseen track from the seed; builds a `MeteredEnv` over an `Executor`; runs the trainer until it is done; hashes
@@ -199,9 +220,28 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   `?quality=low|high` overrides the renderer's choice.
 - `ui/title/` — the title screen (B2c; a port of `reference/title-screen-mockup.html`), which the page opens on: the
   card ("Synapse", "Build a brain. Train it. Race it.", Multiplayer in blue and vs CPU in yellow, both disabled with
-  "soon" until B7/B8, Sandbox plain), a quiet wired brain firing behind it (still under reduced motion), and the rail
-  along its foot with Privacy · Terms · Cookies and the music credits (above the storage notice while it shows).
-  Sandbox opens the designer; the designer's "Synapse" wordmark comes back. `?view=sandbox|train|drive` skip it.
+  "soon" until B8, vs CPU live since B7, Sandbox plain), a quiet wired brain firing behind it (still under reduced
+  motion), and the rail along its foot with Privacy · Terms · Cookies and the music credits (above the storage notice
+  while it shows). Sandbox opens the designer; vs CPU opens it in match mode; the designer's "Synapse" wordmark comes
+  back. `?view=sandbox|cpu|train|drive|race` skip it.
+- vs CPU (B7): the designer in match mode (`setDesignerMode('match')`, body class `match`, the lobby's building
+  music): an edit past 100% flat out is refused, and a loaded brain past it says so; Train skips the generations
+  popup and trains the design from scratch (every weight, bias and field 0, a fresh seed, phase 0, temperature ×1) on
+  the fixed budget T, as the CPU brains did, so no racer brings extra training. The trained brain is saved like any
+  run. The training view then offers Race and Back (no Drive, no Keep training). `ui/race/raceView.ts`: the race is
+  computed first (`runRace`, you as car 0 with your node outputs recorded, the nine CPU brains after you), then played:
+  the grid (every car on its slot, the players listed in grid order), the drive view's countdown (5…1, Go on the
+  music), 2 laps capped at 120 s, a status panel (position, lap, time, the standings live with each car's colour and
+  finish time) and the corner map (`training/map.ts`: every car a dot, yours ringed), then the results over the scene
+  (place, name, time, distance; "You won!" or your place) with Race again (a new race seed) and Back (the match
+  designer); Skip to results jumps there; Back in the panel leaves mid-race. Your car is the drive rig's yellow car
+  with its beams and engine; the others are solid cars in their own colours (`DriveRig.setRivals` / `placeRivals`, at
+  most `MAX_RIVALS` = 11, made once and reused; a car within 8 m of the chase camera is not drawn, or the one behind
+  yours on the grid fills the screen). Finishing first plays the winner music as you cross the line (`win()`), or at
+  the results if you lead at the cap. `?race=` picks the first race seed (the checks). The drive and race views'
+  panels, buttons, progress bars and the live-brain card have square corners, as the rest of the site (principal
+  2026-11-04: "use square corners rather than squircles across the whole site"; the designer's bin stays round by its
+  own ruling).
 - `ui/designer/` — the brain designer (the workbench; B3), a port of `reference/brain-v2-mockup.html` (the UI spec)
   onto the engine: `designer.css` (the mock-up's styles), `designer.ts` (layout in equal column regions, the tray of
   senses, sense cells as 3-D symbol circles, lines of identical neurons with a function header, the car whose wheels
@@ -298,7 +338,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
 - `audio/` — sound (plan: `docs/plans/2026-11-04-sound.md`); client only, src/common has none. `audio.ts`: one
   AudioContext created on the first pointerdown, keydown or touchstart (browsers need a gesture), master → music and
   effects buses, two toggles (`button.sound.music`, a note, mutes the music bus; `button.sound.sfx`, a speaker, mutes
-  the effects bus; pressed = on; a pair on the title, in the top bar and in both views' action rows; the master stays
+  the effects bus; pressed = on; a pair on the title, in the top bar and in the training, drive and race views' action rows; the master stays
   at 1; localStorage `synapse.sound` as `{"music":true,"sfx":true}`, the old `off` / `on` read as both), no
   suspending in a hidden or unfocused tab (the toggles are the only off switches), level meters on the master and
   each bus for the checks, `ctxToPerf` (context time → when it is heard, via `getOutputTimestamp`). `music.ts`: three
@@ -318,6 +358,8 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   0 (hashes unchanged); in the training view the highlighted car (then the champion) has a quieter engine.
 
 ## scripts
+- `scripts/sim/cpuBrains.ts` — trains the nine CPU brains (B7) and writes `src/assets/cpu/brains.json` (about 40 s on
+  4 workers), printing each one's median progress in 120 s alone on ten race tracks.
 - `scripts/sim/bench.ts` — the S1 benchmark over seeds 1–20 (report, fitness CSV, path SVGs into ignored `out/bench/`).
 - `scripts/checks/` — `purity.ts`, `determinism.ts` (+ `golden.json`, written only by `--update`; a short phase of
   every trainer, inline = 4 workers), `bench.ts`
@@ -352,13 +394,20 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   Go on the drop, drive hash = Node; back → the lounge; the music never silent for over 0.8 s from title to back;
   `win()` plays the winner then the lounge again; leaving training, a countdown or a drive leaves no racing effect;
   a hidden tab keeps playing; the toggles are independent (music off: the music bus silent, blips and engine heard;
-  effects off: no blip or engine, the music heard), agree across all four pairs and survive a reload; the old
+  effects off: no blip or engine, the music heard), agree across all five pairs and survive a reload; the old
   `off` / `on` migrates; locked, the countdown runs on the plain timer; console clean.
-- `scripts/checks/title.ts` — the title in headless Chromium: it opens first; Multiplayer (blue) and vs CPU (yellow)
-  disabled with "soon"; Sandbox → designer → wordmark → title; the rail's links resolve and carry the credits, the
+- `scripts/checks/title.ts` — the title in headless Chromium: it opens first; Multiplayer (blue) disabled with
+  "soon", vs CPU (yellow) enabled; vs CPU → the match designer → wordmark → title; Sandbox → designer (sandbox mode); the rail's links resolve and carry the credits, the
   rule strip doesn't; an overlap audit at 1440×900 and 844×390, light and dark; the notice sits below the rail.
+- `scripts/checks/race.ts` — vs CPU in headless Chromium: the match designer refuses a design past 100% flat out;
+  Train skips the popup and trains from scratch on the budget (saved = Node's run); training ends with Race and Back;
+  ten cars on the grid where `gridCar` puts them, the players in grid order, the countdown, race hash and ranking =
+  Node `runRace`, every car where Node has it mid-race, ten map dots, standings, render smoke, bloom audits on the grid
+  and mid-race, Skip → the results table = Node, Race again (new seed), Back (still vs CPU); a race you win (the
+  strongest CPU brain as yours) plays the winner music as you cross the line; 844×390 layout; screenshots to
+  `out/race/`.
 - `npm run check` runs types, purity, unit + contract tests, determinism, the bench time check, and the workbench,
-  training, drive, production-build, legal, audio, icons and title checks.
+  training, drive, production-build, legal, audio, icons, title and race checks.
 
 ## Deploy
 Static site. `vite build` → `dist/` (`index.html`, hashed `assets/`: the app ~70 kB JS, the 3-D stage chunk with

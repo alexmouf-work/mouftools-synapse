@@ -69,14 +69,19 @@ export const FAMILIES: readonly Family[] = ['loop', 'kidney', 'hairpin', 'chican
 /** The family a seed's track belongs to (every sub-seed keeps it). */
 export const familyOf = (seed: number): Family => FAMILIES[new Rng(derive(seed >>> 0, TAG.family)).int(FAMILIES.length)];
 
-export function generateTrack(seed: number): Track {
-  return trackOfFamily(seed, familyOf(seed));
+/**
+ * The track of a seed. `race` (vs CPU and Multiplayer, tracks plan §4): no boost pad on the grid behind the line or
+ * in the first 50 m after it (CONFIG.match.clearBehind / clearAhead), so a race track can differ from the same seed's
+ * training or drive track; the races only ever ask for race tracks.
+ */
+export function generateTrack(seed: number, race = false): Track {
+  return trackOfFamily(seed, familyOf(seed), race);
 }
 
 /** The track a seed would give in a given family (tests and previews; generateTrack uses the seed's own family). */
-export function trackOfFamily(seed: number, family: Family): Track {
+export function trackOfFamily(seed: number, family: Family, race = false): Track {
   for (let sub = 0; sub < C.maxAttempts; sub++) {
-    const t = attempt(seed >>> 0, sub, family);
+    const t = attempt(seed >>> 0, sub, family, race);
     if (t) return t;
   }
   throw new Error(`track: no valid ${family} track for seed ${seed} after ${C.maxAttempts} attempts`);
@@ -209,7 +214,7 @@ function familyPoints(f: Family, rng: Rng): Pts {
 
 const circ = (a: number, b: number, n: number): number => { const d = a > b ? a - b : b - a; return d < n - d ? d : n - d; };
 
-function attempt(seed: number, sub: number, family: Family): Track | null {
+function attempt(seed: number, sub: number, family: Family, race: boolean): Track | null {
   const rng = new Rng(derive(seed, TAG.track, sub));
   const pts = familyPoints(family, rng);
   const cx = Float64Array.from(pts.x), cy = Float64Array.from(pts.y);
@@ -289,12 +294,14 @@ function attempt(seed: number, sub: number, family: Family): Track | null {
     crossing = upperIs === 1 ? { lower: cb, upper: ca } : { lower: ca, upper: cb };
   }
 
-  // pads on the calmest windows off the crossing, far enough apart
+  // pads on the calmest windows off the crossing (and, for a race, off the grid and the first 50 m), far enough apart
   const w = Math.round(C.padLen / ds);
+  const behind = Math.ceil(CONFIG.match.clearBehind / ds), ahead = Math.ceil(CONFIG.match.clearAhead / ds);
+  const onGrid = (j: number): boolean => { const d = (j - startIdx + n) % n; return d <= ahead || n - d <= behind; };
   const calm: { i: number; c: number }[] = [];
   for (let i = 0; i < n; i++) {
     let c = 0, open = true;
-    for (let k = 0; k < w; k++) { const j = (i + k) % n; c += Math.abs(curv[j]); open &&= !zone[j]; }
+    for (let k = 0; k < w; k++) { const j = (i + k) % n; c += Math.abs(curv[j]); open &&= !zone[j] && !(race && onGrid(j)); }
     if (open) calm.push({ i, c });
   }
   calm.sort((a, b) => (a.c - b.c) || (a.i - b.i));

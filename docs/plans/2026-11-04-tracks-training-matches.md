@@ -178,6 +178,36 @@ Built (B6, 2026-11-04): the panel, the map, the big number and the playback as a
     deterministic and fair.
   - Race: 2 laps, capped at 120 s. Ranked by finish time, then by progress at the cap. First place plays the winner
     music.
+- **Built (B7, 2026-11-05)** to those calls; specifics and my calls (each can be overturned):
+  - The match designer refuses edits past 100% flat out (as planned) and, if the brain it opens with is already past
+    it, says so and won't train it. Train goes straight to training (no popup) at temperature ×1 (the slider lives
+    in the popup). **My call:** vs CPU training always starts the design from scratch (weights, biases and learned
+    fields at 0, a fresh seed, phase 0), as the CPU brains did, so a brain trained longer in the sandbox brings no
+    extra training to a race; the result is saved as the brain (the same save as the sandbox's). The training view
+    ends with Race and Back; Keep training and Drive are hidden (more training would break the equal budget).
+  - The grid: front row 4 m behind the line (**my call**: the calls give the spacing, not the front row), rows 8 m
+    apart rounded to whole samples (~2 m), ±2.5 m across, even slots on the left. A race track keeps pads from 40 m
+    behind the line (the back row is 36 m back) to 50 m after it; it is `generateTrack(seed, true)`, so training and
+    drive tracks and every existing golden are unchanged.
+  - Progress counts from the line (a car on the grid starts negative), so 2 laps is 2 × the lap from the line, and a
+    back-row car drives its extra metres, as on a real grid. Finish time is to a fraction of a tick. Every car drives
+    the whole 120 s (after the flag it carries on); the race ends with the last finisher or at the cap; then the
+    results. **My additions:** Skip to results, and Back in the race panel (leave mid-race).
+  - Drawn: your yellow car with its beams; the CPUs as solid cars, one colour each (also their swatch in the
+    standings). A car within 8 m of the chase camera isn't drawn (on the grid, the car behind yours filled the
+    screen). The map is the training view's, every car a dot, yours ringed.
+  - Winner music: as you cross the line first; if no one finishes and you lead at the cap, when the results show.
+  - The CPU brains (`scripts/sim/cpuBrains.ts`, ~40 s): budgets 5, 10, 17, 25, 35, 47, 60, 80, 100% of T, alternating
+    random starters and four sighted designs (3–5 boundary vector cells, a speed cell or a landmark cell, one or two
+    layers of 4–6 neurons; 11–25% flat out). Median progress in 120 s alone from pole over ten race tracks: Axon 2085 m,
+    Dendrite 4223, Soma −4696, Myelin −5409, Glia 4688, Cortex 4992, Ganglion −5287, Thalamus 1183, Hippo 5779 (two
+    laps ≈ 2.5–3.8 km).
+  - **Worth a ruling:** three of the nine (Soma, Ganglion, Myelin) drive the wrong way round on most race tracks, and
+    the rest on some. They lap their own training tracks forwards; on a new track nothing in their senses says which
+    way the lap goes (only the landmark cell sees the line), so a brain that learned "wall on the left" turns round
+    when the track is the other way. Player brains do the same (it is the S1 (b) gap, B5). A car going backwards ranks
+    by its (negative) distance, shown as such in the results. Not tuned or hand-picked: the brains are what the
+    script's fixed seeds give.
 - **A countdown before every race** (both modes): the starting grid, two by two behind the line, the players listed,
   then 5…1, Go.
 - **Up to 100 cars per match.** Every client re-runs the whole race (the sim is deterministic), so fairness holds.

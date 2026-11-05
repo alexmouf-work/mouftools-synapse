@@ -8,7 +8,7 @@
 // evaluated so far is saved (the generation being evaluated is dropped), and Drive and Keep training appear.
 // Results never depend on speed: rendering, the worker count and the recording only change how it looks.
 import { CONFIG } from '../../../common/config';
-import { compile, genomeHash, nodeRate, weightCount, type Net } from '../../../common/sim/brain';
+import { compile, genomeHash, nodeRate, weightCount, zeroGenome, type Net } from '../../../common/sim/brain';
 import { newRecording, Runner } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { generateTrack, type Track } from '../../../common/sim/track';
@@ -20,7 +20,7 @@ import type { Stage } from '../../render/stage';
 import { Engine } from '../../audio/sfx';
 import { getStage, hideArena, showArena } from '../arena';
 import { BrowserPool } from '../../workers/pool';
-import type { Saved } from '../designer/store';
+import { NO_TRAINING, type Saved } from '../designer/store';
 import { BrainPanel } from '../drive/brainPanel';
 import { SpikeTrains } from '../drive/spikes';
 import { TrackMap } from './map';
@@ -38,6 +38,8 @@ export interface TrainingHooks {
   back(): void;
   /** Leave for the drive view with this (trained) brain. */
   drive(s: Saved): void;
+  /** vs CPU: race this (trained) brain. */
+  race?(s: Saved): void;
 }
 
 export interface TrainingStatus {
@@ -123,24 +125,32 @@ const engine = new Engine(0.35);
 const lives = new Map<number, Live>();
 let champLive: Live | null = null;
 
-/** Open the view and train the given brain; resolves when the run ends (done or stopped). */
-export async function openTraining(saved: Saved, generations: number, temperature: number, hooks: TrainingHooks): Promise<void> {
+/**
+ * Open the view and train the given brain; resolves when the run ends (done or stopped). `match` (vs CPU, B7): the
+ * design trains from scratch (every weight, bias and field at 0, a fresh seed, phase 0) on the fixed budget T, as the
+ * CPU brains did, so no racer brings extra training; it ends with Race and Back (no Keep training, no Drive).
+ */
+export async function openTraining(saved: Saved, generations: number, temperature: number, hooks: TrainingHooks, match = false): Promise<void> {
   if (running) return;
   running = true;
   stopAsked = false;
   const p = params();
-  const seed = p.seed ?? saved.train.seed ?? newSeed();
-  const phase = saved.train.phases;
-  const temp = saved.trainer === 'backprop' ? 0 : temperature;
-  const genome = saved.genome;
+  const seed = p.seed ?? (match ? null : saved.train.seed) ?? newSeed();
+  const phase = match ? 0 : saved.train.phases;
+  const temp = saved.trainer === 'backprop' || match ? 0 : temperature;
+  const genome = match ? zeroGenome(saved.genome.spec) : saved.genome;
+  if (match) saved = { ...saved, train: NO_TRAINING };
   // weights and biases all 0 (untrained, or edited since): from scratch; the cells' learned fields are kept either way
   const start: 'fresh' | 'carry' = genome.w.slice(0, weightCount(genome.spec)).every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
-  const T = p.T ?? phaseBudget(generations);
+  const T = p.T ?? (match ? CONFIG.train.T : phaseBudget(generations));
+  // match: the generations the budget allows (evolution's worst case; a gradient trainer's fitness checks)
+  if (match) generations = Math.max(1, saved.trainer === 'evolution' ? Math.floor(T / phaseBudget(1)) : Math.floor(T / CONFIG.train.grad.evalEvery) + 1);
   const seeds = phaseSeeds(seed, phase);
   lives.clear(); champLive = null;
 
   showArena('train');
+  matchRun = match;
   setButtons('running');
   note('Training…');
   $('tvGen').textContent = `gen 0 of ${generations}`;
@@ -173,7 +183,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   let result: PhaseResult;
   try {
     result = await runPhase(thePool, genome.spec, seed, {
-      T, generations, temperature: temp, trainer: saved.trainer, phase, start, genome, now: () => performance.now(),
+      T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, now: () => performance.now(),
       stepTicks: (env) => env.worstCase(pop),
       // every generation records its seeded handful (display only)
       beforeStep: () => { if (stage) { const g = gens.length + 1; thePool.record = (count) => showPick(seed, phase, g, K, count); } },
@@ -189,6 +199,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
           setTimeout(() => prepare(paths, e.gen, genome, status), 0);
         }
         status.gen = e.gen; status.ticksUsed = e.ticksUsed;
+        generations = Math.max(generations, e.gen); // match: the budget's estimate, never below what ran
         $('tvGen').textContent = `gen ${e.gen} of ${generations}`;
         drawGraph(gens, generations);
       },
@@ -227,12 +238,15 @@ export async function openTraining(saved: Saved, generations: number, temperatur
       stage.swarm.finish(lap);
     }
     $('tvGen').textContent = `gen ${evaluated} of ${generations}`;
-    note(result.stopped
-      ? `Stopped at gen ${evaluated}: the best brain so far is saved. Keep training continues from it on new tracks.`
-      : `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain is saved; Keep training continues from it on new tracks.`);
+    note(match
+      ? `${result.stopped ? `Stopped at gen ${evaluated}` : `Done in ${(result.trainMs / 1000).toFixed(1)} s`}: the best brain is saved. Race it against nine CPU brains.`
+      : result.stopped
+        ? `Stopped at gen ${evaluated}: the best brain so far is saved. Keep training continues from it on new tracks.`
+        : `Done in ${(result.trainMs / 1000).toFixed(1)} s on ${workers} worker${workers === 1 ? '' : 's'}. The best brain is saved; Keep training continues from it on new tracks.`);
     setButtons('done');
     $('tvAgain').onclick = () => { void openTraining(next, generations, temperature, hooks); };
     $('tvDrive').onclick = () => { if (running) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); hooks.drive(next); };
+    $('tvRace').onclick = () => { if (running || !hooks.race) return; cancelAnimationFrame(raf); raf = 0; engine.stop(); lives.clear(); champLive = null; hooks.race(next); };
   }
   $('tvBack').onclick = () => close(hooks);
 }
@@ -331,11 +345,14 @@ function loop() {
   raf = requestAnimationFrame(tick);
 }
 
+/** This run is vs CPU's (ends with Race instead of Drive and Keep training). */
+let matchRun = false;
 function setButtons(state: 'running' | 'done' | 'stopped') {
   $('tvStop').hidden = state !== 'running';
   $('tvBack').hidden = state === 'running';
-  $('tvAgain').hidden = state !== 'done';
-  $('tvDrive').hidden = state !== 'done';
+  $('tvAgain').hidden = state !== 'done' || matchRun;
+  $('tvDrive').hidden = state !== 'done' || matchRun;
+  $('tvRace').hidden = state !== 'done' || !matchRun;
   $('tvStop').onclick = () => { stopAsked = true; ($('tvStop') as HTMLButtonElement).disabled = true; pool?.abort(); };
   ($('tvStop') as HTMLButtonElement).disabled = false;
 }

@@ -29,10 +29,11 @@ export interface Recording {
   ticks: number;
 }
 
-export function newRecording(net: Net, ticks: number): Recording {
+/** A recording of up to `ticks` ticks; without `act` it keeps no node outputs (a race's other cars: frames only). */
+export function newRecording(net: Net, ticks: number, act = true): Recording {
   return {
     x: new Float64Array(ticks), y: new Float64Array(ticks), hdg: new Float64Array(ticks), v: new Float64Array(ticks),
-    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(ticks * net.nNodes), ticks: 0,
+    energy: new Float64Array(ticks), wall: new Uint8Array(ticks), prog: new Float64Array(ticks), act: new Float64Array(act ? ticks * net.nNodes : 0), ticks: 0,
   };
 }
 
@@ -41,6 +42,8 @@ export interface RunOpts {
   /** Stop on stall / backwards (training episodes). */
   earlyStop: boolean;
   record?: Recording;
+  /** Where the car starts (a race's grid slot); default at rest on the start line. */
+  start?: CarState;
 }
 
 export interface RunResult {
@@ -57,14 +60,14 @@ export class Runner {
 
   run(net: Net, t: Track, o: RunOpts): RunResult {
     if (this.vals.length < net.nNodes) this.vals = new Float64Array(net.nNodes);
-    const c = startCar(t);
+    const c = o.start ?? startCar(t);
     let mark = 0;
     for (let k = 0; k < o.ticks; k++) {
       const wall = this.tick(net, t, c);
       const rec = o.record;
       if (rec) {
         rec.x[k] = c.x; rec.y[k] = c.y; rec.hdg[k] = c.hdg; rec.v[k] = c.v; rec.energy[k] = c.load; rec.wall[k] = wall ? 1 : 0; rec.prog[k] = c.prog;
-        rec.act.set(this.vals.subarray(0, net.nNodes), k * net.nNodes);
+        if (rec.act.length) rec.act.set(this.vals.subarray(0, net.nNodes), k * net.nNodes);
         rec.ticks = k + 1;
       }
       if (o.earlyStop) {

@@ -146,6 +146,7 @@ export class Stage {
     this.scene.add(this.world, this.swarm.mesh, this.car.car);
     this.drive = new DriveRig(this.tex.glow, this.camera, canvas);
     this.drive.group.visible = false;
+    this.drive.onRivals = (root) => this.scaleLight(root);
     this.scene.add(this.drive.group);
     this.scaleLight(this.car.car);
     this.scaleLight(this.drive.group);

@@ -161,6 +161,22 @@ export const CONFIG = {
     speedLook: 10, // m: extra look-ahead for corners beyond the braking distance
   },
 
+  /**
+   * vs CPU and Multiplayer races (tracks plan §4, coordinator's vs CPU calls 2026-11-05): ten cars on a grid two by
+   * two behind the line, 2 laps capped at 120 s, ranked by finish time then by progress at the cap. Cars pass through
+   * each other (each car's sim is its own run).
+   */
+  match: {
+    cars: 10, // you and nine CPU brains
+    laps: 2,
+    capTicks: 2400, // 120 s
+    firstRow: 4, // m behind the line to the front row (my call: the plan gives the spacing, not the front row)
+    rowGap: 8, // m between rows
+    across: 2.5, // m either side of the centreline
+    clearBehind: 40, // m: no boost pad on the grid (the back row of ten cars sits 36 m behind the line) …
+    clearAhead: 50, // m: … or in the first 50 m
+  },
+
   race: {
     ticks: 600, // 30 s: the first half of a 1-minute run, the S1 criterion's look at the unseen track (milestone 2's match phase is revisited when planned)
   },

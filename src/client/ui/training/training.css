@@ -1,7 +1,8 @@
 /* Training view (B6, reference/training-view-mockup.html): a panel of its own on the left (at most a fifth of the
    width: fitness on top, the highlighted car's brain below), the camera filling the rest with the generation's number
    big and white at the top and the map in its bottom-right corner. The drive view keeps its overlay panels (below).
-   Workbench tokens and Arial throughout; square corners. */
+   The race view (B7) shares the drive view's panels. Workbench tokens and Arial throughout; square corners everywhere
+   (principal 2026-11-04: "use square corners rather than squircles across the whole site"). */
 [hidden] { display: none !important; }
 body.training { overflow: hidden; }
 body.training #rotate { display: none !important; }
@@ -38,16 +39,16 @@ body.training #rotate { display: none !important; }
 .tv-mini { position: absolute; right: 10px; bottom: 10px; width: min(28%, 300px); aspect-ratio: 4 / 3; background: var(--panel); color: var(--text);
   border: 1px solid var(--line); display: flex; flex-direction: column; padding: 4px 8px 8px; font-family: Arial, Helvetica, sans-serif; }
 #tvMap { flex: 1; min-height: 0; width: 100%; display: block; }
-.tv-panel { position: absolute; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 14px; color: var(--text); }
+.tv-panel { position: absolute; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 0; box-shadow: var(--shadow); padding: 12px 14px; color: var(--text); }
 .tv-status { top: max(12px, env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); width: 290px; display: flex; flex-direction: column; gap: 9px; }
 .tv-title { margin: 0; font-size: 17px; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .tv-name { font-weight: 400; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
-.tv-progress i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; }
+.tv-progress { height: 8px; border-radius: 0; background: var(--line); overflow: hidden; }
+.tv-progress i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 0; }
 .tv-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .tv-actions .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .tv-legend { margin: 6px 0 0; font-size: 12px; }
-.tv-legend .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin: 0 4px 0 6px; }
+.tv-legend .sw { display: inline-block; width: 14px; height: 3px; border-radius: 0; vertical-align: middle; margin: 0 4px 0 6px; }
 .tv-nogl { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #e6e9ef; text-align: center; max-width: 40ch; }
 @media (max-height: 540px) and (orientation: landscape) {
   .tv-status { width: 250px; padding: 9px 11px; gap: 6px; }
@@ -66,13 +67,13 @@ body.training #rotate { display: none !important; }
   font: 700 clamp(72px, 22vh, 220px)/1 Arial, Helvetica, sans-serif; color: #fff; font-variant-numeric: tabular-nums;
   text-shadow: 0 4px 24px rgba(0, 0, 0, .55), 0 0 2px rgba(0, 0, 0, .8); }
 .dv-count:empty { display: none; }
-.dv-stuck { margin: 0; padding: 6px 9px; border-left: 3px solid var(--minus); background: color-mix(in srgb, var(--minus) 10%, transparent); color: var(--text); font-size: 13px; border-radius: 4px; }
+.dv-stuck { margin: 0; padding: 6px 9px; border-left: 3px solid var(--minus); background: color-mix(in srgb, var(--minus) 10%, transparent); color: var(--text); font-size: 13px; border-radius: 0; }
 .dv-cams { display: flex; gap: 4px; flex-wrap: wrap; }
-.dv-cams button { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 9px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
+.dv-cams button { border: 1px solid var(--line); background: transparent; border-radius: 0; padding: 5px 9px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
 .dv-cams button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .dv-brain { right: max(16px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px)); width: 380px; }
 .dv-brain h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 6px; display: flex; gap: 8px; align-items: center; }
-.dv-static { font-size: 11px; letter-spacing: .06em; padding: 2px 6px; border-radius: 4px; background: var(--minus); color: #fff; }
+.dv-static { font-size: 11px; letter-spacing: .06em; padding: 2px 6px; border-radius: 0; background: var(--minus); color: #fff; }
 #dvBrain { width: 100%; height: 190px; display: block; }
 .tv-legend .sw.neg { background: var(--minus); }
 @media (max-height: 540px) and (orientation: landscape) {
@@ -85,3 +86,30 @@ body.training #rotate { display: none !important; }
 .tv-legend .sw.wzero { background: #000; box-shadow: 0 0 0 1px var(--wire-halo); }
 .tv-legend .sw.wpos { background: rgb(45,200,85); }
 .dv-energy.over i { background: var(--minus); }
+
+/* race overlay (B7): status and the players on the left, the map in the bottom-right corner, results in the middle */
+.rc-status { top: max(12px, env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); width: 250px; display: flex; flex-direction: column; gap: 8px;
+  max-height: calc(100% - 24px); overflow: auto; }
+.rc-h { margin: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.rc-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rc-list li { display: flex; gap: 8px; align-items: center; padding: 2px 6px; }
+.rc-list li b { width: 1.6em; text-align: right; font-weight: 700; }
+.rc-list li i { width: 10px; height: 10px; flex: none; }
+.rc-list li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-list li small { color: var(--muted); font-size: 11px; }
+.rc-list li.you { background: var(--accent-soft); font-weight: 700; }
+.rc-mini { pointer-events: none; }
+.rc-results { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100% - 32px)); max-height: calc(100% - 24px); overflow: auto;
+  display: flex; flex-direction: column; gap: 10px; z-index: 2; }
+.rc-results h2 { margin: 0; font-size: 18px; }
+.rc-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.rc-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.rc-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.rc-table td:nth-child(n+3), .rc-table th:nth-child(n+3) { text-align: right; }
+.rc-table tr.you td { background: var(--accent-soft); font-weight: 700; }
+@media (max-height: 540px) and (orientation: landscape) {
+  .rc-status { width: 210px; padding: 8px 10px; gap: 5px; }
+  .rc-list { font-size: 11px; } .rc-list li { padding: 0 4px; }
+  .rc-results { gap: 6px; padding: 8px 12px; }
+  .rc-table { font-size: 11.5px; } .rc-table td, .rc-table th { padding: 1px 5px; }
+}

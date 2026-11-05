@@ -26,6 +26,13 @@ export interface DrivePose {
   stuck: boolean;
 }
 
+/** A race's other cars as drawn (B7): pose from their recordings, wheels turning with their speed. */
+export interface RivalPose { x: number; y: number; hdg: number; v: number; f: number; on: boolean }
+/** The most other cars drawn in 3-D at once (vs CPU: nine; the rest of a bigger race would be dots on the map). */
+export const MAX_RIVALS = 11;
+
+/** Other cars closer than this to the camera (m) are not drawn. */
+const NEAR_CAM = 8;
 const WHEEL_SPIN = 18; // rad/s at output ±1: readable on screen, direction and rate follow the output
 const RANGE = CONFIG.senses.boundary.rangeM;
 const MAX_BEAMS = CONFIG.senses.boundary.max;
@@ -49,8 +56,13 @@ export class DriveRig {
   private track: Track | null = null;
   readonly rayDist = new Float64Array(MAX_BEAMS);
   private shown = 0;
+  /** The race's other cars (made on first use, at most MAX_RIVALS, each in its own colour). */
+  readonly rivals: CarModel[] = [];
+  private readonly rivalCols: string[] = [];
+  private readonly glowTex: THREE.Texture;
 
   constructor(glowTex: THREE.Texture, private readonly camera: THREE.PerspectiveCamera, dom: HTMLElement) {
+    this.glowTex = glowTex;
     this.car = makeCar('#ffc21a', '#14161d', glowTex);
     this.car.car.rotation.order = 'YXZ';
     this.group.add(this.car.car);
@@ -75,6 +87,50 @@ export class DriveRig {
   beamDirs(): number[][] {
     const v = new THREE.Vector3();
     return this.beams.slice(0, this.shown).map((b) => b.beam.getWorldDirection(v).toArray());
+  }
+
+  /** The race's other cars, one colour each (none: the drive view). Cars are made once per colour slot and reused. */
+  setRivals(colors: readonly string[]): void {
+    if (colors.length > MAX_RIVALS) throw new Error(`render: ${colors.length} rivals wanted, the rig draws ${MAX_RIVALS}`);
+    colors.forEach((c, k) => {
+      if (this.rivals[k] && this.rivalCols[k] === c) return;
+      if (this.rivals[k]) { this.group.remove(this.rivals[k].car); this.rivals[k].dispose(); }
+      const m = makeCar(c, '#14161d', this.glowTex);
+      m.car.rotation.order = 'YXZ';
+      this.rivals[k] = m; this.rivalCols[k] = c;
+      this.group.add(m.car);
+      this.onRivals(m.car);
+    });
+    this.rivals.forEach((m, k) => { m.car.visible = k < colors.length; });
+    this.nRivals = colors.length;
+  }
+  private nRivals = 0;
+  /** The stage scales a new car's lit materials as it does every other (set by the stage). */
+  onRivals: (root: THREE.Object3D) => void = () => {};
+  get rivalsShown(): number { return this.rivals.slice(0, this.nRivals).filter((m) => m.car.visible).length; }
+
+  /** Place the other cars for this frame (call before update; poses past the rivals set are an error). */
+  placeRivals(poses: readonly RivalPose[], dt: number): void {
+    const t = this.track;
+    if (!t) return;
+    if (poses.length > this.nRivals) throw new Error(`render: ${poses.length} rival poses for ${this.nRivals} cars`);
+    poses.forEach((p, k) => {
+      const m = this.rivals[k], car = m.car;
+      car.visible = p.on;
+      if (!p.on) return;
+      const lift = liftAt(t, p.f);
+      toWorld(p.x, p.y, lift.h, car.position);
+      car.rotation.set(pitchOf(t, p.f, p.hdg, lift.slope), yawOf(p.hdg), 0);
+      car.updateMatrixWorld();
+      assertFiniteArray(car.matrixWorld.elements, `rival car ${k}`);
+      // a car right under the chase camera (the one behind yours on the grid) would fill the screen: not drawn
+      car.visible = car.position.distanceToSquared(this.camera.position) > NEAR_CAM * NEAR_CAM;
+      for (const w of m.wheels) w.spin.rotation.x = (w.spin.rotation.x + (p.v * dt) / w.r) % (2 * Math.PI);
+    });
+  }
+  /** World positions of the cars as drawn: yours, then the others shown (for the checks). */
+  drawn(): number[][] {
+    return [this.car.car, ...this.rivals.slice(0, this.nRivals).map((m) => m.car)].map((c) => [c.position.x, c.position.y, c.position.z, c.visible ? 1 : 0]);
   }
 
   setTrack(t: Track, tvSpots: { i: number; p: THREE.Vector3 }[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; }
@@ -159,6 +215,7 @@ export class DriveRig {
   dispose(): void {
     this.controls.dispose();
     this.car.dispose();
+    for (const r of this.rivals) r.dispose();
     this.beamGeo.dispose(); this.hitGeo.dispose();
     for (const b of this.beams) b.mat.dispose();
   }

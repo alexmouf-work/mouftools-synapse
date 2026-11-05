@@ -21,6 +21,7 @@ T2,Actor-critic trainer (B4): Gaussian exploration (x temperature); linear criti
 T3,A_RP trainer (B4): stochastic +-1 wheels (firing randomness x temperature); reward/penalty; learns fields with a gradient,review,docs/plans/2026-11-04-trainers.md (T3 results)
 B5,Track families (loop; kidney; hairpin; chicane; dogleg; clover; figure eight) and the figure eight's bridge: decks keep each pass to itself without 3-D; S1 re-run,review,docs/plans/2026-11-04-tracks-training-matches.md §1–2 (Built)
 B2f,Random starter brain: 2-6 input cells (one always a boundary vector cell) for a first visit / Reset / pre-v2 save; defaultSpec stays the fixture,review,docs/plans/2026-11-04-brain-designer-v2.md §3c (Built)
+B7,vs CPU: match designer (energy limit; Train from scratch on T; no popup); 10 cars on a grid two by two; countdown; players listed; 2 laps capped at 120 s; corner map; results; winner music on a win; nine CPU brains (scripts/sim/cpuBrains.ts → src/assets/cpu/brains.json); square corners in the drive and race views,review,docs/plans/2026-11-04-tracks-training-matches.md §4 (Built B7)
 T4,Learning Rule strip on every view + live trainer picker,later,"Learning Rule : [equation]" centred across the top; formula only
 M3,Lab (untimed),later,
 M5,Multiplayer,later,

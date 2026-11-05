@@ -1,7 +1,7 @@
 // The title screen (B2c), ported from reference/title-screen-mockup.html: the card ("Synapse", one line, Multiplayer in
 // blue, vs CPU in yellow, Sandbox plain), a quiet fully wired brain firing behind it (still under reduced motion), and
-// a rail along the foot with the legal links and the music credits. The page opens here. vs CPU and Multiplayer come
-// with B7 and B8: until then they show "soon" and do nothing. Sandbox opens the designer.
+// a rail along the foot with the legal links and the music credits. The page opens here. vs CPU (B7) opens the designer
+// in match mode; Multiplayer comes with B8 (until then it shows "soon" and does nothing). Sandbox opens the designer.
 import './title.css';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -67,7 +67,8 @@ export function showTitle(on: boolean): void {
 }
 export const titleShown = (): boolean => shown;
 
-export function startTitle(o: { onSandbox(): void }): void {
+export function startTitle(o: { onSandbox(): void; onCpu(): void }): void {
   $('toSandbox').onclick = () => o.onSandbox();
+  $('toCpu').onclick = () => o.onCpu();
   addEventListener('resize', () => { if (shown) build(); });
 }
