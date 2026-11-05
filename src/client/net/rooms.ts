@@ -45,26 +45,26 @@ export const cleanName = (n: string): string => n.replace(/\s+/g, ' ').trim();
 export interface Ticket { code: string; token: string; host: boolean }
 /** Open a room (B9): the code first, the host's name on the next screen. */
 export async function openRoom(): Promise<Ticket> {
-  const token = newToken(), r = await rpc<{ code: string }>('open_room', { p_token: token });
+  const token = newToken(), r = await rpc<{ code: string }>('synapse_open_room', { p_token: token });
   return { code: r.code, token, host: true };
 }
 export const ticketFor = (code: string): Ticket => ({ code: code.toUpperCase(), token: newToken(), host: false });
 export async function joinRoom(t: Ticket, name: string): Promise<Me> {
-  const r = await rpc<{ code: string; player: string; name: string }>('join_room', { p_code: t.code, p_name: cleanName(name), p_token: t.token });
+  const r = await rpc<{ code: string; player: string; name: string }>('synapse_join_room', { p_code: t.code, p_name: cleanName(name), p_token: t.token });
   return { code: r.code, player: r.player, token: t.token, name: r.name, host: t.host };
 }
 /** Leave the room (keepalive: it still goes out as the tab closes). */
-export const leaveRoom = (me: Me, keepalive = false): Promise<void> => rpc('leave_room', { p_player: me.player, p_token: me.token }, keepalive);
+export const leaveRoom = (me: Me, keepalive = false): Promise<void> => rpc('synapse_leave_room', { p_player: me.player, p_token: me.token }, keepalive);
 /** The host removes another player. */
-export const removePlayer = (me: Me, player: string): Promise<void> => rpc('remove_player', { p_code: me.code, p_token: me.token, p_player: player });
-export const roomState = (code: string): Promise<RoomState | null> => rpc('room_state', { p_code: code });
-export const submitBrain = (me: Me, brain: string): Promise<void> => rpc('submit_brain', { p_player: me.player, p_token: me.token, p_brain: brain });
-export const startRace = (me: Me): Promise<{ race_no: number; race_seed: number; start_at: number }> => rpc('start_race', { p_code: me.code, p_token: me.token });
+export const removePlayer = (me: Me, player: string): Promise<void> => rpc('synapse_remove_player', { p_code: me.code, p_token: me.token, p_player: player });
+export const roomState = (code: string): Promise<RoomState | null> => rpc('synapse_room_state', { p_code: code });
+export const submitBrain = (me: Me, brain: string): Promise<void> => rpc('synapse_submit_brain', { p_player: me.player, p_token: me.token, p_brain: brain });
+export const startRace = (me: Me): Promise<{ race_no: number; race_seed: number; start_at: number }> => rpc('synapse_start_race', { p_code: me.code, p_token: me.token });
 export async function raceEntries(code: string, raceNo: number): Promise<Entry[]> {
-  const t = await rpc<string | null>('race_entries', { p_code: code, p_race_no: raceNo });
+  const t = await rpc<string | null>('synapse_race_entries', { p_code: code, p_race_no: raceNo });
   return t ? JSON.parse(t) as Entry[] : [];
 }
-export const submitResult = (me: Me, result: string): Promise<void> => rpc('submit_result', { p_player: me.player, p_token: me.token, p_result: result });
+export const submitResult = (me: Me, result: string): Promise<void> => rpc('synapse_submit_result', { p_player: me.player, p_token: me.token, p_result: result });
 
 /** A room code as typed: four letters A–Z. */
 export const validCode = (c: string): boolean => /^[A-Za-z]{4}$/.test(c);

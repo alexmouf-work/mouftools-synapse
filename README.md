@@ -30,5 +30,7 @@ The site is static: `vite build` writes `dist/`. `vercel.json` sets the build (`
 2. In the project's Settings → Domains add `synapse.mouftools.com`.
 3. At the DNS host of mouftools.com add a CNAME record: name `synapse`, value `cname.vercel-dns.com`.
 4. Every push to `main` then deploys; other branches get preview URLs.
-5. Multiplayer: run `supabase/schema.sql` once in the Supabase dashboard's SQL editor (tables, row-level security, the
-   room functions, and the daily job that deletes match data older than 30 days). Safe to run again.
+5. Multiplayer: run `supabase/schema.sql` in the Supabase dashboard's SQL editor (tables, row-level security, the
+   room functions, and the daily job that deletes match data older than 30 days). It is idempotent: run it again after
+   any change to it. The Supabase project is shared by all Mouftools products, so everything of Synapse's is named
+   `synapse_*` (tables, functions) or `synapse-*` (the cron job); other products use their own prefix.

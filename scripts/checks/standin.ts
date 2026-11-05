@@ -42,14 +42,14 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
   const inRoom = (code: string) => players.filter((p) => p.room === code).sort((a, b) => a.joined - b.joined || (a.id < b.id ? -1 : 1));
   const mine = (id: unknown, t: unknown) => players.find((p) => p.id === id && p.tokenHash === hash(String(t))) ?? fail('not your player');
   const fns: Record<string, (a: Record<string, unknown>) => unknown> = {
-    open_room: (a) => {
+    synapse_open_room: (a) => {
       token(a.p_token);
       let code = '';
       do code = Array.from({ length: 4 }, () => String.fromCharCode(65 + Math.floor(rnd() * 26))).join(''); while (rooms.has(code));
       rooms.set(code, { code, hostHash: hash(String(a.p_token)), created: now(), raceNo: 0, raceSeed: null, startAt: null, entries: null });
       return { code, now: now() };
     },
-    join_room: (a) => {
+    synapse_join_room: (a) => {
       const code = String(a.p_code ?? '').toUpperCase();
       token(a.p_token); name(a.p_name);
       if (!rooms.has(code)) fail('no such room');
@@ -57,33 +57,33 @@ export async function startStandin(key = 'standin-anon-key', seed = 1): Promise<
       const p = join(code, a.p_name, a.p_token);
       return { code, player: p.id, name: p.name, now: now() };
     },
-    leave_room: (a) => { drop(players.find((p) => p.id === a.p_player && p.tokenHash === hash(String(a.p_token)))); return undefined; },
-    remove_player: (a) => {
+    synapse_leave_room: (a) => { drop(players.find((p) => p.id === a.p_player && p.tokenHash === hash(String(a.p_token)))); return undefined; },
+    synapse_remove_player: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase()), h = hash(String(a.p_token));
       if (!r || r.hostHash !== h) return fail('not the host');
       drop(players.find((p) => p.id === a.p_player && p.room === r.code && p.tokenHash !== h));
       return undefined;
     },
-    room_state: (a) => {
+    synapse_room_state: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase());
       if (!r) return null;
       return { code: r.code, race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now(), players: inRoom(r.code).map((p) => ({ id: p.id, name: p.name, ready: p.brain !== null, host: p.tokenHash === r.hostHash })) };
     },
-    submit_brain: (a) => {
+    synapse_submit_brain: (a) => {
       const b = String(a.p_brain ?? '');
       if (b.length > 32000) fail('brain');
       mine(a.p_player, a.p_token).brain = b;
       return undefined;
     },
-    start_race: (a) => {
+    synapse_start_race: (a) => {
       const r = rooms.get(String(a.p_code ?? '').toUpperCase());
       if (!r || r.hostHash !== hash(String(a.p_token))) return fail('not the host');
       r.raceNo++; r.raceSeed = Math.floor(rnd() * 4294967296); r.startAt = now() + 12_000;
       r.entries = JSON.stringify(inRoom(r.code).filter((p) => p.brain !== null).map((p) => ({ id: p.id, name: p.name, brain: p.brain })));
       return { race_no: r.raceNo, race_seed: r.raceSeed, start_at: r.startAt, now: now() };
     },
-    race_entries: (a) => { const r = rooms.get(String(a.p_code ?? '').toUpperCase()); return r && r.raceNo === a.p_race_no ? r.entries : null; },
-    submit_result: (a) => {
+    synapse_race_entries: (a) => { const r = rooms.get(String(a.p_code ?? '').toUpperCase()); return r && r.raceNo === a.p_race_no ? r.entries : null; },
+    synapse_submit_result: (a) => {
       const v = String(a.p_result ?? '');
       if (v.length > 1000) fail('result');
       mine(a.p_player, a.p_token).result = v;

@@ -259,3 +259,8 @@ Rulings from the principal, verbatim where quoted. Newest last.
   up, including the name entry before joining." · "make the name entry its own whole thing, separately shown after the
   code entry once the code is entered." · "don't offer portrait mode." · "the mockups look really good. please build
   when ready." → `docs/plans/2026-11-05-lobby-and-landscape.md` (B9).
+- Supabase (2026-11-05): "make the schema idempotent and specify that it's for the Synapse app. I want to use the same
+  database to store information for all Mouftools products (which is only a small number, and none currently need a
+  database besides this one). The idea therefore is that we can reuse the same table multiple times." → one shared
+  project; each product prefixes its objects (Synapse: `synapse_*`); supabase/schema.sql is idempotent and removes the
+  earlier unprefixed Synapse objects only if they are recognisably Synapse's.

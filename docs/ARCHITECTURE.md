@@ -11,7 +11,8 @@ principal connects the project and the domain).
 ## Stack
 Vite + TypeScript, Three.js 0.160 (training view only, loaded on first Train), Vitest, tsx for Node scripts,
 Playwright (dev only: browser bench, workbench and training checks). Multiplayer (B8) uses a Supabase project's
-database through PostgREST functions (`supabase/schema.sql`); no server code of ours.
+database through PostgREST functions (`supabase/schema.sql`); no server code of ours. The Supabase project is shared
+by every Mouftools product, so Synapse's tables and functions are all prefixed `synapse_`; the file is idempotent.
 
 ## src/common: the deterministic core
 Pure TypeScript: no DOM, no three, no clocks, no `Math.random`, no engine transcendental `Math.*`, no Float32. It runs
@@ -375,27 +376,27 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   inert; Escape doesn't close it); it closes when the screen turns. `screen.orientation.lock('landscape')` is tried at
   start and on entering fullscreen, a refusal ignored. No portrait layout rules remain; a tall desktop window (shorter
   side ≥ 900 px) never gets the card.
-- Multiplayer (B8, lobby B9): `net/rooms.ts` calls the database's functions (`open_room`, `join_room`, `leave_room`,
-  `remove_player`, `room_state`, `submit_brain`, `start_race`, `race_entries`, `submit_result`) over PostgREST with the anon key; the build maps
+- Multiplayer (B8, lobby B9): `net/rooms.ts` calls the database's functions (`synapse_open_room`, `synapse_join_room`, `synapse_leave_room`,
+  `synapse_remove_player`, `synapse_room_state`, `synapse_submit_brain`, `synapse_start_race`, `synapse_race_entries`, `synapse_submit_result`) over PostgREST with the anon key; the build maps
   `SUPABASE_PROJECT_URL` and `SUPABASE_ANON_KEY` in through Vite `define` (`__SUPABASE_URL__`, `__SUPABASE_ANON_KEY__`,
   declared in `env.d.ts`; empty: Multiplayer says it isn't set up); the service role key is read nowhere. Every reply
   carries the server's clock, so Go is the same moment on every client. Nothing is stored in the browser: your player's
   secret token lives in memory (the database keeps only its SHA-256). `ui/lobby/lobby.ts` (+ `lobby.css`, from
   `reference/multiplayer-lobby-mockup.html`) is Multiplayer's own screen (`#mp`): (1) one 4-letter code field whose
-  fourth letter checks the room with `room_state` (none: "No room with that code…", full: "That room is full…", the
-  letters selected), or Create a room (`open_room`: a code, no players, the host's token); (2) your name on its own
+  fourth letter checks the room with `synapse_room_state` (none: "No room with that code…", full: "That room is full…", the
+  letters selected), or Create a room (`synapse_open_room`: a code, no players, the host's token); (2) your name on its own
   screen (the code and how many are in; 1–16 characters, spaces collapsed; a name already in the room, any case, is
-  refused here and by `join_room`; a chip preview; Go in → `join_room`, the host recognised by the token the room was
+  refused here and by `synapse_join_room`; a chip preview; Go in → `synapse_join_room`, the host recognised by the token the room was
   opened with); (3) the lobby: a header (code, "n / 100", "players · r ready", a legend, the host's Start race (r),
   enabled at 2 ready, or "You're in"), a field of name chips (`.chip`: the car colour's square, filled once the brain
   is in; yours in your car's yellow with an accent border; others the race colours in join order), and a footer (Build
-  your brain / "Brain handed in · Edit", a note, the sound toggles, Leave room → `leave_room`). Chips pop in (none
+  your brain / "Brain handed in · Edit", a note, the sound toggles, Leave room → `synapse_leave_room`). Chips pop in (none
   under reduced motion) and are scattered: each new chip tries 80 random spots (display only) and keeps the one
   overlapping least, kept as fractions of the free space so a resize holds the layout; the font is clamp(11,
   √(field area / max(n, 8)) / 6.2, 17) px; on a short screen (height ≤ 540 px) with more than 60 in, rows instead
-  (the field scrolls). The host taps another chip → "Remove <name>" → `remove_player`; the removed client sees it on
+  (the field scrolls). The host taps another chip → "Remove <name>" → `synapse_remove_player`; the removed client sees it on
   its next poll and goes back to the code screen ("The host removed you from the room."), now or when it comes back
-  from building or racing. Closing the tab leaves the room (`leave_room`, keepalive), so names free up. Polled every
+  from building or racing. Closing the tab leaves the room (`synapse_leave_room`, keepalive), so names free up. Polled every
   1.5 s while you are in a room. Build your brain is the match designer; training ends
   with Hand in (your genome's canonical JSON goes to the room). The host's Start race freezes the entries (every player
   with a brain in, in join order) and draws the seed, Go 12 s later; every client fetches the same entries, leaves out

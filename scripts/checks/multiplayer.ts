@@ -122,7 +122,7 @@ async function main() {
     await guest.locator('#mpName').pressSequentially('HOST');
     check((await guest.locator('#mpNameErr').innerText()) === 'Someone in this room is already called HOST. Try another name.' && !(await guest.locator('#mpGo').isEnabled()), `a name already in the room (any case) is refused: "${await guest.locator('#mpNameErr').innerText()}"`);
     let dup = '';
-    try { si.rpc('join_room', { p_code: code, p_name: ' host ', p_token: 'd'.repeat(32) }); } catch (e) { dup = (e as Error).message; }
+    try { si.rpc('synapse_join_room', { p_code: code, p_name: ' host ', p_token: 'd'.repeat(32) }); } catch (e) { dup = (e as Error).message; }
     check(dup === 'name taken', `the server refuses it too (${dup}; supabase/schema.sql join_room has the same rule)`);
     await guest.locator('#mpName').fill('');
     await guest.locator('#mpName').pressSequentially('Guest');
@@ -191,12 +191,12 @@ async function main() {
     // 3. fill the room from Node: 98 more, then the 101st is refused
     for (let k = 0; k < 98; k++) {
       const tok = `bot-token-${String(k).padStart(32, '0')}`;
-      const r = si.rpc('join_room', { p_code: code, p_name: `Bot ${k + 1}`, p_token: tok }) as { player: string };
+      const r = si.rpc('synapse_join_room', { p_code: code, p_name: `Bot ${k + 1}`, p_token: tok }) as { player: string };
       // the first bot hands in a brain past the match limit: every client leaves it out of the race the same way
-      si.rpc('submit_brain', { p_player: r.player, p_token: tok, p_brain: k === 0 ? genomeToJSON(zeroGenome(BIG)) : genomeToJSON(cpu[k % cpu.length]) });
+      si.rpc('synapse_submit_brain', { p_player: r.player, p_token: tok, p_brain: k === 0 ? genomeToJSON(zeroGenome(BIG)) : genomeToJSON(cpu[k % cpu.length]) });
     }
     let full = '';
-    try { si.rpc('join_room', { p_code: code, p_name: 'One too many', p_token: 'x'.repeat(32) }); } catch (e) { full = (e as Error).message; }
+    try { si.rpc('synapse_join_room', { p_code: code, p_name: 'One too many', p_token: 'x'.repeat(32) }); } catch (e) { full = (e as Error).message; }
     check(full === 'room full', `a room holds 100 players; the 101st is refused (${full})`);
     await guest.waitForFunction(() => window.__room?.state?.players.length === 100, null, { timeout: 10_000 });
     check((await guest.locator('#lbCount').innerText()) === '100 / 100', 'the lobby counts 100 / 100');
