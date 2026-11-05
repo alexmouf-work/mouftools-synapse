@@ -294,3 +294,9 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "make it possible to click on a racer to follow their car with their brain." (2026-11-05) → `docs/plans/2026-11-05-follow-a-racer.md`.
 - "change match mode to use broadcast mode. make the broadcast camera start from further away and change shot slightly
   less frequently." (2026-11-05) → follow-a-racer plan, "Broadcast camera in matches".
+- 2026-11-05: "make the tracks longer, and give them all a bit more variation in shape. I want each track (except the figure 8)
+  to have a straight section, a curve and some other interesting features like hairpins or other stuff. make it more
+  interesting please. Offer track selection at any time in sandbox mode, and in the settings before starting a match vs
+  CPU / multiplayer stuff. Make sure that the player has to choose a name before the game starts in CPU mode too. make
+  sure that one player is a host for the multiplayer game, and that they can choose settings like max players and map."
+  → `docs/plans/2026-11-05-tracks-v2-and-match-settings.md` (T1 tracks, T2 choice/settings/names/host).
