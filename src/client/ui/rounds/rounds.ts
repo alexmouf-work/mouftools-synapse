@@ -15,7 +15,7 @@ import { win } from '../../audio/music';
 import { hideArena } from '../arena';
 import type { Saved } from '../designer/store';
 import { startPhaseTimer, stopPhaseTimer } from '../phaseTimer';
-import { fmtKm, leaveRace, newRaceSeed, openRace, roundSetup } from '../race/raceView';
+import { fmtKm, leaveRace, newRaceSeed, openRace, roundSetup, tableRows } from '../race/raceView';
 import { leaveTraining, openTraining, stopTraining } from '../training/trainingView';
 import { zeroGenome } from '../../../common/sim/brain';
 
@@ -34,16 +34,17 @@ export const ordinal = ord;
 /** One standings row: a name, this round's signed distance, the total; `you` marks your row. */
 export interface StandingsRow { name: string; dist: number; total: number; you: boolean }
 /**
- * The round's standings in the race view's results panel (rows already in order, best total first), opened at the top;
- * Play again / Main menu are hidden here (the final standings show them).
+ * The round's standings in the race view's results panel (rows already in order, best total first): at most 10 rows,
+ * places 1–3 and those nearest you as the sidebar lists them (principal 2026-11-05); Play again / Main menu are hidden
+ * here (the final standings show them).
  */
 export function showStandings(title: string, round: number, rows: StandingsRow[]): void {
   $('rcResT').textContent = title;
   $('rcHead').innerHTML = `<tr><th>Place</th><th>Name</th><th>Round ${round}</th><th>Total</th></tr>`;
-  $('rcRows').innerHTML = rows.map((r, i) => `<tr class="${r.you ? 'you' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td>${fmtKm(r.dist)}</td><td>${fmtKm(r.total)}</td></tr>`).join('');
-  $('rcScroll').scrollTop = 0;
+  $('rcRows').innerHTML = tableRows(rows.length, rows.findIndex((r) => r.you), (i) => { const r = rows[i]; return `<tr class="${r.you ? 'you' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td>${fmtKm(r.dist)}</td><td>${fmtKm(r.total)}</td></tr>`; });
   $('rcAgain').hidden = true; $('rcBack').hidden = true;
   $('rcResults').hidden = false;
+  $('rcScroll').scrollTop = 0;
 }
 
 /** What the match asks of the page (main.ts routes the views). */

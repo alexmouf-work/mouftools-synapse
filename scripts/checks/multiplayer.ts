@@ -11,7 +11,8 @@
 //   scattered in the field on a desktop; in rows on a short screen (the field scrolls). Two leave again.
 // - Timed rounds (match-flow v2 §M2), jumped ahead with __phase.skipTo (the stand-in's clock moved as far): the host's
 //   Start match → round 1's build on both from the server's clock (60 s, no Train button); Train starts itself at 0
-//   (no buttons); at the train phase's end each hands in its best brain; a brain for a later round, or after the
+//   (no buttons); each hands in its brain when training is done (at the latest at the train phase's end, the best so
+//   far); a brain for a later round, or after the
 //   freeze, is refused; the entries freeze as the countdown begins and every page's race = Node runRace of them (the
 //   bots' brains from Node: one past round 1's budget left out by every client, one bot with nothing in at 0 m), Go
 //   at the server's moment, at most MAX_RIVALS others drawn in 3-D (the nearest), the sidebar's 10 racers; standings
@@ -37,7 +38,7 @@ import { cpuRounds } from '../../src/common/sim/cpu';
 import { ROUND_RACE, runRace, type RaceResult } from '../../src/common/sim/match';
 import type { BrainSpec, Genome } from '../../src/common/sim/spec';
 import { MAX_RIVALS } from '../../src/client/render/drive';
-import { fixtureBrain } from './fixture';
+import { fixtureBrain, STANDINGS_LAYOUT, standingsClear, type StandingsLayout } from './fixture';
 import { startStandin } from './standin';
 
 const OUT = 'out/multiplayer';
@@ -69,7 +70,7 @@ async function main() {
     const ctx = await browser.newContext({ viewport: { width: w, height: h } });
     await fixtureBrain(ctx);
     const page = await ctx.newPage();
-    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); if (m.type() === 'warning' && m.text().startsWith('room:')) console.log(`     page warns: ${m.text()}`); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(base);
     await page.evaluate(() => localStorage.setItem('synapse.notice', '2'));
@@ -278,7 +279,7 @@ async function main() {
       // handed in before the freeze: the stand-in holds each player's trained brain for this round
       const held = si.rooms.get(code)!.brains.get(n)!;
       const mine = await Promise.all(players.map((p) => p.evaluate(() => ({ me: window.__room!.me!.player, trained: window.__roomMatch!.trained }))));
-      check(mine.every((x) => held.get(x.me) === genomeToJSON(x.trained!)), `round ${n}: at the train phase's end each player's best brain so far is handed in (${mine.length} in the room's round ${n})`);
+      check(mine.every((x) => held.get(x.me) === genomeToJSON(x.trained!)), `round ${n}: each player's trained brain is handed in by the train phase's end (${mine.length} in the room's round ${n})`);
       await Promise.all(all.map((p) => p.waitForFunction(() => window.__roomMatch?.step === 'race', null, { timeout: 30_000 })));
       const nr = nodeRound(n);
       // this round's race on screen (the last round's may still be there a moment): its hash, drawing
@@ -313,6 +314,16 @@ async function main() {
         .sort((a, b) => b.total - a.total || b.d - a.d || (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1));
     };
     const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
+    /**
+     * A standings table as the page should show it (principal 2026-11-05: 10 rows): places 1–3, then the 7 nearest
+     * your place in the table's order, "⋯" where they don't meet; all of them up to 10. Written out here, not taken
+     * from the app, so the check is independent of raceView's listRows.
+     */
+    const shownOf = (st: { name: string; d: number; total: number }[], you: string) => {
+      const n = st.length, p = Math.max(0, st.findIndex((x) => x.name === you)), start = Math.max(3, Math.min(p - 3, n - 7));
+      const idx = n <= 10 ? st.map((_, i) => i) : [0, 1, 2, ...Array.from({ length: 7 }, (_, i) => start + i)];
+      return idx.flatMap((i, j) => [...(j === 3 && i > 3 ? [['⋯']] : []), [String(i + 1), st[i].name, km(st[i].d), km(st[i].total)]]);
+    };
     const tableOf = (p: Page) => p.$$eval('#rcRows tr', (tr) => tr.map((r) => [...r.querySelectorAll('td')].map((d) => d.textContent ?? '')));
 
     // round 1: 98 in the room, 97 brains in (Bot 2 none), Bot 1's past the budget: 96 race
@@ -341,10 +352,17 @@ async function main() {
     check(Math.abs(st8) < 400 && roundTimes(1).next - roundTimes(1).standings === 8000, `round 1's race ends: 8 s of standings, counting down to round 2's build on the server's clock (${st8.toFixed(0)} ms off)`);
     const ids1 = new Map<string, string>(si.players.filter((p) => p.room === code).map((p) => [p.id, p.name]));
     const s1 = nodeStandings(1, ids1);
-    const t1 = await tableOf(host);
-    const st1 = await Promise.all(pages.map((p) => p.evaluate(() => window.__roomMatch!.standings[0])));
-    check(t1.length === 98 && JSON.stringify(t1.map((x) => x[1])) === JSON.stringify(s1.map((x) => x.name)) && JSON.stringify(t1.map((x) => x[2])) === JSON.stringify(s1.map((x) => km(x.d))) && JSON.stringify(st1[0]) === JSON.stringify(st1[1]),
-      `round 1's standings on both = Node: all 98 players, signed distances, best total first (${s1.slice(0, 3).map((x) => x.name).join(', ')} …); Bot 1 and Bot 2 at ${t1.find((x) => x[1] === 'Bot 2')?.[2]}`);
+    const t1 = await Promise.all(pages.map(tableOf));
+    const st1 = await Promise.all(pages.map((p) => p.evaluate(() => ({ s: window.__roomMatch!.standings[0], d: window.__roomMatch!.dists[0] }))));
+    check(JSON.stringify(st1[0].s) === JSON.stringify(s1.map((x) => x.name)) && JSON.stringify(st1[1].s) === JSON.stringify(st1[0].s) && st1[0].d['Bot 1'] === 0 && st1[0].d['Bot 2'] === undefined && s1.find((x) => x.name === 'Bot 2')!.total === 0,
+      `round 1's standings on both = Node: all 98 players, signed distances, best total first (${s1.slice(0, 3).map((x) => x.name).join(', ')} …); Bot 1 (left out) at 0 m, Bot 2 (nothing in) listed at 0 m`);
+    check(JSON.stringify(t1[0]) === JSON.stringify(shownOf(s1, 'Host')) && JSON.stringify(t1[1]) === JSON.stringify(shownOf(s1, 'Guest')),
+      `the table shows 10 of the 98 as the sidebar does: places 1–3, "⋯", then those nearest you (host: ${t1[0].map((x) => x[0]).join(' ')}; guest: ${t1[1].map((x) => x[0]).join(' ')})`);
+    // the panel sits below the round's timer
+    const lay1 = await Promise.all(pages.map((p) => p.evaluate(STANDINGS_LAYOUT) as Promise<StandingsLayout>));
+    check(lay1.every((l) => standingsClear(l, 98) && l.places.length === 11 && l.you !== null),
+      `a 98-player table: exactly 10 player rows and "⋯", places 1–3 and your row (${lay1.map((l) => l.you).join(', ')}), clear of the timer (${lay1.map((l) => `${l.gap.toFixed(0)} px below it`).join(' at 1440×900, ')} at 844×390), nothing scrolls`);
+    await guest.screenshot({ path: `${OUT}/m-standings-844x390.png` }); // while the standings are held
     const stl = await Promise.all(pages.map(ph));
     check(stl.every((x) => x.label === 'Round 2 of 5 in') && await host.locator('#rcAgain').isHidden() && await host.locator('#rcBack').isHidden(), `the standings count down to round 2, no buttons ("${stl[0].label}")`);
     await new Promise((res) => setTimeout(res, 800));
@@ -395,10 +413,10 @@ async function main() {
     }
     const fin = await Promise.all(all3.map((p) => p.evaluate(() => ({ s: window.__roomMatch!.standings[4], step: window.__roomMatch!.step, t: document.getElementById('rcResT')!.textContent, again: !(document.getElementById('rcAgain') as HTMLElement).hidden, back: !(document.getElementById('rcBack') as HTMLElement).hidden, backT: document.getElementById('rcBack')!.textContent, timer: window.__phase!.state }))));
     const ids5 = new Map(ids1); ids5.set(si.players.find((p) => p.name === 'Late')!.id, 'Late');
-    const s5 = nodeStandings(5, ids5), t5 = await tableOf(host);
+    const s5 = nodeStandings(5, ids5), t5 = await Promise.all(all3.map(tableOf));
     check(fin.every((f) => f.step === 'over' && f.back && f.backT === 'Main menu' && f.timer === 'off' && JSON.stringify(f.s) === JSON.stringify(s5.map((x) => x.name))) && fin[0].again && !fin[1].again && !fin[2].again
-      && JSON.stringify(t5.map((x) => x[3])) === JSON.stringify(s5.map((x) => km(x.total))),
-      `after round 5: the final standings = Node's totals on every page ("${fin[0].t}"; "${fin[1].t}"), Play again for the host only, Main menu for all`);
+      && ['Host', 'Guest', 'Late'].every((nm, k) => JSON.stringify(t5[k]) === JSON.stringify(shownOf(s5, nm))),
+      `after round 5: the final standings = Node's totals on every page, 10 of the 99 rows by total as the sidebar picks them ("${fin[0].t}": ${t5[0].map((x) => x[0]).join(' ')}; "${fin[1].t}": ${t5[1].map((x) => x[0]).join(' ')}), Play again for the host only, Main menu for all`);
     await host.screenshot({ path: `${OUT}/m-final.png` });
     await guest.screenshot({ path: `${OUT}/m-final-guest.png` });
 

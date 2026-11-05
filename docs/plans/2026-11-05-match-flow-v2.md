@@ -142,3 +142,27 @@ This replaces "weights carry over between rounds" (2026-10-30 and the rounds pla
 - **Checked** (the affected systems): types, purity, unit, determinism, check:multiplayer, check:race (shared standings,
   race view and phase timer), check:title (main.ts routing). Not run: workbench, training, drive, preview, legal,
   audio, icons, bench.
+
+## Built: M2 fix, 10-row tables (2026-11-05)
+Coordinator's review of the M2 screenshots: in a 96-player room the standings panel reached the top of the camera,
+and the round's timer covered its title and headers. Principal: "only show 10 racers at a time, not all of them. same
+rules as before where we always show podium then also show the nearest ones to the player."
+- **10 rows at most** in every standings and results table (each round's standings and the final standings, vs CPU
+  and Multiplayer, and the race view's results panel). The rows are chosen by the sidebar's racers-list rule, through
+  the same function (`raceView.ts listRows`, via `tableRows`): places 1–3, then the rows nearest yours in the table's
+  own order (standings by total, results by place), with a "⋯" row where the two groups don't meet. Watching (no row of
+  your own), or 10 players or fewer, it shows the top 10. Nothing scrolls.
+- **Clear of the timer:** while a countdown shows (`body.timed`), the panel starts below the timer's box plus a gap
+  (`training.css`: 50 px plus the timer's number size), at 1440×900 and 844×390. The final standings (no timer) stay
+  centred.
+- **Checks:** a shared probe (`scripts/checks/fixture.ts` `STANDINGS_LAYOUT`, `standingsClear`). check:multiplayer: a
+  98-player table (96 raced) shows exactly 10 player rows and the "⋯", places 1–3 and your row, clear of the timer at
+  both sizes, each page's rows = Node's standings picked by the same rule written out in the check; the final
+  standings likewise on all three pages. check:race: vs CPU's standings show all 10 rows, clear of the timer at both
+  sizes.
+- **Hand-in made earlier:** a run of check:multiplayer had one page's round 3 brain refused, as it reached the stand-in
+  after the freeze (that page was busy drawing under SwiftShader; the 3 s window after training was not enough).
+  Training that finishes its whole budget before the 20 s is final, so its brain is now handed in at once; a run
+  stopped at the train phase's end is handed in then, as before. A failed hand-in is tried once more if the freeze is
+  still more than 0.5 s away. The check prints the page's reason if a brain is refused.
+- **Checked:** types, check:multiplayer, check:race.

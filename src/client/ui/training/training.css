@@ -100,6 +100,9 @@ body.training { overflow: hidden; }
 .rc-results .tv-actions { flex: none; }
 .rc-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; position: relative; overscroll-behavior: contain; }
 .rc-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+/* a round's standings while its countdown shows (the camera's top centre: 8 px down, a 32 px box plus the number):
+   the panel starts below the timer and a gap */
+body.timed .rc-results { top: calc(50px + clamp(30px, 7vh, 54px)); transform: translateX(-50%); max-height: calc(100% - 62px - clamp(30px, 7vh, 54px)); }
 /* "Wrong way" over your car (raceView places it there each frame) */
 .rc-wrong { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -100%); pointer-events: none; z-index: 3;
   padding: 6px 14px; background: var(--minus); color: #fff; font: 700 clamp(16px, 3.2vh, 26px)/1.1 Arial, Helvetica, sans-serif;
@@ -112,6 +115,8 @@ body.training { overflow: hidden; }
 .rc-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
 .rc-table td:nth-child(n+3), .rc-table th:nth-child(n+3) { text-align: right; }
 .rc-table tr.you td { background: var(--accent-soft); font-weight: 700; }
+/* at most 10 rows (places 1–3, then those nearest you): "⋯" where the two groups don't meet */
+.rc-table tr.gap td { text-align: center; color: var(--muted); padding: 0; line-height: 1.1; }
 @media (max-height: 540px) and (orientation: landscape) {
   .rc-list { font-size: 10.5px; gap: 0; } .rc-list li { padding: 0 4px; gap: 5px; }
   .rc-side .kv, .dv-side .kv, .rc-side .kv dd, .dv-side .kv dd { font-size: 10.5px; }

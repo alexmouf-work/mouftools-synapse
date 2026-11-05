@@ -183,20 +183,26 @@ export function roomTrain(saved: Saved): void {
   m.step = 'train'; m.genome = saved.genome; m.saved = saved; m.trained = null;
   V.away();
   countdown(m, t.handIn, { label: label(n, 'Train'), red: 5, upMs: 300, host: camHost() });
+  // training done (the whole budget, or stopped at the phase's end): that brain is final, so it goes in now
   const done = (next: Saved) => {
     if (M !== m || m.round !== n || m.trained) return;
     m.trained = next.genome;
-    if (m.step === 'handIn') handIn(m);
+    handIn(m);
   };
   openTraining(saved, 0, 0, { save: noop, back: noop, drive: noop, round: { n, seed: m.trainSeed, done } }, true)
     .catch((e) => { console.error(e); done(saved); });
 }
 
-/** The train phase is over: hand in the best brain so far for this round. */
-function handIn(m: RM): void {
+/** Training is done (or stopped at the train phase's end): hand in that brain for this round; once more if it fails. */
+function handIn(m: RM, again = true): void {
   if (m.handed || !m.trained) return;
   m.handed = true;
-  submitRoundBrain(m.info.me, m.info.matchNo, m.round, genomeToJSON(m.trained)).catch((e) => console.warn('room: brain not handed in', e));
+  const n = m.round;
+  submitRoundBrain(m.info.me, m.info.matchNo, n, genomeToJSON(m.trained)).catch((e) => {
+    console.warn('room: brain not handed in', e);
+    if (!again || M !== m || m.round !== n || rel(m) > roundTimes(n).freeze - 500) return;
+    setTimeout(() => { if (M === m && m.round === n) { m.handed = false; handIn(m, false); } }, 300);
+  });
 }
 
 /** A round's entries that race: valid brains within the round's budget, in join order (the same on every client). */

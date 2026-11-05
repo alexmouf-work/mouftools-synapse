@@ -59,6 +59,15 @@ export function listRows(n: number, p: number, rows = LISTED): { idx: number[]; 
   return { idx: [0, 1, 2, ...Array.from({ length: k }, (_, i) => start + i)], gap: start > 3 };
 }
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/**
+ * A results or standings table's rows (principal 2026-11-05: "only show 10 racers at a time"): the sidebar's rule
+ * (listRows) on the table's own order, `you` the index of your row (−1 watching: the top 10); a "⋯" row where places
+ * 1–3 and the rows nearest you don't meet. `row(i)` renders the row at index i of the order.
+ */
+export function tableRows(n: number, you: number, row: (i: number) => string, cols = 4): string {
+  const L = listRows(n, Math.max(0, you));
+  return L.idx.map((i, j) => `${L.gap && j === 3 ? `<tr class="gap" aria-hidden="true"><td colspan="${cols}">⋯</td></tr>` : ''}${row(i)}`).join('');
+}
 
 /** One race to show: who drives (in entry order), which car is yours (−1: watching), the seed, and for a room when Go is. */
 export interface RaceSetup {
@@ -284,10 +293,9 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     shown = true; status.state = 'results';
     $('rcResT').textContent = !mine ? 'Results' : place === 1 ? 'You won!' : `You finished ${ord(place)} of ${n}`;
     $('rcHead').innerHTML = '<tr><th>Place</th><th>Name</th><th>Time</th><th>Distance</th></tr>';
-    $('rcRows').innerHTML = results.map((r) => `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${fmtKm(shownDist(r.finish !== null ? goal : r.prog))}</td></tr>`).join('');
-    // the table scrolls (up to 100 rows) under the pinned title and buttons: open it on your row
-    const sc = $('rcScroll'), you = sc.querySelector<HTMLElement>('tr.you');
-    sc.scrollTop = you ? Math.max(0, you.offsetTop - sc.clientHeight / 2) : 0;
+    // at most 10 rows: places 1–3 and those nearest you, as the sidebar lists them
+    $('rcRows').innerHTML = tableRows(results.length, mine ? place - 1 : -1, (i) => { const r = results[i]; return `<tr class="${mine && r.slot === cars[me].slot ? 'you' : ''}"><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.finish !== null ? fmtT(r.finish / HZ) : '–'}</td><td>${fmtKm(shownDist(r.finish !== null ? goal : r.prog))}</td></tr>`; });
+    $('rcScroll').scrollTop = 0;
     $('rcResults').hidden = false;
     if (place === 1) cheer();
     hooks.result?.(mine ? results[place - 1] : null);

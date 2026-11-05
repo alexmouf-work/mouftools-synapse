@@ -38,7 +38,7 @@ import { generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { runPhase } from '../../src/common/train/phase';
 import { NO_TRAINING, SAVE_KEY, serialize } from '../../src/client/ui/designer/store';
-import { fixtureBrain } from './fixture';
+import { fixtureBrain, STANDINGS_LAYOUT, standingsClear, type StandingsLayout } from './fixture';
 
 const OUT = 'out/race';
 const T = 300_000;
@@ -248,6 +248,16 @@ async function main() {
     check(JSON.stringify(rows) === JSON.stringify(want) && (await page.locator('#rcResT').innerText()) === 'Round 1 of 5 · Standings' && (await page.locator('#rcHead').innerText()).replace(/\s+/g, ' ').trim() === 'PLACE NAME ROUND 1 TOTAL',
       `standings: race and total distance (signed) = Node: ${rows.map((x) => `${x[1]} ${x[3]}`).join(' | ')}`);
     check(st8.label === 'Round 2 of 5 in' && Number(st8.text) <= 8 && Number(st8.text) >= 6 && !st8.again && !st8.back, `"${st8.label}" ${st8.text}, and no buttons: the timer moves on`);
+    // the panel sits below the round's timer: title and headers on view, your row too
+    const sl = await page.evaluate(STANDINGS_LAYOUT) as StandingsLayout;
+    await page.setViewportSize({ width: 844, height: 390 });
+    await frames(page, 2);
+    const slp = await page.evaluate(STANDINGS_LAYOUT) as StandingsLayout;
+    await page.screenshot({ path: `${OUT}/standings-844x390.png` });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await frames(page, 2);
+    check(standingsClear(sl, 10) && standingsClear(slp, 10) && sl.places.join(' ') === '1 2 3 4 5 6 7 8 9 10' && sl.you !== null,
+      `vs CPU's standings: all 10 rows (${sl.places.join(' ')}; you ${sl.you}), clear of the round's timer (${sl.gap.toFixed(0)} px below it at 1440×900, ${slp.gap.toFixed(0)} px at 844×390), title and headers on view, nothing scrolls`);
     await page.screenshot({ path: `${OUT}/standings.png` });
     await page.evaluate(() => window.__phase!.skipTo(0.1));
     await page.waitForFunction(() => window.__match?.phase === 'build' && window.__match.round === 2, null, { timeout: 10_000, polling: 100 });
