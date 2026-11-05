@@ -287,3 +287,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   make use of the added neurons. make the training 20s per round instead of 10." · "change the way the boundary vector
   cells work so that they effectively pick useful directions to cover, rather than random directions. don't show lasers
   coming out of the car." → `docs/plans/2026-11-05-match-flow-v2.md` (replaces weights carrying over between rounds).
+- "only run tests of affected systems rather than all systems" (2026-11-05) → CLAUDE.md: before a commit, the checks
+  covering what changed, not the full suite.
