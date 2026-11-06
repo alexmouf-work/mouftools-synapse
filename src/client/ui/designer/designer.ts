@@ -52,8 +52,8 @@ const DESC = { neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'
 /** The trainers in the picker, with the rule the strip shows (principal 2026-11-04: "Learning Rule : [equation]"). */
 export const TRAINERS: { id: TrainerId; n: string; eq: string }[] = [
   { id: 'evolution', n: 'Evolution', eq: 'w′ = w + σ·ε' },
-  { id: 'backprop', n: 'Backprop', eq: 'Δw = η·δ·x' },
-  { id: 'ac', n: 'Actor-critic', eq: 'Δw = α·δ·∂log π/∂w' },
+  { id: 'backprop', n: 'Backprop', eq: 'Δw = η·m̂/√v̂, m ← ⟨δ·x⟩' },
+  { id: 'ac', n: 'Actor-critic', eq: 'Δw = α·Â·∂log π/∂w' },
   { id: 'arp', n: 'A<sub>RP</sub>', eq: 'Δw = ρ·(±y − p)·x' },
 ];
 const GENS = [10, 25, 50, 100, 250, 500, 1000];

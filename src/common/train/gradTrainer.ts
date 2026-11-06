@@ -157,6 +157,33 @@ export abstract class GradTrainer implements Trainer {
 const clampW = (x: number): number => (x > CAP ? CAP : x < -CAP ? -CAP : x);
 
 /**
+ * Adam (Kingma & Ba 2014) on an ascent direction d (a round's mean update term): m ← β1·m + (1 − β1)·d,
+ * v ← β2·v + (1 − β2)·d², Δw = lr · m̂ / (√v̂ + ε) with the bias corrections. Plain loops in parameter order, so the
+ * same rounds give the same bits on any engine (fast gradient trainers plan, step 3).
+ */
+export class Adam {
+  private m: Float64Array;
+  private v: Float64Array;
+  private t = 0;
+  constructor(n: number) { this.m = new Float64Array(n); this.v = new Float64Array(n); }
+  step(d: ArrayLike<number>, lr: number): Float64Array {
+    if (this.m.length !== d.length) { this.m = new Float64Array(d.length); this.v = new Float64Array(d.length); this.t = 0; }
+    const { beta1: b1, beta2: b2, eps } = CONFIG.train.adam, n = this.m.length, out = new Float64Array(n);
+    this.t++;
+    let p1 = 1, p2 = 1;
+    for (let k = 0; k < this.t; k++) { p1 *= b1; p2 *= b2; } // β^t by repeated product (no engine pow)
+    const c1 = 1 - p1, c2 = 1 - p2;
+    for (let i = 0; i < n; i++) {
+      const g = d[i];
+      this.m[i] = b1 * this.m[i] + (1 - b1) * g;
+      this.v[i] = b2 * this.v[i] + (1 - b2) * g * g;
+      out[i] = (lr * (this.m[i] / c1)) / (Math.sqrt(this.v[i] / c2) + eps);
+    }
+    return out;
+  }
+}
+
+/**
  * A fresh start: every weight and bias ~ N(0, initSd), except that wires into a ReLU layer, and its biases, start
  * positive (|N|). A ReLU that is silent on
  * every input has slope 0 everywhere, so gradient descent can never wake it (a dead unit; measured in T1: half the

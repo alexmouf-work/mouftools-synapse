@@ -79,3 +79,30 @@ shared-memory worker design (SharedArrayBuffer needs cross-origin isolation head
 per update (changes what T buys). Step 3's learning changes need S1 runs of each change; not started.
 Chrome times not measured (the engine change is the same code in both). S1 unchanged (bit-identical training).
 Checked: types, purity, unit, determinism, bench (2478 ms, limit 4185), training.
+
+## Built: step 3, more learning per car-tick (2026-11-06)
+Coordinator 2026-11-06: no sim change and no cross-origin isolation for now; step 3 with one principled setting per
+trainer, no sweeps. S1 (seeds 1–20, T 6M, `npx tsx scripts/sim/bench.ts --trainer <id> --spec default|sighted
+--no-compare`; `--spec sighted` is new: 5 boundary cells and speed → 4 tanh), before (e14fe4f) → after:
+
+| trainer · brain | final fitness, median | (a) 30 s unseen, median | (b) ≥ 80% lap | (c) end ≥ 2× gen 1 | (d) Minimal ≥ 50% lap |
+|---|---|---|---|---|---|
+| backprop · default | 30 → 152 | 97 m → 232 m | 0/20 → 0/20 | 17/20 → 19/20 | 0/20 → 0/20 |
+| backprop · sighted | 2627 → 2765 | 1311 m → 1358 m | 0/20 → 0/20 | 20/20 → 20/20 | 0/20 → 0/20 |
+| actor-critic · default | 24 → 42 | 82 m → 93 m | 0/20 → 0/20 | 15/20 → 17/20 | 0/20 → 0/20 |
+| actor-critic · sighted | 2811 → 2838 | 1370 m → 1396 m | 0/20 → 0/20 | 18/20 → 20/20 | 0/20 → 0/20 |
+| A_RP · default (not kept) | 1230 → 796 | 601 m → 408 m | 0/20 → 0/20 | 19/20 → 20/20 | 0/20 → 0/20 |
+| A_RP · sighted (not kept) | 1388 → 621 | 681 m → 371 m | 0/20 → 0/20 | 20/20 → 18/20 | 0/20 → 0/20 |
+
+(b) stays out of reach on 2–3 km laps, as for evolution since tracks v2. Phase time is unchanged (no sim change).
+- **Backprop:** Adam (β1 0.9, β2 0.999, ε 1e-8, η 0.01) on each round's mean δ·x; the first moment averages about ten
+  rounds, the larger effective batch. Kept. Strip: Δw = η·m̂/√v̂, m ← ⟨δ·x⟩.
+- **Actor-critic:** GAE(γ 0.98, λ 0.9) advantages, normalised over the whole round exactly (lanes return Σ A·g, Σ g,
+  Σ A, Σ A²); the actor steps with Adam (α 0.01); the critic keeps its own rate (β 1) toward the λ-return; the
+  round's last tick, whose next state is unseen, is dropped. Entropy: the policy's is σ's, which isn't learned, so
+  the decay is σ's schedule (0.3 → 0.05); a bonus would have no gradient. Kept. Strip: Δw = α·Â·∂log π/∂w.
+- **A_RP:** per-lane baselines (each step × 2|r − b|, b the lane's reward rate over ~100 ticks) lowered S1 on both
+  brains (above), so they are not kept; A_RP is as it was.
+- Goldens: `phaseBackprop` and `phaseAc` change (the new update rules); every other golden is unchanged. No CPU brains
+  come from these trainers. Determinism holds: inline = 4 workers in the determinism check.
+- Checked: types, purity, unit, determinism, workbench (the strip), training.

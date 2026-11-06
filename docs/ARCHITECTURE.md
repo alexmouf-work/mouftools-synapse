@@ -215,7 +215,10 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   teacher-driven with probability β, 0.5 falling to 0 by 25% of T: classic DAgger mixing), the teacher labels every
   state the brain saw, and each tick adds the generalised delta rule's terms (`grad.ts`): output δ = (t − y)·f′(z),
   hidden δ = f′(z)·Σ w·δ, term δ·x, and for each sense cell's field δ_input·∂reading/∂p (`fieldgrad.ts`); the
-  round's update is Δw = η·(Σ δ·x)/samples, η = `backprop.lr` (0.6, constant).
+  round's mean term d = (Σ δ·x)/samples goes to Adam (`gradTrainer.ts Adam`, β1 0.9, β2 0.999, ε 1e-8; since step 3
+  of the fast-gradient-trainers plan): Δw = η·m̂/(√v̂ + ε), η = `backprop.lr` (0.01). The first moment averages about
+  ten rounds, a larger effective batch than one round. The backward pass takes each slope from the node's output
+  (`brain.ts slopeOf`, exactly f′(z)).
   The wheels are tanh like any neuron. The teacher's targets account for the tick's speed cap. On the default v2
   brain it does not learn (no bias input, see the trainers plan); it does on brains with a steady input.
 - **Actor-critic** (`actorCritic.ts`, kernel `acKernel.ts`, B4): the brain is the actor; the lanes drive a = y + σ·ε
@@ -223,12 +226,15 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   same noise; σ 0.3 falling to 0.05 over T, times the temperature's multiplier). A linear critic owned by the trainer,
   V(s) = v·φ, φ = [1, every input cell, every hidden neuron, speed / top speed], travels in the job's params and
   starts at 0 each phase. Reward per tick r = progress − 0.5 × wall touch (m), the training fitness per tick. TD
-  error δ = r + γV(s′) − V(s) (γ 0.98; V = 0 after an episode ends), settled on the next tick; with eligibility
-  traces (λ 0.9) e ← γλe + ∂log π/∂w (∂log π/∂y = ε/σ, carried back by `grad.ts` and into the fields by
-  `fieldgrad.ts`) and e_v ← γλe_v + φ. Update per round: actor Δw = α·Σδ·e/n (α 0.1), critic Δv = β·Σδ·e_v/n (β 1).
-  Traces and the open transition restart at every episode and round (`laneStart`, `episodeEnd` kernel hooks). Channels
-  `signal`, `value` (per parameter, the critic's weight on the node it belongs to) and `td` (the last round's mean
-  δ·e). The fitness checks drive the mean action, without the noise.
+  error δ = r + γV(s′) − V(s) (γ 0.98; V = 0 after an episode ends). Since step 3 of the fast-gradient-trainers plan
+  each tick's score g = ∂log π/∂w (∂log π/∂y = ε/σ, carried back by `grad.ts` and into the fields by `fieldgrad.ts`)
+  waits in the lane's buffer until its advantage is known: GAE A_t = δ_t + γλA_{t+1} (λ 0.9), computed backwards at an
+  episode's end (`episodeEnd`) or the round's (`laneEnd`, the last tick, whose next state is unseen, dropped). The
+  lane returns Σ A·g, Σ g, Σ A, Σ A² and Σ A·φ, so the trainer normalises the advantages over the whole round exactly
+  (Σ Â·g = (Σ A·g − mean·Σ g)/sd) and steps the actor with Adam (α 0.01); the critic, at its own rate, Δv = β·Σ A·φ/n
+  (β 1) toward the λ-return. The policy's entropy is σ's, which isn't learned: its decay is σ's schedule. Channels
+  `signal`, `value` (per parameter, the critic's weight on the node it belongs to) and `td` (the last round's
+  normalised mean Â·g). The fitness checks drive the mean action, without the noise.
 - **A_RP** (`arp.ts`, kernel `arpKernel.ts`, B4): each wheel is a stochastic unit, y = +1 with probability
   (1 + E[y])/2 else −1, E[y] = tanh(z) its own output (what it drives in a race). The lanes drive E[y] + s·(y − E[y])
   (s 0.75 times the temperature's multiplier, clamped to −1..1), spikes drawn from the lane's episode seed. One bit

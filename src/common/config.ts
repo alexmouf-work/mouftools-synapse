@@ -133,18 +133,24 @@ export const CONFIG = {
       initSd: 0.1, // fresh start: w ~ N(0, this): small, so no tanh starts saturated (all-zero weights have no gradient)
     },
     backprop: {
-      lr: 0.6, // η in Δw = η · δ · x (per sample, averaged over a round); constant (a falling η measured worse)
+      lr: 0.01, // Adam's step (fast gradient trainers plan, step 3): Δw = η · m̂ / (√v̂ + ε) on the round's mean δ·x
       betaStart: 0.5, // DAgger mixing: the chance an episode is driven by the teacher, at the start …
       betaUntil: 0.25, // … falling linearly to 0 by this fraction of T (then the brain always drives)
     },
+    /**
+     * Adam (Kingma & Ba 2014), the gradient trainers' optimiser since step 3 of the fast-gradient-trainers plan: the
+     * usual moment decays; a round's mean term is one gradient, and the first moment averages about ten rounds of
+     * them (a larger effective batch than one round's 16 lanes).
+     */
+    adam: { beta1: 0.9, beta2: 0.999, eps: 1e-8 },
     /** Actor-critic (train/actorCritic.ts, acKernel.ts); temperature multiplies sigma. */
     ac: {
       sigma: 0.3, // Gaussian exploration on each wheel (outputs −1..1) at the start …
       sigmaEnd: 0.05, // … falling linearly to this by the end of T (the fitness checks drive without it)
       gamma: 0.98, // discount per tick (a horizon of ~2.5 s)
-      lambda: 0.9, // eligibility-trace decay (TD(λ))
-      alpha: 0.1, // actor: Δw = α · mean δ·e (reward: progress − wallPenalty × wall touch, m per tick)
-      beta: 1, // critic: Δv = β · mean δ·e_v
+      lambda: 0.9, // GAE's λ: A_t = Σ (γλ)^k δ_{t+k}
+      alpha: 0.01, // actor: Adam's step on the round's mean Â·∂log π/∂w, Â the advantage normalised over the round
+      beta: 1, // critic (its own rate): Δv = β · mean A·φ, toward the λ-return (reward: progress − wallPenalty × wall touch, m per tick)
     },
     /** A_RP (train/arp.ts, arpKernel.ts); temperature multiplies noise. */
     arp: {

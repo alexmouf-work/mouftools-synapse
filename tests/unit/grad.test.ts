@@ -53,12 +53,13 @@ describe('the generalised delta rule, hand-computed on a tiny net', () => {
       for (let k = 0; k < 10; k++) expect(grad[k]).toBeCloseTo(hand[k], 14);
     });
   }
-  it('the trainer step is Δw = η · (Σ δ·x) / samples', () => {
+  it('the trainer step is Adam on (Σ δ·x) / samples: its first step is η · sign', () => {
     const b = new Backprop({ start: 'fresh' }) as unknown as { update(s: Float64Array, st: Float64Array): Float64Array; loss: number };
     const sum = Float64Array.from([1.2, -0.4, 0, 3]), stats = Float64Array.from([8, 4, 0]);
     const dw = b.update(sum, stats);
     const eta = CONFIG.train.backprop.lr;
-    expect(Array.from(dw)).toEqual([eta * 1.2 / 4, eta * -0.4 / 4, 0, eta * 3 / 4]);
+    // m̂ = d and v̂ = d² on the first step, so Δw = η·d/(|d| + ε)
+    [eta, -eta, 0, eta].forEach((x, i) => expect(dw[i]).toBeCloseTo(x, 7)); // (ε shaves the last digits)
     expect(b.loss).toBe(8 / (4 * 4));
   });
 });

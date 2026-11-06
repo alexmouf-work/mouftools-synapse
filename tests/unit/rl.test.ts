@@ -40,7 +40,7 @@ function think(net: ReturnType<typeof compile>, c: ReturnType<typeof startCar>, 
 
 describe('actor-critic (T2)', () => {
   const A = CONFIG.train.ac;
-  it('two ticks of a lane give exactly δ·∂log π/∂w and δ·φ for the first transition, by hand', () => {
+  it('two ticks of a lane give exactly A·∂log π/∂w, ∂log π/∂w and A·φ for the first transition (GAE), by hand', () => {
     const core = new EpisodeCore(setup);
     const net = compile({ spec, w: Array.from(w) }), nC = criticSize(net);
     const v = Array.from({ length: nC }, (_, j) => (j % 3) * 0.2 - 0.1);
@@ -59,28 +59,33 @@ describe('actor-critic (T2)', () => {
     const p0 = c.prog, w0 = c.wallTicks;
     new Runner().tick(net, t, c, undefined, (vv, o) => { for (let k = 0; k < 4; k++) vv[o + k] = Math.max(-1, Math.min(1, vv[o + k] + sigma * eps[k])); });
     const r0 = c.prog - p0 - CONFIG.train.wallPenalty * (c.wallTicks - w0);
-    // tick 1 settles it: δ = r + γ·V(s′) − V(s); the trace then is ∂log π(a₀|s₀)/∂w and φ(s₀)
+    // the round's end settles tick 0 by tick 1's V: δ = r + γ·V(s′) − V(s), A = δ (the last tick, whose next state
+    // is unseen, is dropped)
     const V1 = V(phi(think(net, c, t).vals));
     const d0 = r0 + gamma * V1 - V0;
-    const hand = [...Array.from(g0, (x) => d0 * x), ...phi0.map((x) => d0 * x)];
-    expect(out.grad.length).toBe(nP + nC);
+    const hand = [...Array.from(g0, (x) => d0 * x), ...Array.from(g0), ...phi0.map((x) => d0 * x)];
+    expect(out.grad.length).toBe(2 * nP + nC);
     for (let i = 0; i < hand.length; i++) expect(out.grad[i]).toBeCloseTo(hand[i], 12);
     expect(g0.some((x) => x !== 0)).toBe(true);
-    expect(out.stats[1]).toBe(1); // the second transition is still open when the round ends
+    expect(out.stats[1]).toBe(1);
     expect(out.stats[0]).toBeCloseTo(d0 * d0, 12);
+    expect(out.stats[4]).toBeCloseTo(d0, 12);
+    expect(out.stats[5]).toBeCloseTo(d0 * d0, 12);
   });
 
-  it('the update is Δw = α · Σ δ·e / n for the actor and Δv = β · Σ δ·e_v / n for the critic', async () => {
+  it('the update: Adam on the batch-normalised Σ Â·g / n for the actor, Δv = β · Σ A·φ / n for the critic', async () => {
     const ac = new ActorCritic({ start: 'fresh' });
     const exec = new InlineExecutor();
     await exec.setup(setup);
     const { MeteredEnv } = await import('../../src/common/train/env');
     ac.init({ spec, w: Array.from(w) }, 1, new MeteredEnv(setup, exec, 1e6));
     const nC = ac.v.length;
-    const sum = Float64Array.from({ length: nP + nC }, (_, i) => (i % 4) - 1.5), stats = Float64Array.from([2, 4, 0.8, 1.2]);
+    const sum = Float64Array.from({ length: 2 * nP + nC }, (_, i) => (i % 4) - 1.5), stats = Float64Array.from([2, 4, 0.8, 1.2, 1, 3]);
     const dw = (ac as unknown as { update(a: Float64Array, b: Float64Array): Float64Array }).update(sum, stats);
-    for (let i = 0; i < nP; i++) expect(dw[i]).toBe((A.alpha * sum[i]) / 4);
-    for (let j = 0; j < nC; j++) expect(ac.v[j]).toBe((A.beta * sum[nP + j]) / 4);
+    const mean = 1 / 4, sd = Math.sqrt(3 / 4 - mean * mean) + 1e-8;
+    // Adam's first step: α · sign of each normalised term
+    for (let i = 0; i < nP; i++) { const d = (sum[i] - mean * sum[nP + i]) / (sd * 4); expect(dw[i]).toBeCloseTo(d === 0 ? 0 : Math.sign(d) * A.alpha, 7); }
+    for (let j = 0; j < nC; j++) expect(ac.v[j]).toBe((A.beta * sum[2 * nP + j]) / 4);
     expect(ac.tdErr).toBe(0.5);
   });
 

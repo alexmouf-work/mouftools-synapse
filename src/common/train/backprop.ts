@@ -1,9 +1,13 @@
 // Backprop: copy a teacher (solo-loop plan §3b; principal 2026-10-30). The brain drives lanes of cars; the scripted
 // pure-pursuit teacher (sim/teacher.ts) labels every state the brain sees (DAgger, imitate.ts), and the weights follow
-// the generalised delta rule (grad.ts): output δ = (t − y)·f′(z), hidden δ = f′(z)·Σ w·δ, Δw = η·δ·x, the δ·x terms
-// averaged over the round's samples. Every function on every layer has a slope, so nothing is refused.
+// the generalised delta rule (grad.ts): output δ = (t − y)·f′(z), hidden δ = f′(z)·Σ w·δ, the δ·x terms averaged over
+// the round's samples, and since the fast-gradient-trainers plan (step 3) Adam takes the step: Δw = η·m̂/(√v̂ + ε),
+// m̂ the momentum of those averages over about ten rounds. Every function on every layer has a slope, so nothing is
+// refused.
 import { CONFIG } from '../config';
-import { GradTrainer, slopeRefusal } from './gradTrainer';
+import { Adam, GradTrainer, slopeRefusal } from './gradTrainer';
+import type { Env } from './env';
+import type { Genome } from '../sim/spec';
 import { registerTrainer, type Channel } from './trainer';
 
 const B = CONFIG.train.backprop;
@@ -15,6 +19,12 @@ export class Backprop extends GradTrainer {
   protected readonly kernel = 'imitate' as const;
   /** Mean squared error per wheel over the last round. */
   loss = 0;
+  private adam = new Adam(0);
+
+  init(genome: Genome, seed: number, env: Env): void {
+    super.init(genome, seed, env);
+    this.adam = new Adam(this.w.length);
+  }
 
   /** DAgger's β: the chance a new episode is driven by the teacher. */
   beta(): number {
@@ -28,7 +38,7 @@ export class Backprop extends GradTrainer {
     const n = stats[1];
     if (!(n > 0)) throw new Error('backprop: a round with no samples');
     this.loss = stats[0] / (4 * n);
-    return sum.map((g) => (B.lr * g) / n);
+    return this.adam.step(sum.map((g) => g / n), B.lr);
   }
 }
 

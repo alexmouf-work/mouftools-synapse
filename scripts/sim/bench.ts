@@ -4,7 +4,7 @@
 // the pass criterion (solo-loop plan step 1: a, b, c, d, f; e is the browser time, see /bench). --trainer picks the
 // trainer (evolution by default); a gradient trainer's "generations" are its fitness checks (gen 1 = its starting
 // weights), and the report adds the c-style gate for trainers (end ≥ 1.5× start on ≥ 15/20) and the teacher's own laps.
-//   npx tsx scripts/sim/bench.ts [--seeds 1-20] [--workers 4] [--no-compare] [--T 3000000] [--trainer backprop]
+//   npx tsx scripts/sim/bench.ts [--seeds 1-20] [--workers 4] [--no-compare] [--T 3000000] [--trainer backprop] [--spec sighted]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { availableParallelism, cpus } from 'node:os';
 import { CONFIG } from '../../src/common/config';
@@ -29,7 +29,14 @@ const workers = Number(arg('workers', '4'));
 const T = Number(arg('T', String(CONFIG.train.T)));
 const compare = !flag('no-compare');
 const trainer = arg('trainer', 'evolution');
-const outDir = arg('out', trainer === 'evolution' ? 'out/bench' : `out/bench-${trainer}`);
+/** --spec sighted: the brain that can see the road (5 boundary cells and speed → 4 tanh), the trainers plan's comparison. */
+const specName = arg('spec', 'default');
+const SPECS: Record<string, () => Spec> = {
+  default: defaultSpec,
+  sighted: () => ({ v: 2, senses: { boundary: 5, far: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 4, fn: 'tanh' }] }),
+};
+const benchSpec = SPECS[specName] ?? ((): never => { throw new Error(`bench: unknown --spec ${specName}`); })();
+const outDir = arg('out', (trainer === 'evolution' ? 'out/bench' : `out/bench-${trainer}`) + (specName === 'default' ? '' : `-${specName}`));
 
 interface Raced { prog: number; wallTicks: number; x: Float64Array; y: Float64Array; ticks: number }
 /** A look at the unseen track: a 1-minute run with the full pool (as trained and as the drive), cut at `ticks`. */
@@ -61,8 +68,8 @@ async function main() {
   for (const seed of seeds) {
     const ps = phaseSeeds(seed);
     const unseen = generateTrack(ps.unseenTrack);
-    const st: PhaseResult = await runPhase(pool, defaultSpec(), seed, { T, now, trainer });
-    const st1 = pool1 ? await runPhase(pool1, defaultSpec(), seed, { T, now, trainer }) : null;
+    const st: PhaseResult = await runPhase(pool, benchSpec(), seed, { T, now, trainer });
+    const st1 = pool1 ? await runPhase(pool1, benchSpec(), seed, { T, now, trainer }) : null;
     const mn = await runPhase(pool, minimalSpec(), seed, { T, now, trainer });
     const G = st.gens.length;
     const g1 = st.gens[0], gm = st.gens[Math.floor((G - 1) / 2)], ge = st.gens[G - 1];
@@ -90,7 +97,7 @@ async function main() {
     console.log(`seed ${seed}: gens ${G}, fit ${row.fit1.toFixed(0)}→${row.fitEnd.toFixed(0)}, unseen ${row.prog1.toFixed(0)}/${row.progMid.toFixed(0)}/${row.progEnd.toFixed(0)} of ${row.lap.toFixed(0)} m, minimal ${row.minimalProg.toFixed(0)} m, ${(row.trainMs / 1000).toFixed(2)} s (${workers}w)${st1 ? `, ${(st1.trainMs / 1000).toFixed(2)} s (1w), hash ${st.hash} ${st.hash === st1.hash ? '=' : '≠'} ${st1.hash}` : ''}`);
   }
   // same seed twice → same hash (on the first seed, fresh pool)
-  const again = await runPhase(pool, defaultSpec(), seeds[0], { T, now, trainer });
+  const again = await runPhase(pool, benchSpec(), seeds[0], { T, now, trainer });
   rows[0].hashRepeat = again.hash;
   await pool.close();
   if (pool1) await pool1.close();

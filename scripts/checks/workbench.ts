@@ -128,9 +128,9 @@ async function main() {
 
     // 2. trainer picker → the rule strip follows
     await page.click('#trainers [data-tr="backprop"]');
-    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = η·δ·x' && (await saved(page)).trainer === 'backprop', 'Backprop picked: the strip shows Δw = η·δ·x, and it is saved');
+    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = η·m̂/√v̂, m ← ⟨δ·x⟩' && (await saved(page)).trainer === 'backprop', 'Backprop picked: the strip shows Δw = η·m̂/√v̂, m ← ⟨δ·x⟩, and it is saved');
     await page.click('#trainers [data-tr="ac"]');
-    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = α·δ·∂log π/∂w' && (await saved(page)).trainer === 'ac', 'Actor-critic picked: the strip shows Δw = α·δ·∂log π/∂w, and it is saved');
+    check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = α·Â·∂log π/∂w' && (await saved(page)).trainer === 'ac', 'Actor-critic picked: the strip shows Δw = α·Â·∂log π/∂w, and it is saved');
     await page.click('#trainers [data-tr="arp"]');
     check(await page.locator('#eq').innerText() === 'Learning Rule : Δw = ρ·(±y − p)·x' && (await saved(page)).trainer === 'arp', 'A_RP picked: the strip shows Δw = ρ·(±y − p)·x, and it is saved');
     await page.click('#trainers [data-tr="evolution"]');

@@ -70,6 +70,8 @@ export interface Kernel {
   laneStart?(ctx: KernelCtx, job: RolloutJob, lane: Lane): void;
   /** Called after the tick that ends an episode (stall, backwards or time), before the car is dropped. */
   episodeEnd?(ctx: KernelCtx, job: RolloutJob, lane: Lane, grad: Float64Array, stats: Float64Array): void;
+  /** Called when a lane has run its share of the round (its car may carry on next round). */
+  laneEnd?(ctx: KernelCtx, job: RolloutJob, lane: Lane, grad: Float64Array, stats: Float64Array): void;
 }
 
 export const fresh = (count: number): Lane[] =>
@@ -113,6 +115,7 @@ export class RolloutCore {
         lane.mark = stopCheck(c, lane.mark);
         if (lane.mark < 0 || c.tick >= ep) { k.episodeEnd?.(ctx, job, lane, grad, stats); lane.car = null; }
       }
+      k.laneEnd?.(ctx, job, lane, grad, stats);
       return { lane, ticks: job.ticks, grad, stats };
     });
   }

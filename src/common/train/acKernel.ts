@@ -1,16 +1,18 @@
-// Actor-critic's rollout kernel (trainers plan T2). The brain is the actor: each tick its wheel outputs y are the mean
-// of a Gaussian policy, and the car drives a = y + σ·ε (ε ~ N(0, 1) per wheel, drawn from the lane's episode seed, so
-// the same lane gives the same noise on any worker). The critic, owned by the trainer, is linear over what the brain
-// sees and computes: V(s) = v · φ(s), φ = [1, every input cell, every hidden neuron, the car's speed / top speed].
-// The reward is the training fitness per tick: r = progress this tick − wallPenalty × wall touch (m). Then
-//   TD error   δ = r + γ·V(s′) − V(s)          (V of the state after an episode's end is 0)
-//   actor      Δw ∝ δ · e,  e ← γλ·e + ∂log π(a|s)/∂w     (∂log π/∂y = ε/σ, carried back by the delta rule, grad.ts)
-//   critic     Δv ∝ δ · e_v, e_v ← γλ·e_v + φ(s)
-// with eligibility traces (TD(λ)) so a wall touch is blamed on the steering that led to it. Each transition is settled
-// on the next tick, once V(s′) is known; the trace and the open transition start afresh at every episode and round.
+// Actor-critic's rollout kernel (trainers plan T2; GAE since step 3 of the fast-gradient-trainers plan). The brain is
+// the actor: each tick its wheel outputs y are the mean of a Gaussian policy, and the car drives a = y + σ·ε (ε ~ N(0,
+// 1) per wheel, drawn from the lane's episode seed, so the same lane gives the same noise on any worker). The critic,
+// owned by the trainer, is linear over what the brain sees and computes: V(s) = v · φ(s), φ = [1, every input cell,
+// every hidden neuron, the car's speed / top speed]. The reward is the training fitness per tick:
+// r = progress this tick − wallPenalty × wall touch (m). Each tick's score g = ∂log π(a|s)/∂w (∂log π/∂y = ε/σ, carried
+// back by the delta rule, grad.ts) waits in the lane's buffer until its advantage is known:
+//   TD error   δ_t = r_t + γ·V(s_{t+1}) − V(s_t)        (V after an episode's end is 0)
+//   advantage  A_t = δ_t + γλ·A_{t+1}                  (GAE(γ, λ), computed backwards at an episode's or the round's end;
+//                                                       the round's last tick, whose next state is unseen, is dropped)
+// The lane returns Σ A·g, Σ g, Σ A, Σ A² and the critic's Σ A·φ (toward the λ-return A + V), so the trainer can
+// normalise the advantages over the whole round's batch exactly (Â = (A − mean) / sd): Σ Â·g = (Σ A·g − mean·Σ g)/sd.
 //   params: [σ, γ, λ, v_0 … v_{nC−1}]
-//   grad: the actor's Σ δ·e (paramCount values), then the critic's Σ δ·e_v (nC values)
-//   stats: [Σ δ², transitions, Σ r, Σ V(s)]
+//   grad: Σ A·g (paramCount values), Σ g (paramCount), the critic's Σ A·φ (nC values)
+//   stats: [Σ δ², transitions, Σ r, Σ V(s), Σ A, Σ A²]
 import { CONFIG } from '../config';
 import { cos, log, TAU } from '../fmath';
 import { derive, hashU, TAG } from '../rng';
@@ -35,69 +37,77 @@ export function gauss(seed: number, a: number, b: number): number {
 /** The noise seed of a lane's episode (kept in lane.mode). */
 export const episodeNoise = (seed: number, lane: Lane): number => derive(seed, TAG.trainNoise, lane.id, lane.episode);
 
-// scratch, sized to the net (one lane runs at a time, so one set serves every lane)
-let z = new Float64Array(0), delta = new Float64Array(0), g = new Float64Array(0), tA = new Float64Array(0);
-let phi = new Float64Array(0), tC = new Float64Array(0);
+// scratch, sized to the net (one lane runs at a time, so one set serves every lane); the lane's buffer of this round's
+// ticks: each score g (nP values), features φ (nC), V and r
+let z = new Float64Array(0), delta = new Float64Array(0), g = new Float64Array(0);
+let G = new Float64Array(0), PHI = new Float64Array(0), Vs = new Float64Array(0), Rs = new Float64Array(0);
+let len = 0, from = 0;
 const eps = new Float64Array(4), err = new Float64Array(4);
-let open = false, prevV = 0, prevR = 0, curV = 0;
-let cur: { ctx: KernelCtx; params: number[]; lane: Lane; grad: Float64Array; stats: Float64Array } | null = null;
+let cur: { ctx: KernelCtx; params: number[]; lane: Lane } | null = null;
 
-function size(net: Net): void {
+function size(net: Net, ticks: number): void {
   const nP = paramSize(net), nC = criticSize(net);
   if (z.length !== net.nNodes) { z = new Float64Array(net.nNodes); delta = new Float64Array(net.nNodes); }
-  if (g.length !== nP) { g = new Float64Array(nP); tA = new Float64Array(nP); }
-  if (phi.length !== nC) { phi = new Float64Array(nC); tC = new Float64Array(nC); }
+  if (g.length !== nP) g = new Float64Array(nP);
+  if (G.length !== ticks * nP || PHI.length !== ticks * nC) { G = new Float64Array(ticks * nP); PHI = new Float64Array(ticks * nC); Vs = new Float64Array(ticks); Rs = new Float64Array(ticks); }
 }
 
-function restart(): void { tA.fill(0); tC.fill(0); open = false; }
-
-/** Settle the open transition with TD error d: the traces carry it to every weight that led here. */
-function settle(d: number, grad: Float64Array, stats: Float64Array): void {
-  const nP = tA.length;
-  for (let i = 0; i < nP; i++) grad[i] += d * tA[i];
-  for (let j = 0; j < tC.length; j++) grad[nP + j] += d * tC[j];
-  stats[0] += d * d; stats[1] += 1;
-  open = false;
+/**
+ * Settle buffered ticks from..len−1 by GAE: `last` is V of the state after them (0 at an episode's end) or null when
+ * it is unseen (the round's end: the final tick is dropped). Adds every settled tick's terms into grad and stats.
+ */
+function settle(params: number[], last: number | null, grad: Float64Array, stats: Float64Array): void {
+  const gamma = params[1], gl = gamma * params[2], nP = g.length, nC = PHI.length / Math.max(1, Vs.length);
+  let end = len, next = last ?? 0;
+  if (last === null) { end = len - 1; next = end >= from ? Vs[end] : 0; } // the final tick's V bootstraps the one before
+  let A = 0;
+  for (let t = end - 1; t >= from; t--) {
+    const d = Rs[t] + gamma * next - Vs[t];
+    A = d + gl * A;
+    next = Vs[t];
+    const go = t * nP, po = t * nC;
+    for (let i = 0; i < nP; i++) { grad[i] += A * G[go + i]; grad[nP + i] += G[go + i]; }
+    for (let j = 0; j < nC; j++) grad[2 * nP + j] += A * PHI[po + j];
+    stats[0] += d * d; stats[1] += 1; stats[4] += A; stats[5] += A * A;
+  }
+  from = len;
 }
 
 function act(vals: Float64Array, o: number): void {
-  const { ctx, params, lane, grad, stats } = cur!;
-  const net = ctx.net, c = lane.car!, t = ctx.tracks[lane.track];
-  const sigma = params[0], gl = params[1] * params[2];
+  const { ctx, params, lane } = cur!;
+  const net = ctx.net, c = lane.car!, t = ctx.tracks[lane.track], nP = g.length, nC = PHI.length / Vs.length;
+  const sigma = params[0], po = len * nC;
   // the critic's view of this state
-  phi[0] = 1;
-  for (let i = 0; i < net.outStart; i++) phi[1 + i] = vals[i];
-  phi[net.outStart + 1] = c.v / TOP;
+  PHI[po] = 1;
+  for (let i = 0; i < net.outStart; i++) PHI[po + 1 + i] = vals[i];
+  PHI[po + net.outStart + 1] = c.v / TOP;
   let V = 0;
-  for (let j = 0; j < phi.length; j++) V += params[AC_HEAD + j] * phi[j];
-  curV = V;
-  stats[3] += V;
-  if (open) settle(prevR + params[1] * V - prevV, grad, stats);
-  // the policy's score ∂log π/∂w at this state, into the traces
+  for (let j = 0; j < nC; j++) V += params[AC_HEAD + j] * PHI[po + j];
+  Vs[len] = V;
+  // the policy's score ∂log π/∂w at this state, into the buffer
   for (let k = 0; k < 4; k++) { eps[k] = gauss(lane.mode, c.tick, 2 * k); err[k] = eps[k] / sigma; }
   g.fill(0);
   backward(net, vals, null, err, delta, g);
   fieldGrads(net, c, t, delta, g); // the cells' learned fields, where they have a gradient
-  for (let i = 0; i < g.length; i++) tA[i] = gl * tA[i] + g[i];
-  for (let j = 0; j < phi.length; j++) tC[j] = gl * tC[j] + phi[j];
+  G.set(g, len * nP);
   // the action: the brain's wheels plus the exploration
   for (let k = 0; k < 4; k++) { const a = vals[o + k] + sigma * eps[k]; vals[o + k] = a < -1 ? -1 : a > 1 ? 1 : a; }
 }
 
 export const actorCritic: Kernel = {
-  gradSize: (net) => paramSize(net) + criticSize(net),
-  statSize: 4,
-  laneStart(ctx) { size(ctx.net); restart(); },
-  episodeStart(_ctx, job, lane) { lane.mode = episodeNoise(job.seed, lane); restart(); },
-  tick(ctx, job, lane, grad, stats) {
-    size(ctx.net);
-    if (job.params.length !== AC_HEAD + phi.length) throw new Error(`actor-critic: ${job.params.length} params, expected ${AC_HEAD + phi.length}`);
-    if (cur === null || cur.lane !== lane || cur.grad !== grad || cur.params !== job.params) cur = { ctx, params: job.params, lane, grad, stats };
+  gradSize: (net) => 2 * paramSize(net) + criticSize(net),
+  statSize: 6,
+  laneStart(ctx, job) { size(ctx.net, job.ticks); len = 0; from = 0; },
+  episodeStart(_ctx, job, lane) { lane.mode = episodeNoise(job.seed, lane); },
+  tick(ctx, job, lane, _grad, stats) {
+    if (job.params.length !== AC_HEAD + criticSize(ctx.net)) throw new Error(`actor-critic: ${job.params.length} params, expected ${AC_HEAD + criticSize(ctx.net)}`);
+    if (cur === null || cur.lane !== lane || cur.params !== job.params) cur = { ctx, params: job.params, lane };
     const c = lane.car!, p0 = c.prog, w0 = c.wallTicks;
     ctx.runner.tick(ctx.net, ctx.tracks[lane.track], c, undefined, act);
     const r = c.prog - p0 - WALL * (c.wallTicks - w0);
-    stats[2] += r;
-    prevV = curV; prevR = r; open = true;
+    Rs[len++] = r;
+    stats[2] += r; stats[3] += Vs[len - 1];
   },
-  episodeEnd(_ctx, _job, _lane, grad, stats) { if (open) settle(prevR - prevV, grad, stats); },
+  episodeEnd(_ctx, job, _lane, grad, stats) { settle(job.params, 0, grad, stats); },
+  laneEnd(_ctx, job, _lane, grad, stats) { settle(job.params, null, grad, stats); },
 };
