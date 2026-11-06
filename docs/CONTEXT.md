@@ -332,3 +332,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   short range BVC." (2026-11-06) → senses plan, "Long-range cell inverted".
 - "in sandbox mode, the stop button during training isn't obvious." (2026-11-06) → a full-width red "■ Stop training" at
   the top of the sidebar (≥48 px; Escape also stops); matches keep no Stop.
+- "push to main please." (2026-11-06) → main fast-forwarded to development (round power, CPU design styles, card symbols,
+  long-range cell inverted, race timer on the race clock, sandbox Stop button).
