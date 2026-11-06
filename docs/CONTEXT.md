@@ -322,3 +322,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
 - "push to main please." (2026-11-06) → main fast-forwarded to development at 5a913b1 (3 rounds by best race, training on
   the race track, camera sight lines and POV, race clock from Go, larger sidebar buttons, long-range boundary cell,
   lobby music, Linear default, faster and better gradient trainers).
+- "the % speed vs brain shouldn't be capped at 20, it should always be 100, but the amount that 100 represents should
+  increase. the car shouldn't go really fast at the beginning" (2026-11-06) → `docs/plans/2026-11-06-round-power.md`.
