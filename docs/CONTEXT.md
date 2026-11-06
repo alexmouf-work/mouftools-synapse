@@ -328,3 +328,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   type of input neurons that they use. currently the brains have a huge number of input neurons, a medium number of hidden
   layer 1 neurons, and then outputs, almost always." · "the brain graph in the corner should also show the input neuron
   types." (2026-11-06) → `docs/plans/2026-11-06-cpu-designs-and-card-icons.md`.
+- "the long range BVC should fire more when something is further away, less when it's close. this is an inversion of the
+  short range BVC." (2026-11-06) → senses plan, "Long-range cell inverted".

@@ -56,3 +56,14 @@ the CPU brains change), audio (lobby music).
 4. The head-direction arrow turns with z increasing (`t * 0.4`): out/s2/hd-spin-1.png → hd-spin-2.png.
 - The workbench's top bar, tighter since match polish's 44 px buttons clipped the energy split's figures at 1440×900.
 - Checked: types, purity, unit, determinism, workbench, audio, race, training.
+
+## Long-range cell inverted (2026-11-06)
+Principal: "the long range BVC should fire more when something is further away, less when it's close. this is an
+inversion of the short range BVC."
+- The long-range boundary vector cell's activation is the inverse of the short cell's response. With d the distance
+  to the wall along its field and R its range (60 m by default), it fires d / R, capped at 1. It reads 1 when no wall
+  is within range (open road), and near 0 with a wall close by. The short cell is unchanged.
+- Description: "fires faster the further away the wall is (up to 60 m)". The inspector's graph and polar field are
+  drawn inverted to match.
+- The field gradients (fieldgrad.ts) follow the inverted response. A finite-difference unit test checks them.
+- Goldens with long-range cells change. This lands before the CPU brains are regenerated (round-power stage).
