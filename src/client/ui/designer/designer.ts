@@ -534,6 +534,7 @@ function fit(): void {
   const H = innerHeight - notice;
   SCALE = Math.min(innerWidth / 860, H / 400);
   a.style.transform = `translate(${(innerWidth - 860 * SCALE) / 2}px, ${(H - 400 * SCALE) / 2}px) scale(${SCALE})`;
+  a.style.setProperty('--unscale', String(1 / SCALE)); // the 44 px buttons (designer.css)
   symbolsDirty = true;
 }
 

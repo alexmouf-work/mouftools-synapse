@@ -96,7 +96,7 @@ export class MeteredEnv implements Env {
 
   track(i: number): Track {
     if (i < 0 || i >= this.setup.trackSeeds.length) throw new Error(`env: no training track ${i}`);
-    return (this.tracks[i] ??= generateTrack(this.setup.trackSeeds[i]));
+    return (this.tracks[i] ??= generateTrack(this.setup.trackSeeds[i], this.setup.raceCars ?? 0));
   }
 
   openCar(w: ArrayLike<number>, trackIndex: number): CarHandle {

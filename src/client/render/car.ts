@@ -30,7 +30,9 @@ export function makeCar(primary: string, trimHex: string, glowTex: THREE.Texture
   // Satin, not mirror: a sharp clearcoat throws sun glints far over the bloom threshold at some poses (found by the
   // bloom audit: max 3.6 at some finale poses), so every coat has roughness ≥ 0.45. The paint is near matte (rough
   // 0.7, a faint coat): driving into a low sun, the yellow paint still glinted to 1.8 (bloom audit, brain v2 drive).
-  const glassMat = M(new THREE.MeshPhysicalMaterial({ color: '#0a1124', roughness: 0.45, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.45, flatShading: true }));
+  // the canopy's coat is softer still since the broadcast spots moved for a clear view (match polish §3): seen from
+  // above on the grid, a sharper coat (1 at 0.45) threw a sun glint to 1.43 (bloom audit, race check)
+  const glassMat = M(new THREE.MeshPhysicalMaterial({ color: '#0a1124', roughness: 0.6, metalness: 0.2, clearcoat: 0.5, clearcoatRoughness: 0.65, flatShading: true }));
   const paint = M(new THREE.MeshPhysicalMaterial({ color: primary, metalness: 0, roughness: 0.7, clearcoat: 0.15, clearcoatRoughness: 0.7, flatShading: true, envMapIntensity: 0.6 }));
   // a softer clearcoat than at first (0.6 at 0.45): the rear wing's flat top mirrored a low sun past the bloom threshold
   const trim = M(new THREE.MeshPhysicalMaterial({ color: trimHex, metalness: 0.35, roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.7, flatShading: true }));

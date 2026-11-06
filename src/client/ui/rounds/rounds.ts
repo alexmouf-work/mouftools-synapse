@@ -1,9 +1,10 @@
-// vs CPU as a 5-round match (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): each round builds (60 s in round 1,
+// vs CPU as a 3-round match (docs/plans/2026-11-05-rounds.md, match-flow-v2.md, match-polish.md): each round builds (60 s in round 1,
 // from a fresh random starter; 20 s after, upgrading the same design within that round's budget), trains for 20 s (the
-// round's budget T, from fresh weights each round; at 20 s it stops where it got to), then races nine CPU players for
-// 30 s on a new track. Only the timers move it on (match-flow v2 plan, 2026-11-05): no Train, Skip or Next round. The
-// score is the total signed distance; after each race the standings show this race's distance and the running total
-// for 8 s, then the next build starts. After round 5 the final standings, with Play again or Main menu; the winner
+// round's budget T, from fresh weights each round, on the round's race track and only that one: match polish §2; at
+// 20 s it stops where it got to), then races nine CPU players for 30 s on that track. Only the timers move it on
+// (match-flow v2 plan, 2026-11-05): no Train, Skip or Next round. The score is each player's best single-race signed
+// distance, ties to the higher total (match polish §1); after each race the standings show this race's distance and
+// the running best for 8 s, then the next build starts. After the last round the final standings, with Play again or Main menu; the winner
 // music plays if you lead (Play again goes back to the settings screen). Every phase has its big countdown
 // (ui/phaseTimer.ts) at the top centre. The settings screen (ui/cpuSettings, tracks-v2 T2) gives your name, which you
 // race under, and the map: each round's track is roundTrackSeed of its race seed under that map.
@@ -11,7 +12,7 @@ import { CONFIG } from '../../../common/config';
 import { defaultGenome } from '../../../common/sim/brain';
 import { energyRefusal } from '../../../common/sim/energy';
 import { CPU_NAMES } from '../../../common/sim/cpu';
-import { NEW_EACH_ROUND, roundTrackSeed, type MapSetting, type RaceResult } from '../../../common/sim/match';
+import { byScore, matchScore, NEW_EACH_ROUND, roundTrackSeed, type MapSetting, type RaceResult } from '../../../common/sim/match';
 import type { Genome } from '../../../common/sim/spec';
 import { derive } from '../../../common/rng';
 import { win } from '../../audio/music';
@@ -33,17 +34,17 @@ const ord = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10
 
 export const ordinal = ord;
 
-/** One standings row: a name, this round's signed distance, the total; `you` marks your row. */
-export interface StandingsRow { name: string; dist: number; total: number; you: boolean }
+/** One standings row: a name, this round's signed distance, the best race so far and the total; `you` marks your row. */
+export interface StandingsRow { name: string; dist: number; best: number; total: number; you: boolean }
 /**
- * The round's standings in the race view's results panel (rows already in order, best total first): at most 10 rows,
+ * The round's standings in the race view's results panel (rows already in order, best race first): at most 10 rows,
  * places 1–3 and those nearest you as the sidebar lists them (principal 2026-11-05); Play again / Main menu are hidden
  * here (the final standings show them).
  */
 export function showStandings(title: string, round: number, rows: StandingsRow[]): void {
   $('rcResT').textContent = title;
-  $('rcHead').innerHTML = `<tr><th>Place</th><th>Name</th><th>Round ${round}</th><th>Total</th></tr>`;
-  $('rcRows').innerHTML = tableRows(rows.length, rows.findIndex((r) => r.you), (i) => { const r = rows[i]; return `<tr class="${r.you ? 'you' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td>${fmtKm(r.dist)}</td><td>${fmtKm(r.total)}</td></tr>`; });
+  $('rcHead').innerHTML = `<tr><th>Place</th><th>Name</th><th>Race ${round}</th><th>Best</th></tr>`;
+  $('rcRows').innerHTML = tableRows(rows.length, rows.findIndex((r) => r.you), (i) => { const r = rows[i]; return `<tr class="${r.you ? 'you' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td><td>${fmtKm(r.dist)}</td><td>${fmtKm(r.best)}</td></tr>`; });
   $('rcAgain').hidden = true; $('rcBack').hidden = true;
   $('rcResults').hidden = false;
   $('rcScroll').scrollTop = 0;
@@ -86,8 +87,8 @@ interface Match {
   names: string[]; map: MapSetting;
   /** The brain as it stands (built or trained), and the Saved it trains as (the trainer picked). */
   genome: Genome; saved: Saved | null; trained: Genome | null;
-  /** dists[r][k]: car k's signed distance in round r + 1's race; total[k] the sum so far. */
-  dists: number[][]; total: number[];
+  /** dists[r][k]: car k's signed distance in round r + 1's race; total[k] the sum so far, best[k] the best so far. */
+  dists: number[][]; total: number[]; best: number[];
   hash: string[];
 }
 let M: Match | null = null;
@@ -97,10 +98,10 @@ const designerHost = () => document.querySelector<HTMLElement>('.app .rulebar')!
 const camHost = () => $('camTop');
 const label = (m: Match, what: string) => `Round ${m.round} of ${R.count} · ${what}`;
 
-/** Order by total distance (then this race's, then entry order): the standings. */
+/** Order by the best race (then the total, then this race's distance, then entry order): the standings. */
 function order(m: Match): number[] {
   const last = m.dists[m.dists.length - 1] ?? m.names.map(() => 0);
-  return m.names.map((_, k) => k).sort((a, b) => m.total[b] - m.total[a] || last[b] - last[a] || a - b);
+  return m.names.map((_, k) => k).sort((a, b) => byScore({ best: m.best[a], total: m.total[a] }, { best: m.best[b], total: m.total[b] }) || last[b] - last[a] || a - b);
 }
 
 /** A round's race seed (its grid, and its track under "New track each round"). */
@@ -118,7 +119,7 @@ export function startMatch(views: MatchViews, o: { seed?: number; round?: number
   const round = Math.max(1, Math.min(R.count, o.round ?? 1));
   M = {
     seed: o.seed ?? newRaceSeed(), trainSeed: newRaceSeed(), round, phase: 'build', names: [o.name || 'You', ...CPU_NAMES], map: o.map ?? NEW_EACH_ROUND,
-    genome: o.raceWith?.genome ?? matchStarter(), saved: o.raceWith ?? null, trained: null, dists: [], total: new Array<number>(CPU_NAMES.length + 1).fill(0), hash: [],
+    genome: o.raceWith?.genome ?? matchStarter(), saved: o.raceWith ?? null, trained: null, dists: [], total: new Array<number>(CPU_NAMES.length + 1).fill(0), best: new Array<number>(CPU_NAMES.length + 1).fill(0), hash: [],
   };
   if (o.raceWith) { M.trained = o.raceWith.genome; V.away(); race(); } else build();
 }
@@ -140,7 +141,7 @@ function build(): void {
   V.build(m.genome, R.budgets[m.round - 1]);
   startPhaseTimer({ label: label(m, 'Build'), seconds: R.build[m.round - 1], red: 10, host: designerHost(), onZero: () => V.timeUp() });
   // the round's training view gets ready while you build (workers, scene, shaders), once the designer is up
-  setTimeout(() => { if (M === m && m.phase === 'build') prewarmTraining({ n: m.round, seed: m.trainSeed }); }, WARM_AFTER_MS);
+  setTimeout(() => { if (M === m && m.phase === 'build') prewarmTraining({ n: m.round, seed: m.trainSeed, track: trackOfRound(m, m.round), cars: m.names.length }); }, WARM_AFTER_MS);
 }
 
 /** How long after a build phase starts its round's training view starts getting ready (ms). */
@@ -159,7 +160,7 @@ export function matchTrain(saved: Saved): void {
   // at 0 training stops where it has got to and keeps the best so far, so a slow device still races on time
   startPhaseTimer({ label: label(m, 'Train'), seconds: R.train, red: 5, host: camHost(), onZero: () => { up = true; if (!m.trained) stopTraining(); go(); } });
   const done = (next: Saved) => { if (M !== m || m.phase !== 'train') return; m.trained = next.genome; go(); };
-  openTraining(saved, 0, 0, { save: () => undefined, back: () => undefined, drive: () => undefined, round: { n: m.round, seed: m.trainSeed, done, startedAt } }, true)
+  openTraining(saved, 0, 0, { save: () => undefined, back: () => undefined, drive: () => undefined, round: { n: m.round, seed: m.trainSeed, done, startedAt, track: trackOfRound(m, m.round), cars: m.names.length } }, true)
     .catch((e) => { console.error(e); done(saved); });
 }
 
@@ -171,7 +172,8 @@ function race(): void {
   const saved: Saved = { ...(m.saved ?? { name: 'vs CPU', train: { seed: null, phases: 0, temps: [] }, trainer: 'evolution' }), genome: m.trained! };
   openRace(roundSetup(saved, m.round, raceSeedOf(m, m.round), { name: m.names[0], trackSeed: trackOfRound(m, m.round) }), {
     back: () => undefined,
-    go: () => { if (M === m && m.phase === 'race') startPhaseTimer({ label: label(m, 'Race'), seconds: R.raceTicks / CONFIG.tick.hz, red: 10, upText: 'Finish', host: camHost(), onZero: () => undefined }); },
+    // the race timer counts from the race's Go, the same timestamp the replay's clock counts from (match polish §4)
+    go: (goAt) => { if (M === m && m.phase === 'race') startPhaseTimer({ label: label(m, 'Race'), seconds: R.raceTicks / CONFIG.tick.hz, until: goAt + (R.raceTicks / CONFIG.tick.hz) * 1000, red: 10, upText: 'Finish', host: camHost(), onZero: () => undefined }); },
     ended: (res) => { if (M === m) standings(res); },
   }).catch((e) => { console.error(e); });
 }
@@ -181,12 +183,12 @@ function standings(res: RaceResult): void {
   stopPhaseTimer();
   const d = res.cars.map((c) => c.dist);
   m.dists.push(d); m.hash.push(res.hash);
-  d.forEach((x, k) => { m.total[k] += x; });
+  d.forEach((_, k) => { const s = matchScore(m.dists.map((r) => r[k])); m.total[k] = s.total; m.best[k] = s.best; });
   const final = m.round >= R.count, ord0 = order(m), you = ord0.indexOf(0) + 1;
   m.phase = final ? 'over' : 'standings';
   showStandings(final ? (you === 1 ? 'You won the match!' : `Final standings: you finished ${ord(you)} of ${m.names.length}`) : `Round ${m.round} of ${R.count} · Standings`,
-    m.round, ord0.map((k) => ({ name: m.names[k], dist: d[k], total: m.total[k], you: k === 0 })));
-  // only the timers move a match on (match-flow v2 §1): no Next round; after round 5, Play again / Main menu
+    m.round, ord0.map((k) => ({ name: m.names[k], dist: d[k], best: m.best[k], total: m.total[k], you: k === 0 })));
+  // only the timers move a match on (match-flow v2 §1): no Next round; after the last round, Play again / Main menu
   const again = $('rcAgain'), back = $('rcBack');
   again.textContent = 'Play again';
   back.textContent = 'Main menu';
@@ -210,7 +212,7 @@ function standings(res: RaceResult): void {
 declare global {
   interface Window {
     __match?: {
-      phase: Phase | 'none'; round: number; dists: number[][]; total: number[]; hash: string[]; standings: string[]; seed: number; trainSeed: number; trained: Genome | null;
+      phase: Phase | 'none'; round: number; dists: number[][]; total: number[]; best: number[]; hash: string[]; standings: string[]; seed: number; trainSeed: number; trained: Genome | null;
       /** The players' names, the map and each round's track seed (tracks-v2 T2). */
       names: string[]; map: MapSetting | null; tracks: number[];
     };
@@ -218,7 +220,7 @@ declare global {
 }
 Object.defineProperty(window, '__match', {
   get: () => (M
-    ? { phase: M.phase, round: M.round, dists: M.dists, total: M.total, hash: M.hash, standings: order(M).map((k) => M!.names[k]), seed: M.seed, trainSeed: M.trainSeed, trained: M.trained,
+    ? { phase: M.phase, round: M.round, dists: M.dists, total: M.total, best: M.best, hash: M.hash, standings: order(M).map((k) => M!.names[k]), seed: M.seed, trainSeed: M.trainSeed, trained: M.trained,
       names: M.names, map: M.map, tracks: Array.from({ length: R.count }, (_, k) => trackOfRound(M!, k + 1)) }
-    : { phase: 'none', round: 0, dists: [], total: [], hash: [], standings: [], seed: 0, trainSeed: 0, trained: null, names: [], map: null, tracks: [] }),
+    : { phase: 'none', round: 0, dists: [], total: [], best: [], hash: [], standings: [], seed: 0, trainSeed: 0, trained: null, names: [], map: null, tracks: [] }),
 });

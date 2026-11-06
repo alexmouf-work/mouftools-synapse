@@ -104,6 +104,8 @@ export interface RaceStatus {
   computeMs: number;
   /** Playback time (s from Go), the race's end (s), frames drawn, whether Go has passed. */
   t: number; end: number; frames: number; go: boolean; webgl: boolean; goAt: number;
+  /** The followed car's recording index on screen (−1 before Go), and the race clock now (s since Go; checks). */
+  tick: number; clock: () => number;
   countdown: string; countdownSeen: string[]; countdownMusic: boolean;
   /** "Wrong way" is showing over your car this frame. */
   wrongWay: boolean;
@@ -121,7 +123,7 @@ export interface RaceStatus {
    * followed car (m), the camera's mode and its cuts (s on the camera's clock, and why).
    */
   following: () => number; cardTitle: () => string; cardVals: () => number[] | null; ownVals: () => number[] | null;
-  lookOff: () => number; cam: () => { mode: string; cuts: { t: number; why: string }[] };
+  lookOff: () => number; cam: () => { mode: string; shot: string; cuts: { t: number; why: string; spot: number }[] };
   /** Where car k's dot is on the sidebar map (CSS px in the page), or null. */
   dotAt: (k: number) => { x: number; y: number } | null;
   /** Seek, snap the camera, draw that frame and audit bloom on it (deterministic). */
@@ -133,8 +135,8 @@ export interface RaceHooks {
   back(): void;
   /** Another race with the same brain. */
   again?(): void;
-  /** Called once at Go. */
-  go?(): void;
+  /** Called once at Go, with the Go timestamp (performance.now() ms) the race clock counts from. */
+  go?(goAt: number): void;
   /** A vs CPU round: called once when the race is over, instead of the results (the round's standings follow). */
   ended?(race: RaceResult): void;
   /** Called once when the results show: your row (or null when watching). */
@@ -247,7 +249,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     timers = [...cd.at.map((t, i) => [t, String(5 - i)] as const), [cd.go, 'Go'] as const, [cd.go + 800, ''] as const]
       .filter(([t]) => t >= now - 1).map(([t, l]) => window.setTimeout(() => showCount(l), Math.max(0, t - now)));
   };
-  const endCount = () => { cd.go = Math.min(cd.go, performance.now()); timers.forEach(clearTimeout); timers = []; showCount(''); };
+  const endCount = () => { cd.go = Math.min(cd.go, performance.now()); goRef = Math.min(goRef, cd.go); timers.forEach(clearTimeout); timers = []; showCount(''); };
 
   const wheels = new Float64Array(4);
   // no lasers (match-flow v2 plan §5): the car draws no boundary-cell beams
@@ -260,8 +262,13 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const progNow = new Float64Array(n), dist = new Float64Array(n);
   /** Signed distance as listed: from the line (laps), or covered since the grid (a timed race). */
   const shownOf = (k: number) => (timed ? progNow[k] - grid[k].prog : progNow[k]);
-  // late (a room's race already under way): join it where it is
-  let playT = Math.max(0, (performance.now() - cd.go) / 1000), frames = 0, shown = false, won = false, lastUi = -1;
+  // The race clock (match polish §4): playback time is measured from the Go timestamp, never summed from frame times
+  // (a frame-time sum capped per frame fell behind under load, so the race timer, which counts from Go, said Finish
+  // while the replay was still running). `goRef` is that Go time; only a check's hold or seek moves it. Late (a room's
+  // race already under way): join it where it is.
+  let goRef = cd.go;
+  const clockAt = (now: number) => Math.max(0, Math.min(end + RESULTS_AFTER_S, (now - goRef) / 1000));
+  let playT = clockAt(performance.now()), frames = 0, shown = false, won = false, lastUi = -1;
   /** Car k at playback time pt (s from Go; before Go, on its grid slot), into out; returns the recording index or −1. */
   const at = (k: number, pt: number, out: { x: number; y: number; hdg: number; v: number; f: number }) => {
     const r = cars[k].rec, g = grid[k];
@@ -289,18 +296,19 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const status: RaceStatus = {
     state: 'grid', kind: setup.kind, me, raceSeed, trackSeed: race.trackSeed, family: track.family, hash: race.hash, names, slots: cars.map((c) => c.slot),
     results, place, won: false, computeMs, t: 0, end, frames: 0, go: false, webgl: !!stage, goAt: cd.go, countdown: '', countdownSeen: [], countdownMusic: cd.music, wrongWay: false,
+    tick: -1, clock: () => Math.max(0, (performance.now() - goRef) / 1000),
     listed: () => listOrder().map((k) => names[k]),
     shown: () => { const o = listOrder(), r = listRows(n, o.indexOf(follow)); return r.idx.flatMap((i, j) => (r.gap && j === 3 ? ['⋯', names[o[i]]] : [names[o[i]]])); },
     drawn: () => (stage ? stage.drive.drawn().map((p, i) => [...p, i ? drawnIdx[i - 1] : follow]) : []), dots: () => dots.length,
     hold: false,
     following: () => follow, cardTitle: () => $('rcBrainT').textContent ?? '', cardVals: () => (card ? Array.from(card.vals) : null), ownVals: () => (mine ? Array.from(ownNow) : null),
-    lookOff: () => (stage ? stage.drive.lookOff() : -1), cam: () => ({ mode: stage?.drive.mode ?? '', cuts: stage ? [...stage.drive.cuts] : [] }),
+    lookOff: () => (stage ? stage.drive.lookOff() : -1), cam: () => ({ mode: stage?.drive.mode ?? '', shot: stage?.drive.shotNow ?? '', cuts: stage ? [...stage.drive.cuts] : [] }),
     dotAt: (k) => { const q = map?.cssOf(dots[k].x, dots[k].y), r = $('rcMap').getBoundingClientRect(); return q ? { x: r.left + q.x, y: r.top + q.y } : null; },
-    seek: (sec) => { endCount(); playT = Math.max(0, Math.min(sec, end)); stage?.drive.snapNow(); },
+    seek: (sec) => { endCount(); playT = Math.max(0, Math.min(sec, end)); goRef = performance.now() - playT * 1000; stage?.drive.snapNow(); },
     auditAt: (sec, mask) => {
       if (!stage) return { over: 0, max: 0 };
       endCount();
-      playT = sec;
+      playT = sec; goRef = performance.now() - sec * 1000;
       poseAll(playT, 0);
       stage.drive.snapNow();
       stage.frame(0, 0, pose);
@@ -363,12 +371,15 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
   const tick = (now: number) => {
     raf = requestAnimationFrame(tick);
     const dt = Math.max(0, Math.min((now - last) / 1000, 0.25));
-    if (now >= cd.go && !status.hold) playT = Math.min(end + RESULTS_AFTER_S, playT + Math.min(dt, (now - cd.go) / 1000));
+    // a check's hold stops the clock where it is (Go moves on with the time held)
+    if (status.hold) goRef = now - playT * 1000;
+    if (now >= cd.go) playT = clockAt(now);
     last = now;
     status.go = now >= cd.go;
     if (status.go && status.state === 'grid') status.state = 'racing';
     status.t = playT;
     const pt = Math.min(playT, end), j = poseAll(pt, status.go ? dt : 0);
+    status.tick = j;
     // your car put back since the last frame: the camera jumps with it instead of sweeping across the track
     if (j >= 0 && lastJ >= 0 && j > lastJ) for (let i = lastJ + 1; i <= j; i++) if (cars[follow].rec.wrong[i] >= WRONG_WAY) { stage?.drive.snapNow(); break; }
     lastJ = j;
@@ -392,8 +403,9 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     engine.set(ended || j < 0 ? 0 : pose.v / CONFIG.car.wheelSpeed, Math.abs((wheels[0] + wheels[2]) - (wheels[1] + wheels[3])) / 2);
     // first across the line: the winner music then and there
     if (!timed && place === 1 && cars[me].finish !== null && pt * HZ >= cars[me].finish!) cheer();
-    // a match's race is seen from the broadcast camera from Go (follow-a-racer plan), following the followed car
-    if (status.go && !wentGo) { wentGo = true; stage?.drive.setMode('tv', reduce()); hooks.go?.(); }
+    // a race is seen from Go by the director (follow-a-racer plan; match polish §3): broadcast shots and the onboard POV,
+    // cut by themselves, both on the followed car
+    if (status.go && !wentGo) { wentGo = true; stage?.drive.setMode('race', reduce()); hooks.go?.(goRef); }
     if (playT >= end + RESULTS_AFTER_S) {
       if (!hooks.ended) showResults();
       else if (!over) { over = true; status.state = 'results'; hooks.ended(race); }

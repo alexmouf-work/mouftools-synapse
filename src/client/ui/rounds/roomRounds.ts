@@ -1,11 +1,12 @@
-// Multiplayer on the same timed 5 rounds as vs CPU (match-flow v2 plan §M2). The host's Start match fixes the match's
+// Multiplayer on the same timed 3 rounds as vs CPU (match-flow v2 plan §M2, match polish §1). The host's Start match fixes the match's
 // start on the server's clock; every phase follows at a fixed time after it (common/schedule.ts), so every client runs
 // the same phases from that one time, with no buttons: build (60 s in round 1, then 20 s) in the designer under the
-// round's budget; train 20 s from fresh weights (it stops where it got to and keeps the best so far); at the train
+// round's budget; train 20 s from fresh weights on the round's race track only (match polish §2; it stops where it
+// got to and keeps the best so far); at the train
 // phase's end the brain is handed in; the server freezes the round's entries as the race's countdown begins, 3 s
 // later; every client fetches them, computes the race (deterministic: the same race everywhere) and counts down to
-// the server's Go; the race's 30 s; then 8 s of standings (this round's signed distance and the total, as vs CPU; a
-// player with nothing in has 0 m). After round 5 the final standings stay, with Play again (back to the lobby, where
+// the server's Go; the race's 30 s; then 8 s of standings (this round's signed distance and the best race so far, as
+// vs CPU; a player with nothing in has 0 m). After the last round the final standings stay, with Play again (back to the lobby, where
 // the host can change the settings and start the next match) and Main menu. Each round's track follows the room's map
 // setting (tracks-v2 T2), locked while the match is on, so every client derives the same track.
 // A player who joins mid-match watches (the lobby, then the round's race) until the next round's build.
@@ -18,7 +19,7 @@ import { derive } from '../../../common/rng';
 import { firstRound, phaseAt, roundTimes } from '../../../common/schedule';
 import { defaultGenome, genomeToJSON, zeroGenome } from '../../../common/sim/brain';
 import { energyRefusal } from '../../../common/sim/energy';
-import { NEW_EACH_ROUND, ROUND_RACE, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../../common/sim/match';
+import { byScore, matchScore, NEW_EACH_ROUND, ROUND_RACE, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../../common/sim/match';
 import { validateGenome, type Genome } from '../../../common/sim/spec';
 import { win } from '../../audio/music';
 import { roundEntries, serverNow, shiftClock, submitResult, submitRoundBrain, type Entry, type Me, type RoomPlayer } from '../../net/rooms';
@@ -59,7 +60,7 @@ type Step = 'wait' | 'build' | 'train' | 'handIn' | 'race' | 'standings' | 'over
 interface RoundRace { entries: Entry[]; ok: Entry[]; genomes: Genome[]; result: RaceResult | null }
 interface RM {
   info: RoomMatchInfo;
-  /** The first round you play (an earlier one you watch); 6: watching to the end. */
+  /** The first round you play (an earlier one you watch); CONFIG.rounds.count + 1: watching to the end. */
   first: number;
   round: number; step: Step;
   /** The brain as built this round, the Saved it trains as, and what training gave. */
@@ -102,6 +103,8 @@ function countdown(m: RM, until: number, o: Omit<PhaseOptions, 'seconds' | 'onZe
   m.until = until;
   startPhaseTimer({ ...o, seconds: secsTo(m, until), onZero: noop });
 }
+/** The race's countdown is pinned to the race's own Go timestamp (match polish §4), not retimed from the server clock. */
+let racePinned = false;
 /** The standings show in the race view's panel: the arena up if no race is showing (nobody raced this round). */
 const raceArena = () => { if ($('arena').hidden || $('raceOverlay').hidden) showArena('race'); };
 
@@ -135,7 +138,7 @@ export function abortRoomMatch(): void {
 function tick(): void {
   const m = M;
   if (!m) return;
-  retimePhase(secsTo(m, m.until));
+  if (!(racePinned && m.step === 'race')) retimePhase(secsTo(m, m.until));
   const p = phaseAt(rel(m));
   if (p.phase === 'over') { if (m.step !== 'over') finalStandings(m); return; }
   if (p.round > m.round) enterRound(m, p.round);
@@ -176,7 +179,7 @@ function enterRound(m: RM, n: number): void {
   V.build(m.genome, R.budgets[n - 1]);
   countdown(m, t.train, { label: label(n, 'Build'), red: 10, host: designerHost() });
   // the round's training view gets ready while you build (workers, scene, shaders)
-  setTimeout(() => { if (M === m && m.round === n && m.step === 'build') prewarmTraining({ n, seed: m.trainSeed }); }, WARM_AFTER_MS);
+  setTimeout(() => { if (M === m && m.round === n && m.step === 'build') prewarmTraining({ n, seed: m.trainSeed, track: roomTrackSeed(m.info.seed, n, m.info.map), cars: carsOf(m, n) }); }, WARM_AFTER_MS);
 }
 
 /** The designer's Train (the build timer at 0): training to the end of the train phase, from fresh weights. */
@@ -193,7 +196,7 @@ export function roomTrain(saved: Saved): void {
     m.trained = next.genome;
     handIn(m);
   };
-  openTraining(saved, 0, 0, { save: noop, back: noop, drive: noop, round: { n, seed: m.trainSeed, done } }, true)
+  openTraining(saved, 0, 0, { save: noop, back: noop, drive: noop, round: { n, seed: m.trainSeed, done, track: roomTrackSeed(m.info.seed, n, m.info.map), cars: carsOf(m, n) } }, true)
     .catch((e) => { console.error(e); done(saved); });
 }
 
@@ -207,6 +210,16 @@ function handIn(m: RM, again = true): void {
     if (!again || M !== m || m.round !== n || rel(m) > roundTimes(n).freeze - 500) return;
     setTimeout(() => { if (M === m && m.round === n) { m.handed = false; handIn(m, false); } }, 300);
   });
+}
+
+/**
+ * How many cars round n's race should have (match polish §2: training runs on the race's own track, whose boost pads
+ * keep off a grid of that many cars): the players in the room since its build. Only the frozen entries decide the
+ * race; if someone leaves or hands nothing in, the race track's pads can sit differently from the one trained on.
+ */
+function carsOf(m: RM, n: number): number {
+  const start = m.info.at + roundTimes(n).start;
+  return Math.max(1, V.players().filter((p) => p.joined <= start).length);
 }
 
 /** A round's entries that race: valid brains within the round's budget, in join order (the same on every client). */
@@ -254,7 +267,7 @@ function fetchRace(m: RM, n: number): void {
 function showRace(m: RM, n: number, entries: Entry[]): void {
   if (m.step === 'race' || m.step === 'standings') return;
   const rr = computeRace(m, n, entries, m.info.me.player);
-  m.step = 'race';
+  m.step = 'race'; racePinned = false;
   stopPhaseTimer(); leaveTraining(); V.away();
   if (!rr.result) return; // nobody in: the standings come at their time
   const t = roundTimes(n), me = rr.ok.findIndex((e) => e.id === m.info.me.player);
@@ -263,7 +276,12 @@ function showRace(m: RM, n: number, entries: Entry[]): void {
     raceSeed: rr.result.raceSeed, goAt: performance.now() + (t.go - rel(m)), raceNo: n, len: ROUND_RACE, result: rr.result,
   }, {
     back: noop,
-    go: () => { if (M === m && m.round === n && m.step === 'race') countdown(m, t.raceEnd, { label: label(n, 'Race'), red: 10, upText: 'Finish', host: camHost() }); },
+    // the race timer ends at the race's Go + 30 s, the same timestamp the replay's clock counts from (match polish §4)
+    go: (goAt) => {
+      if (M !== m || m.round !== n || m.step !== 'race') return;
+      countdown(m, t.raceEnd, { label: label(n, 'Race'), red: 10, upText: 'Finish', host: camHost(), until: goAt + (t.raceEnd - t.go) });
+      racePinned = true;
+    },
     ended: () => { if (M === m && m.round === n) standings(m, n); },
   }).catch((e) => console.error(e));
 }
@@ -278,20 +296,25 @@ async function fill(m: RM, upTo: number): Promise<void> {
   }
 }
 
-/** The standings after round n: every player in it (a player with nothing in has 0 m), best total first. */
-function rowsAfter(m: RM, n: number): { id: string; name: string; dist: number; total: number }[] {
+/**
+ * The standings after round n: every player in it (a player with nothing in has 0 m that round), by the best single
+ * race so far (match polish §1), then the total.
+ */
+function rowsAfter(m: RM, n: number): { id: string; name: string; dist: number; best: number; total: number }[] {
   const ids = new Map<string, string>();
   for (let k = 1; k <= n; k++) for (const e of m.races.get(k)?.entries ?? []) ids.set(e.id, e.name);
   const start = m.info.at + roundTimes(n).start;
   for (const p of V.players()) if (p.joined <= start && !ids.has(p.id)) ids.set(p.id, p.name);
   if (m.first <= n && !ids.has(m.info.me.player)) ids.set(m.info.me.player, m.info.me.name);
   const rows = [...ids].map(([id, name]) => {
-    let total = 0;
-    for (let k = 1; k <= n; k++) total += m.dists.get(k)?.get(id) ?? 0;
-    return { id, name, dist: m.dists.get(n)?.get(id) ?? 0, total };
+    // the rounds this player raced (a round with no entry from them counts 0 m, as before)
+    const ds: number[] = [];
+    for (let k = 1; k <= n; k++) { const d = m.dists.get(k); if (d) ds.push(d.get(id) ?? 0); }
+    const sc = matchScore(ds);
+    return { id, name, dist: m.dists.get(n)?.get(id) ?? 0, best: sc.best, total: sc.total };
   });
-  // best total, then this round's distance, then by name (unique in a room): the same order on every client
-  return rows.sort((a, b) => b.total - a.total || b.dist - a.dist || (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1));
+  // best race, then the total, then this round's distance, then by name (unique in a room): the same order on every client
+  return rows.sort((a, b) => byScore(a, b) || b.dist - a.dist || (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1));
 }
 
 function standings(m: RM, n: number): void {
@@ -303,13 +326,13 @@ function standings(m: RM, n: number): void {
     const rows = rowsAfter(m, n);
     m.standings[n - 1] = rows.map((r) => r.name);
     raceArena();
-    showStandings(label(n, 'Standings'), n, rows.map((r) => ({ name: r.name, dist: r.dist, total: r.total, you: r.id === m.info.me.player })));
+    showStandings(label(n, 'Standings'), n, rows.map((r) => ({ name: r.name, dist: r.dist, best: r.best, total: r.total, you: r.id === m.info.me.player })));
     report(m, n, rows);
     countdown(m, roundTimes(n).next, { label: `Round ${n + 1} of ${R.count} in`, red: 0, pulse: 0, upText: 'Build!', upMs: 300, host: camHost() });
   });
 }
 
-/** After round 5: the final standings stay, with Play again (back to the lobby) and Main menu, for everyone. */
+/** After the last round: the final standings stay, with Play again (back to the lobby) and Main menu, for everyone. */
 function finalStandings(m: RM): void {
   if (m.step === 'over') return;
   const n = R.count;
@@ -321,7 +344,7 @@ function finalStandings(m: RM): void {
     m.standings[n - 1] = rows.map((r) => r.name);
     raceArena();
     const title = you === 0 ? 'Final standings' : you === 1 ? 'You won the match!' : `Final standings: you finished ${ordinal(you)} of ${rows.length}`;
-    showStandings(title, n, rows.map((r) => ({ name: r.name, dist: r.dist, total: r.total, you: r.id === m.info.me.player })));
+    showStandings(title, n, rows.map((r) => ({ name: r.name, dist: r.dist, best: r.best, total: r.total, you: r.id === m.info.me.player })));
     report(m, n, rows);
     const again = $('rcAgain') as HTMLButtonElement, back = $('rcBack');
     again.textContent = 'Play again'; again.hidden = false; again.disabled = false;
@@ -333,10 +356,10 @@ function finalStandings(m: RM): void {
 }
 
 /** Your result in the round, as the privacy policy says (place and distance). */
-function report(m: RM, n: number, rows: { id: string; dist: number; total: number }[]): void {
+function report(m: RM, n: number, rows: { id: string; dist: number; best: number; total: number }[]): void {
   const i = rows.findIndex((r) => r.id === m.info.me.player);
   if (i < 0 || !m.races.get(n)?.entries.some((e) => e.id === m.info.me.player)) return;
-  submitResult(m.info.me, JSON.stringify({ match: m.info.matchNo, round: n, place: i + 1, dist: Math.round(rows[i].dist), total: Math.round(rows[i].total) }))
+  submitResult(m.info.me, JSON.stringify({ match: m.info.matchNo, round: n, place: i + 1, dist: Math.round(rows[i].dist), best: Math.round(rows[i].best), total: Math.round(rows[i].total) }))
     .catch((e) => console.warn('room: result not sent', e));
 }
 

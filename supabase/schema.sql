@@ -19,8 +19,8 @@
 -- and no errors. It never drops or changes anything that isn't Synapse's.
 --
 -- What it holds: rooms with 4-letter codes, up to 100 players each (the host can set a lower maximum), the host's
--- settings (max players and the map: a new track each round, one family, or one track), and the room's match: 5 timed
--- rounds that start when the host starts the match, every phase at a fixed time after that on the server's clock. The
+-- settings (max players and the map: a new track each round, one family, or one track), and the room's match: 3 timed
+-- rounds (match polish, 2026-11-05) that start when the host starts the match, every phase at a fixed time after that on the server's clock. The
 -- room's creator is its host; when the host leaves, the player who joined earliest becomes host. Each round, every
 -- player's brain for that round, and the round's entries, frozen as its race's countdown begins, so every client
 -- re-runs the same race.
@@ -103,7 +103,7 @@ alter table public.synapse_rooms add column if not exists match_at timestamptz;
 
 -- The host's settings (tracks-v2 T2): how many may be in the room (2–100; joins past it are refused) and the map for
 -- each round's track: 'each' (a new track each round, any family), 'family' (a new track of map_family each round) or
--- 'track' (the track of seed map_seed, a track of map_family, for all five rounds). Locked while a match is on.
+-- 'track' (the track of seed map_seed, a track of map_family, for every round). Locked while a match is on.
 alter table public.synapse_rooms add column if not exists max_players integer not null default 100 check (max_players between 2 and 100);
 alter table public.synapse_rooms add column if not exists map_mode text not null default 'each' check (map_mode in ('each', 'family', 'track'));
 alter table public.synapse_rooms add column if not exists map_family text
@@ -115,7 +115,7 @@ alter table public.synapse_rooms add column if not exists map_seed bigint check 
 create table if not exists public.synapse_round_brains (
   room text not null references public.synapse_rooms (code) on delete cascade,
   match_no integer not null,
-  round integer not null check (round between 1 and 5),
+  round integer not null check (round between 1 and 3),
   player uuid not null references public.synapse_players (id) on delete cascade,
   brain text not null check (char_length(brain) <= 32000),
   at timestamptz not null default clock_timestamp(),
@@ -128,12 +128,21 @@ comment on table public.synapse_round_brains is 'Synapse (synapse.mouftools.com)
 create table if not exists public.synapse_round_entries (
   room text not null references public.synapse_rooms (code) on delete cascade,
   match_no integer not null,
-  round integer not null check (round between 1 and 5),
+  round integer not null check (round between 1 and 3),
   entries text not null,
   frozen_at timestamptz not null default clock_timestamp(),
   primary key (room, match_no, round)
 );
 comment on table public.synapse_round_entries is 'Synapse (synapse.mouftools.com): a Multiplayer round''s frozen entries. Deleted with the room.';
+
+-- Three rounds a match (match polish, 2026-11-05; five before): rounds 4 and 5 of an older match go, and each table's
+-- round check is put back as 1–3 (dropped and added again, so a re-run leaves the same constraint).
+delete from public.synapse_round_brains where round > 3;
+delete from public.synapse_round_entries where round > 3;
+alter table public.synapse_round_brains drop constraint if exists synapse_round_brains_round_check;
+alter table public.synapse_round_brains add constraint synapse_round_brains_round_check check (round between 1 and 3);
+alter table public.synapse_round_entries drop constraint if exists synapse_round_entries_round_check;
+alter table public.synapse_round_entries add constraint synapse_round_entries_round_check check (round between 1 and 3);
 
 alter table public.synapse_rooms enable row level security;
 alter table public.synapse_players enable row level security;
@@ -159,17 +168,18 @@ create or replace function public.synapse_name(n text) returns text
 -- 20 s), then 67.5 s: train 20, hand in 3, the race's countdown 5, the race 30, the cars hold 1.5, standings 8.
 create or replace function public.synapse_round_start(p_at timestamptz, p_round integer) returns timestamptz
   language sql immutable as $$
-  select p_at + make_interval(secs => coalesce((select sum(b + 67.5) from unnest(array[60,20,20,20,20]) with ordinality as u(b, k)
+  select p_at + make_interval(secs => coalesce((select sum(b + 67.5) from unnest(array[60,20,20]) with ordinality as u(b, k)
                                                 where k < p_round), 0)::double precision) $$;
 
 -- Round n's entries freeze as its race's countdown begins: its build, then 23 s (train 20, hand in 3).
 create or replace function public.synapse_round_freeze(p_at timestamptz, p_round integer) returns timestamptz
   language sql immutable as $$
-  select public.synapse_round_start(p_at, p_round) + make_interval(secs => ((array[60,20,20,20,20])[p_round] + 23)::double precision) $$;
+  select public.synapse_round_start(p_at, p_round) + make_interval(secs => ((array[60,20,20])[p_round] + 23)::double precision) $$;
 
--- The match is over once round 5's race has been run: its freeze, then 36.5 s (countdown 5, race 30, hold 1.5).
+-- The match is over once round 3's race (the last) has been run: its freeze, then 36.5 s (countdown 5, race 30,
+-- hold 1.5).
 create or replace function public.synapse_match_over(p_at timestamptz) returns timestamptz
-  language sql immutable as $$ select public.synapse_round_freeze(p_at, 5) + make_interval(secs => 36.5) $$;
+  language sql immutable as $$ select public.synapse_round_freeze(p_at, 3) + make_interval(secs => 36.5) $$;
 
 -- Open a room (a fresh code, no players yet); its host joins it next with the same token.
 create or replace function public.synapse_open_room(p_token text) returns json
@@ -252,7 +262,7 @@ create or replace function public.synapse_room_state(p_code text) returns json
   from synapse_rooms r where r.code = upper(p_code) $$;
 
 -- The host's settings (tracks-v2 T2): max players (2–100, not below the number already in) and the map. Not while a
--- match is on (from its start until round 5's race is over): the settings lock at the start and unlock for Play again.
+-- match is on (from its start until the last round's race is over): the settings lock at the start and unlock for Play again.
 create or replace function public.synapse_set_settings(p_code text, p_token text, p_max integer, p_mode text, p_family text, p_seed bigint) returns void
   language plpgsql security definer set search_path = public, extensions as $$
 declare r synapse_rooms;
@@ -296,7 +306,7 @@ begin
   select * into p from synapse_players where id = p_player and token_hash = synapse_hash(p_token);
   if not found then raise exception 'not your player'; end if;
   select * into r from synapse_rooms where code = p.room for update;
-  if r.match_at is null or r.match_no <> p_match_no or p_round is null or p_round not between 1 and 5 then raise exception 'no such round'; end if;
+  if r.match_at is null or r.match_no <> p_match_no or p_round is null or p_round not between 1 and 3 then raise exception 'no such round'; end if;
   if p.joined_at > synapse_round_start(r.match_at, p_round) then raise exception 'not in this round'; end if;
   if clock_timestamp() < synapse_round_start(r.match_at, p_round) then raise exception 'too early'; end if;
   if clock_timestamp() >= synapse_round_freeze(r.match_at, p_round) then raise exception 'too late'; end if;
@@ -314,7 +324,7 @@ begin
   select entries into e from synapse_round_entries where room = upper(p_code) and match_no = p_match_no and round = p_round;
   if found then return e; end if;
   select * into r from synapse_rooms where code = upper(p_code) for update;
-  if not found or r.match_at is null or r.match_no <> p_match_no or p_round is null or p_round not between 1 and 5
+  if not found or r.match_at is null or r.match_no <> p_match_no or p_round is null or p_round not between 1 and 3
      or clock_timestamp() < synapse_round_freeze(r.match_at, p_round) then return null; end if;
   select entries into e from synapse_round_entries where room = r.code and match_no = p_match_no and round = p_round;
   if found then return e; end if;

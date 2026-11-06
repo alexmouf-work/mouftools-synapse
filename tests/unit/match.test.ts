@@ -62,7 +62,7 @@ describe('ranking', () => {
 });
 
 describe('a race', () => {
-  const cpu = cpuRounds(data)[4];
+  const cpu = cpuRounds(data)[CONFIG.rounds.count - 1];
   const genomes = [defaultGenome(), ...cpu.map((b) => b.genome)];
   it('is deterministic and keeps every car independent of the others', () => {
     const a = runRace(genomes, 42, (k) => k === 0), b = runRace(genomes, 42);
@@ -148,7 +148,7 @@ describe('the wrong-way reset (races only)', () => {
     expect(((t.startIdx * t.ds + c.prog) % t.len + t.len) % t.len).toBeCloseTo(c.idx * t.ds, 6);
   });
   it('is deterministic: the same race gives the same bits', () => {
-    const g = [backwards(), ...cpuRounds(data)[4].map((b) => b.genome)];
+    const g = [backwards(), ...cpuRounds(data)[CONFIG.rounds.count - 1].map((b) => b.genome)];
     expect(runRace(g, 77).hash).toBe(runRace(g, 77).hash);
   });
   it('a round\'s timed race: 30 s, no finishers, ranked by the signed distance covered from each grid slot', () => {
@@ -168,10 +168,25 @@ describe('the wrong-way reset (races only)', () => {
   });
 });
 
+describe('a match\'s score (match polish §1: the best single race, ties to the total)', () => {
+  it('takes the best race, not the total; the total breaks a tie', async () => {
+    const { byScore, matchScore } = await import('../../src/common/sim/match');
+    expect(matchScore([100, 900, 300])).toEqual({ best: 900, total: 1300 });
+    expect(matchScore([-40, -10])).toEqual({ best: -10, total: -50 });
+    expect(matchScore([])).toEqual({ best: 0, total: 0 });
+    // one great race beats three steady ones; level bests go to the higher total
+    const steady = matchScore([600, 600, 600]), spike = matchScore([0, 0, 700]), spike2 = matchScore([100, 0, 700]);
+    expect(byScore(spike, steady)).toBeLessThan(0);
+    expect(byScore(spike2, spike)).toBeLessThan(0);
+    expect(byScore(spike, spike)).toBe(0);
+  });
+});
+
 describe('the CPU brains', () => {
-  it('five rounds of nine, named, each within its round\'s budget, trained on 5% to 100% of T, growing round to round', () => {
+  it('a round count (3) of nine, named, each within its round\'s budget, trained on 5% to 100% of T, growing round to round', () => {
     const rounds = cpuRounds(data);
     expect(rounds.length).toBe(CONFIG.rounds.count);
+    expect(rounds.length).toBe(3); // match polish §1
     rounds.forEach((b, r) => {
       expect(b.map((x) => x.name)).toEqual([...CPU_NAMES]);
       for (const x of b) expect(maxLoad(x.genome.spec)).toBeLessThanOrEqual(CONFIG.rounds.budgets[r] + 1e-9);

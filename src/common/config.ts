@@ -183,12 +183,12 @@ export const CONFIG = {
     wrongWayTicks: 60, // races: a car whose progress has fallen this many ticks in a row is put back (tracks plan §4)
   },
 
-  // vs CPU and Multiplayer as five rounds (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): build → train → race
-  // each round, fresh weights every round.
+  // vs CPU and Multiplayer as three rounds (docs/plans/2026-11-05-rounds.md, match-flow-v2.md, match-polish.md §1):
+  // build → train → race each round, fresh weights every round; the score is each player's best single race.
   rounds: {
-    count: 5,
+    count: 3,
     /** Build time per round (s): round 1 from scratch, then upgrades. */
-    build: [60, 20, 20, 20, 20],
+    build: [60, 20, 20],
     train: 20, // s: the round's budget T below, its view held until then; at 20 s training stops where it got to (match-flow v2)
     /**
      * Car-ticks of evolution a round's training spends (match-flow v2 plan §3): the largest 0.5M multiple neuroevolution
@@ -199,10 +199,10 @@ export const CONFIG = {
     raceTicks: 600, // 30 s; the score is the signed distance covered by then (no laps to finish)
     /**
      * The most a design may use flat out each round (%): R1 is calibrated so 4 boundary cells + 5 tanh neurons (9
-     * cells, fully wired, plus the wheels) just fit at 19.5% and 11 such cells don't (23.6%), then ×1, ×1.4, ×2,
-     * ×2.6, ×3.2 (the planned 10 : 14 : 20 : 26 : 32).
+     * cells, fully wired, plus the wheels) just fit at 19.5% and 11 such cells don't (23.6%), then ×2 and ×3.2
+     * (match polish §1: three rounds keep the old first and last, 10 : 20 : 32).
      */
-    budgets: [20, 28, 40, 52, 64],
+    budgets: [20, 40, 64],
     nextAfter: 8, // s: the standings, then the next build starts by itself
     hold: 1.5, // s: the cars hold this long after the race's end, then the standings (or results) show
     /**

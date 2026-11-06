@@ -173,7 +173,7 @@ async function main() {
 
     // 5. the layout (light and dark, desktop and landscape phone), mid-training and at the end, with screenshots
     type Box = { x: number; y: number; w: number; h: number };
-    interface Lay { W: number; H: number; A: Box; panel: Box; scene: Box; cam: Box; mini: Box; map: Box; graph: Box; big: Box; btns: Box[]; bigText: string; bigSize: number; bigColor: string; sw: number; cw: number; cars: string }
+    interface Lay { W: number; H: number; A: Box; panel: Box; scene: Box; cam: Box; mini: Box; map: Box; graph: Box; big: Box; btns: Box[]; bigText: string; bigSize: number; bigColor: string; sw: number; cw: number; cars: string; halves: number[]; top: number[][]; topOk: boolean }
     // as a string: the bundler's name helper isn't defined inside the page
     const layout = (page: Page) => page.evaluate(`(() => {
       const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; };
@@ -183,6 +183,10 @@ async function main() {
         W: innerWidth, H: innerHeight, A: r('#arena'), panel: r('#trainOverlay .tv-info'), scene: r('#scene'), cam: r('#trainOverlay .tv-cam'), mini: r('#trainOverlay .tv-brainc'), map: r('#tvMap'), graph: r('#tvGraph'), big: r('#tvBig'), btns,
         bigText: big.textContent, bigSize: parseFloat(cs.fontSize), bigColor: cs.color, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
         cars: document.getElementById('tvCars').textContent,
+        halves: [...document.querySelectorAll('#trainOverlay .tv-half')].map((e) => e.getBoundingClientRect().height),
+        top: ['#tvMenu', '#musicTv', '#sfxTv'].map((s) => { const q = document.querySelector(s).getBoundingClientRect(); return [q.width, q.height]; }),
+        topOk: (() => { const q = (s) => document.querySelector(s).getBoundingClientRect(), row = q('#trainOverlay .side-top'), m = q('#tvMenu'), a = q('#musicTv'), b = q('#sfxTv'), h1 = q('#trainOverlay .tv-half');
+          return row.bottom <= h1.top + 0.5 && [m, a, b].every((x) => x.top >= row.top - 0.5 && x.bottom <= row.bottom + 0.5) && m.right + 12 <= a.left && a.right < b.left; })(),
       };
     })()`) as Promise<Lay>;
     const near = (a: number, b: number, d = 1.5) => Math.abs(a - b) <= d;
@@ -202,6 +206,8 @@ async function main() {
       check(L.bigText === String(gen) && near(L.bigSize, want, 0.6) && L.bigColor === 'rgb(255, 255, 255)' && near(L.big.x + L.big.w / 2, pw + camW / 2, 2) && L.big.y >= 0 && apart(L.big, L.mini),
         `${label}: generation ${L.bigText} big and white at the top centre of the camera (${L.bigSize.toFixed(1)} px, want ${want.toFixed(1)})`);
       check(L.btns.length > 0 && L.btns.every((b) => inside(b, L.panel)) && L.sw <= L.cw, `${label}: the panel's buttons inside it; no sideways scroll`);
+      check(L.halves.length === 2 && near(L.halves[0], L.halves[1]), `${label}: the fitness graph and the map each take half the sidebar under its top row (${L.halves.map((x) => x.toFixed(0)).join(' / ')} px; match polish §5)`);
+      check(L.topOk && L.top.every((b) => b[0] >= 44 && b[1] >= 44), `${label}: Main menu, Music and Sound effects in their own row at the top, at least 44 px (${L.top.map((b) => b.map((x) => x.toFixed(0)).join('×')).join(', ')})`);
     };
     for (const [w, h, dark] of [[1440, 900, false], [1440, 900, true], [844, 390, false], [844, 390, true]] as const) {
       const tag = `${w}x${h}${dark ? '-dark' : ''}`;

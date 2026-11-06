@@ -14,6 +14,7 @@
 #cpuSet .cs-err { font-size: 13px; color: var(--muted); min-height: 18px; flex: 1; min-width: 14ch; }
 #cpuSet .tp { max-width: 1040px; }
 #cpuSet .btn { min-height: 0; font: 700 15px Arial, Helvetica, sans-serif; padding: 10px 16px; color: var(--text); box-shadow: none; }
+#cpuSet .btn.menu { min-height: 44px; } /* match polish §5: at least 44 px */
 #cpuSet .btn.primary { background: #ffc21a; border-color: #ffc21a; color: #1d2330; }
 #cpuSet .cs-body { flex: 1; min-height: 0; overflow: auto; padding: 12px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); }
 #cpuSet h2 { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }

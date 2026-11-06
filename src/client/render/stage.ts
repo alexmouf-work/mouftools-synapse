@@ -16,6 +16,7 @@ import { buildFinish, type Finish } from './finish';
 import { fadeNear } from './glow';
 import { assertFiniteArray } from './guard';
 import { buildScenery, type Scenery } from './scenery';
+import { corridorOf, type Corridor } from './sight';
 import { makeTextures, stadiumTextures, type StadiumTextures, type Textures } from './textures';
 import { at, trackParts, type PartKey } from './trackMesh';
 
@@ -180,16 +181,17 @@ export class Stage {
       if (p.key === 'strip' || p.key === 'pad') m.userData.glow = true;
       this.world.add(m);
     }
-    let keep: { x: number; z: number; r: number }[] = [];
+    let keep: { x: number; z: number; r: number }[] = [], corridors: Corridor[] = [];
     if (mode === 'drive' && this.stadTex) {
       this.stadium = buildStadium(t, this.stadTex);
       this.world.add(this.stadium.group);
       keep = this.stadium.keepClear;
+      corridors = this.stadium.tvSpots.map((sp) => corridorOf(t, sp));
       this.drive.setTrack(t, this.stadium.tvSpots);
     }
     this.finish = buildFinish(t, this.tex.checker);
     this.world.add(this.finish.group);
-    this.scenery = buildScenery(t, t.seed, keep);
+    this.scenery = buildScenery(t, t.seed, keep, corridors);
     this.world.add(this.scenery.group);
     this.scaleLight(this.world);
     this.track = t;

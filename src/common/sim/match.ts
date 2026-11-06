@@ -103,6 +103,19 @@ export function rank(cars: readonly Pick<RaceCar, 'slot' | 'finish' | 'prog'>[])
   });
 }
 
+/**
+ * A match's score so far (match polish §1, principal 2026-11-05: "do the best distance travelled rather than total"):
+ * a player's best single-race signed distance over the rounds raced, and the total, which breaks ties.
+ */
+export interface MatchScore { best: number; total: number }
+export function matchScore(dists: readonly number[]): MatchScore {
+  let best = -Infinity, total = 0;
+  for (const d of dists) { if (d > best) best = d; total += d; }
+  return { best: dists.length ? best : 0, total };
+}
+/** Order two scores: the better best first, then the higher total (0 if level: the caller breaks the tie). */
+export const byScore = (a: MatchScore, b: MatchScore): number => b.best - a.best || b.total - a.total;
+
 /** A race's length: `laps` to finish within `ticks` (Multiplayer: 2 laps in 120 s), or laps 0: a timed race, every car
  * running all `ticks` and ranked by its signed distance then (vs CPU's rounds: 30 s). */
 export interface RaceLength { ticks: number; laps: number }

@@ -19,11 +19,11 @@
 //   freeze, is refused; the entries freeze as the countdown begins and every page's race = Node runRace of them (the
 //   bots' brains from Node: one past round 1's budget left out by every client, one bot with nothing in at 0 m), Go
 //   at the server's moment, at most MAX_RIVALS others drawn in 3-D (the nearest), the sidebar's 10 racers; standings
-//   for 8 s = Node (signed, every player, best total first), no buttons; each result reaches the room.
+//   for 8 s = Node (signed, every player, best race first: match polish §1), no buttons; each result reaches the room.
 // - A latecomer joins in round 2's build (landscape phone): watches from the lobby with the round's countdown, then the
 //   race (no car), standings = everyone's (it ran round 1 from the frozen entries); the server refuses its brain for
-//   round 2; in from round 3's build. Main menu asks "Leave the room?" (Stay). Rounds 3–5 with all three; the final
-//   standings = Node's totals, Play again and Main menu for all. The map (tracks-v2 T2): the host set "One track" before
+//   round 2; in from round 3's build. Main menu asks "Leave the room?" (Stay). Round 3, the last, with all three; the
+//   final standings = Node's best races, Play again and Main menu for all. The map (tracks-v2 T2): the host set "One track" before
 //   the match, so every round's race on every page runs on it; the settings are locked while the match is on (the
 //   latecomer's lobby says so; the server refuses a change). Play again → the lobby for each; the settings unlock; the
 //   host sets "One family" and starts match 2 on every page (the latecomer from its final standings), on that family.
@@ -52,7 +52,7 @@ import { startStandin } from './standin';
 
 const OUT = 'out/multiplayer';
 const T = 300_000;
-const HZ = CONFIG.tick.hz;
+const HZ = CONFIG.tick.hz, RC = CONFIG.rounds.count; // the match's rounds (3: match polish §1)
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const SERVICE = 'service-role-sentinel-do-not-ship';
@@ -286,7 +286,7 @@ async function main() {
     const b1 = await Promise.all(pages.map(ph));
     const look = async (p: Page) => p.evaluate(`(() => ({ rounds: document.body.classList.contains('rounds'), match: document.body.classList.contains('match'), train: getComputedStyle(document.getElementById('train')).display === 'none', app: !document.querySelector('.app').hidden, mp: document.getElementById('mp').hidden }))()`) as Promise<{ rounds: boolean; match: boolean; train: boolean; app: boolean; mp: boolean }>;
     const lk = await Promise.all(pages.map(look));
-    check(b1.every((b) => b.label === 'Round 1 of 5 · Build' && b.left >= 55 && b.left <= 60) && Math.abs(b1[0].ms - b1[1].ms) < 1700 && lk.every((l) => l.rounds && l.match && l.train && l.app && l.mp),
+    check(b1.every((b) => b.label === `Round 1 of ${RC} · Build` && b.left >= 55 && b.left <= 60) && Math.abs(b1[0].ms - b1[1].ms) < 1700 && lk.every((l) => l.rounds && l.match && l.train && l.app && l.mp),
       `Start match: round 1's build on both (${b1.map((b) => `"${b.label}" ${b.left} s`).join(', ')}), the designer in match mode with no Train button`);
     await host.screenshot({ path: `${OUT}/m-build.png` });
     // bots hand in round 1 from Node: Bot 1 a brain past round 1's budget (left out by every client), Bot 2 nothing
@@ -324,12 +324,12 @@ async function main() {
     /** Build → train (no buttons) → hand in → the race (= Node on every page) → standings; returns Node's round. */
     const playRound = async (n: number, players: Page[], watchers: Page[], o: { shots?: boolean } = {}) => {
       const all = [...players, ...watchers];
-      await label(players, `Round ${n} of 5 · Build`);
+      await label(players, `Round ${n} of ${RC} · Build`);
       await skip(all, 0.3);
-      await label(players, `Round ${n} of 5 · Train`);
+      await label(players, `Round ${n} of ${RC} · Train`);
       await Promise.all(players.map((p) => p.waitForFunction(() => window.__training?.state === 'running' || window.__training?.state === 'done', null, { timeout: 30_000 })));
       const btn = await Promise.all(players.map((p) => p.evaluate(() => ['tvStop', 'tvBack', 'tvAgain', 'tvDrive', 'tvRace'].filter((id) => !(document.getElementById(id) as HTMLElement).hidden))));
-      check(btn.every((b) => b.length === 0), `round ${n}: Train starts itself at the build's 0, "Round ${n} of 5 · Train", no buttons in the training view (${btn.map((b) => b.join('+') || 'none').join(', ')})`);
+      check(btn.every((b) => b.length === 0), `round ${n}: Train starts itself at the build's 0, "Round ${n} of ${RC} · Train", no buttons in the training view (${btn.map((b) => b.join('+') || 'none').join(', ')})`);
       if (o.shots) await players[0].screenshot({ path: `${OUT}/m-train.png` });
       await Promise.all(players.map((p) => p.waitForFunction(() => window.__training?.state === 'done', null, { timeout: 60_000 })));
       await skip(all, 0.3);
@@ -354,22 +354,22 @@ async function main() {
     };
     /** The race to its end on these pages (its timer skipped, the playback sought), then the standings. */
     const toStandings = async (n: number, all: Page[]) => {
-      await label(all, `Round ${n} of 5 · Race`);
+      await label(all, `Round ${n} of ${RC} · Race`);
       await skip(all, 0.3);
       for (const p of all) await p.evaluate(() => window.__race!.seek(1e9));
-      await step(all, n < 5 ? 'standings' : 'over');
+      await step(all, n < RC ? 'standings' : 'over');
       await Promise.all(all.map((p) => p.waitForFunction((k) => (window.__roomMatch?.standings[k - 1]?.length ?? 0) > 0, n, { timeout: 15_000 })));
-      if (n === 5) return 0;
-      await label(all, `Round ${n + 1} of 5 in`);
+      if (n === RC) return 0;
+      await label(all, `Round ${n + 1} of ${RC} in`);
       const ms = await all[0].evaluate(() => window.__phase!.ms), want = matchAt + roundTimes(n).next - (Date.now() + si.skew);
       await skip(all, 60); // held while the check reads them
       return ms - want;
     };
-    /** Standings after round n as Node has them: every player in it (0 m with nothing in), best total, round, name. */
+    /** Standings after round n as Node has them: every player in it (0 m with nothing in), best race, total, round, name. */
     const nodeStandings = (n: number, ids: Map<string, string>) => {
       const dist = (k: number, id: string) => { const e = JSON.parse(si.rooms.get(code)!.frozen.get(k)!) as { id: string; brain: string }[]; const ok = e.filter((x) => energyRefusal((JSON.parse(x.brain) as Genome).spec, CONFIG.rounds.budgets[k - 1]) === null); const i = ok.findIndex((x) => x.id === id); return i < 0 ? 0 : node[k - 1].cars[i].dist; };
-      return [...ids].map(([id, name]) => { let total = 0; for (let k = 1; k <= n; k++) total += dist(k, id); return { name, d: dist(n, id), total }; })
-        .sort((a, b) => b.total - a.total || b.d - a.d || (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1));
+      return [...ids].map(([id, name]) => { let total = 0, best = -Infinity; for (let k = 1; k <= n; k++) { const x = dist(k, id); total += x; best = Math.max(best, x); } return { name, d: dist(n, id), best, total }; })
+        .sort((a, b) => b.best - a.best || b.total - a.total || b.d - a.d || (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1));
     };
     const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
     /**
@@ -377,10 +377,10 @@ async function main() {
      * your place in the table's order, "⋯" where they don't meet; all of them up to 10. Written out here, not taken
      * from the app, so the check is independent of raceView's listRows.
      */
-    const shownOf = (st: { name: string; d: number; total: number }[], you: string) => {
+    const shownOf = (st: { name: string; d: number; best: number }[], you: string) => {
       const n = st.length, p = Math.max(0, st.findIndex((x) => x.name === you)), start = Math.max(3, Math.min(p - 3, n - 7));
       const idx = n <= 10 ? st.map((_, i) => i) : [0, 1, 2, ...Array.from({ length: 7 }, (_, i) => start + i)];
-      return idx.flatMap((i, j) => [...(j === 3 && i > 3 ? [['⋯']] : []), [String(i + 1), st[i].name, km(st[i].d), km(st[i].total)]]);
+      return idx.flatMap((i, j) => [...(j === 3 && i > 3 ? [['⋯']] : []), [String(i + 1), st[i].name, km(st[i].d), km(st[i].best)]]);
     };
     const tableOf = (p: Page) => p.$$eval('#rcRows tr', (tr) => tr.map((r) => [...r.querySelectorAll('td')].map((d) => d.textContent ?? '')));
 
@@ -420,8 +420,8 @@ async function main() {
     const fvals = Array.from(frec.act.subarray(fb * fN, (fb + 1) * fN));
     const fp = posAt(far.k), dk = n1.race.cars.map((_, k) => { const p = posAt(k); return k === far.k ? Infinity : (p[0] - fp[0]) ** 2 + (p[1] - fp[1]) ** 2; });
     const wantF = n1.race.cars.map((_, k) => k).sort((a, b) => dk[a] - dk[b] || a - b).slice(0, MAX_RIVALS).sort((a, b) => a - b);
-    check(fo.k === far.k && fo.main[4] === far.k && fo.main[3] === 1 && JSON.stringify(fo.others) === JSON.stringify(wantF) && fo.look < 3 && fo.cam === 'tv',
-      `the map: tap ${n1.ok[far.k].name}'s dot (${Math.sqrt(d2[far.k]).toFixed(0)} m from you): the broadcast camera follows that car, drawn (never a ghost), with the ${MAX_RIVALS} cars nearest it (${wantF.join(' ')}${JSON.stringify(fo.others) === JSON.stringify(wantF) ? '' : `; drawn ${fo.others.join(' ')}`}; following ${fo.k}, main car ${fo.main[4]} shown ${fo.main[3]}, aim ${fo.look.toFixed(2)} m off, ${fo.cam})`);
+    check(fo.k === far.k && fo.main[4] === far.k && fo.main[3] === 1 && JSON.stringify(fo.others) === JSON.stringify(wantF) && fo.look < 3 && fo.cam === 'race',
+      `the map: tap ${n1.ok[far.k].name}'s dot (${Math.sqrt(d2[far.k]).toFixed(0)} m from you): the race camera (broadcast or POV) follows that car, drawn (never a ghost), with the ${MAX_RIVALS} cars nearest it (${wantF.join(' ')}${JSON.stringify(fo.others) === JSON.stringify(wantF) ? '' : `; drawn ${fo.others.join(' ')}`}; following ${fo.k}, main car ${fo.main[4]} shown ${fo.main[3]}, aim ${fo.look.toFixed(2)} m off, ${fo.cam})`);
     check(fo.title === `Brain · ${n1.ok[far.k].name}` && !!fo.vals && fo.vals.length === fvals.length && fo.vals.every((x, i) => Math.abs(x - fvals[i]) < 1e-9) && JSON.stringify(fo.vals) !== JSON.stringify(fo.own) && fo.mine,
       `its brain card ("${fo.title}") fires as Node's replay of that entry; "Back to my car" shows (values ${fo.vals?.length} vs ${fvals.length}, max diff ${fo.vals ? Math.max(...fo.vals.map((x, i) => Math.abs(x - (fvals[i] ?? NaN)))).toExponential(1) : '-'}, at ${fo.t.toFixed(2)} s; button ${fo.mine})`);
     await host.screenshot({ path: `${OUT}/follow-far.png` });
@@ -436,7 +436,7 @@ async function main() {
     const t1 = await Promise.all(pages.map(tableOf));
     const st1 = await Promise.all(pages.map((p) => p.evaluate(() => ({ s: window.__roomMatch!.standings[0], d: window.__roomMatch!.dists[0] }))));
     check(JSON.stringify(st1[0].s) === JSON.stringify(s1.map((x) => x.name)) && JSON.stringify(st1[1].s) === JSON.stringify(st1[0].s) && st1[0].d['Bot 1'] === 0 && st1[0].d['Bot 2'] === undefined && s1.find((x) => x.name === 'Bot 2')!.total === 0,
-      `round 1's standings on both = Node: all 98 players, signed distances, best total first (${s1.slice(0, 3).map((x) => x.name).join(', ')} …); Bot 1 (left out) at 0 m, Bot 2 (nothing in) listed at 0 m`);
+      `round 1's standings on both = Node: all 98 players, signed distances, best race first (${s1.slice(0, 3).map((x) => x.name).join(', ')} …); Bot 1 (left out) at 0 m, Bot 2 (nothing in) listed at 0 m`);
     check(JSON.stringify(t1[0]) === JSON.stringify(shownOf(s1, 'Host')) && JSON.stringify(t1[1]) === JSON.stringify(shownOf(s1, 'Guest')),
       `the table shows 10 of the 98 as the sidebar does: places 1–3, "⋯", then those nearest you (host: ${t1[0].map((x) => x[0]).join(' ')}; guest: ${t1[1].map((x) => x[0]).join(' ')})`);
     // the panel sits below the round's timer
@@ -445,19 +445,19 @@ async function main() {
       `a 98-player table: exactly 10 player rows and "⋯", places 1–3 and your row (${lay1.map((l) => l.you).join(', ')}), clear of the timer (${lay1.map((l) => `${l.gap.toFixed(0)} px below it`).join(' at 1440×900, ')} at 844×390), nothing scrolls`);
     await guest.screenshot({ path: `${OUT}/m-standings-844x390.png` }); // while the standings are held
     const stl = await Promise.all(pages.map(ph));
-    check(stl.every((x) => x.label === 'Round 2 of 5 in') && await host.locator('#rcAgain').isHidden() && await host.locator('#rcBack').isHidden(), `the standings count down to round 2, no buttons ("${stl[0].label}")`);
+    check(stl.every((x) => x.label === `Round 2 of ${RC} in`) && await host.locator('#rcAgain').isHidden() && await host.locator('#rcBack').isHidden(), `the standings count down to round 2, no buttons ("${stl[0].label}")`);
     await new Promise((res) => setTimeout(res, 800));
     const res1 = si.players.filter((p) => p.name === 'Host' || p.name === 'Guest').map((p) => p.result ? JSON.parse(p.result) as { round: number; place: number } : null);
     check(res1.every((x) => x !== null && x.round === 1) && res1[0]!.place === s1.findIndex((x) => x.name === 'Host') + 1, `each player's round result reaches the room (host ${res1[0]?.place}, guest ${res1[1]?.place})`);
-    await skip(pages, 8, 'Round 2 of 5 in');
+    await skip(pages, 8, `Round 2 of ${RC} in`);
     await host.screenshot({ path: `${OUT}/m-standings.png` });
     // round 2: a latecomer joins during the build and watches (the lobby, then the race) until round 3's build
-    await skip(pages, 0.3, 'Round 2 of 5 in');
-    await label(pages, 'Round 2 of 5 · Build');
+    await skip(pages, 0.3, `Round 2 of ${RC} in`);
+    await label(pages, `Round 2 of ${RC} · Build`);
     await lateP.click('#mpGo');
     await lateP.waitForFunction(() => window.__roomMatch?.step === 'wait' && window.__phase?.state === 'running', null, { timeout: 15_000 });
     const lw = await lateP.evaluate(() => ({ w: window.__room!.watching, first: window.__roomMatch!.first, label: window.__phase!.label, lobby: !(document.getElementById('mpLobby') as HTMLElement).hidden }));
-    check(lw.lobby && lw.first === 3 && lw.label === 'Round 2 of 5 · Build' && /You join at round 3's build/.test(lw.w), `a player who joins mid-match watches: the lobby says "${lw.w}", round 2's countdown in its bar ("${lw.label}"; first round ${lw.first}; lobby ${lw.lobby})`);
+    check(lw.lobby && lw.first === 3 && lw.label === `Round 2 of ${RC} · Build` && /You join at round 3's build/.test(lw.w), `a player who joins mid-match watches: the lobby says "${lw.w}", round 2's countdown in its bar ("${lw.label}"; first round ${lw.first}; lobby ${lw.lobby})`);
     await lateP.screenshot({ path: `${OUT}/m-late-watch-844x390.png` });
     await lateP.waitForFunction(() => window.__room?.settings?.locked === true, null, { timeout: 10_000 }).catch(() => undefined);
     const lk2 = await hostView(lateP);
@@ -481,7 +481,7 @@ async function main() {
     await lateP.screenshot({ path: `${OUT}/m-late-standings-844x390.png` });
     await skip([...pages, lateP], 0.3);
     const all3 = [...pages, lateP];
-    await label(all3, 'Round 3 of 5 · Build');
+    await label(all3, `Round 3 of ${RC} · Build`);
     const ll = await look(lateP);
     check(ll.rounds && ll.match && ll.app && ll.mp, 'round 3: the latecomer is in, building in the designer like everyone');
     // Main menu asks first, in a room
@@ -491,18 +491,18 @@ async function main() {
     await guest.click('#lvStay');
     check(q === 'Leave the room?' && (await guest.evaluate(() => window.__roomMatch!.step)) === 'build', `Main menu asks "${q}" first; Stay keeps you in the match`);
 
-    // rounds 3–5, all three in; then the final standings
-    for (const n of [3, 4, 5]) {
+    // round 3 (the last: match polish §1), all three in; then the final standings
+    for (let n = 3; n <= RC; n++) {
       await playRound(n, all3, []);
       await toStandings(n, all3);
-      if (n < 5) await skip(all3, 0.3);
+      if (n < RC) await skip(all3, 0.3);
     }
-    const fin = await Promise.all(all3.map((p) => p.evaluate(() => ({ s: window.__roomMatch!.standings[4], step: window.__roomMatch!.step, t: document.getElementById('rcResT')!.textContent, again: !(document.getElementById('rcAgain') as HTMLElement).hidden, back: !(document.getElementById('rcBack') as HTMLElement).hidden, backT: document.getElementById('rcBack')!.textContent, timer: window.__phase!.state }))));
+    const fin = await Promise.all(all3.map((p) => p.evaluate((k) => ({ s: window.__roomMatch!.standings[k - 1], step: window.__roomMatch!.step, t: document.getElementById('rcResT')!.textContent, again: !(document.getElementById('rcAgain') as HTMLElement).hidden, back: !(document.getElementById('rcBack') as HTMLElement).hidden, backT: document.getElementById('rcBack')!.textContent, timer: window.__phase!.state }), RC)));
     const ids5 = new Map(ids1); ids5.set(si.players.find((p) => p.name === 'Late')!.id, 'Late');
-    const s5 = nodeStandings(5, ids5), t5 = await Promise.all(all3.map(tableOf));
+    const s5 = nodeStandings(RC, ids5), t5 = await Promise.all(all3.map(tableOf));
     check(fin.every((f) => f.step === 'over' && f.back && f.backT === 'Main menu' && f.timer === 'off' && f.again && JSON.stringify(f.s) === JSON.stringify(s5.map((x) => x.name)))
       && ['Host', 'Guest', 'Late'].every((nm, k) => JSON.stringify(t5[k]) === JSON.stringify(shownOf(s5, nm))),
-      `after round 5: the final standings = Node's totals on every page, 10 of the 99 rows by total as the sidebar picks them ("${fin[0].t}": ${t5[0].map((x) => x[0]).join(' ')}; "${fin[1].t}": ${t5[1].map((x) => x[0]).join(' ')}), Play again and Main menu for all`);
+      `after round ${RC}: the final standings = Node's best races on every page, 10 of the 99 rows by best race as the sidebar picks them ("${fin[0].t}": ${t5[0].map((x) => x[0]).join(' ')}; "${fin[1].t}": ${t5[1].map((x) => x[0]).join(' ')}), Play again and Main menu for all`);
     await host.screenshot({ path: `${OUT}/m-final.png` });
     await guest.screenshot({ path: `${OUT}/m-final-guest.png` });
 
@@ -519,9 +519,9 @@ async function main() {
     const MAP2 = await setMap(host, 'family', 'eight', false);
     await guest.waitForFunction(() => window.__room?.settings?.map.mode === 'family', null, { timeout: 10_000 });
     await host.click('#lbStart');
-    await Promise.all(all3.map((p) => p.waitForFunction(() => window.__roomMatch?.matchNo === 2 && window.__roomMatch.step === 'build' && window.__phase?.label === 'Round 1 of 5 · Build', null, { timeout: 15_000 })));
+    await Promise.all(all3.map((p) => p.waitForFunction((l) => window.__roomMatch?.matchNo === 2 && window.__roomMatch.step === 'build' && window.__phase?.label === l, `Round 1 of ${RC} · Build`, { timeout: 15_000 })));
     const m2 = await Promise.all(all3.map((p) => p.evaluate(() => ({ map: window.__roomMatch!.map, tracks: window.__roomMatch!.tracks, seed: window.__roomMatch!.seed }))));
-    const want2 = [1, 2, 3, 4, 5].map((n) => roundTrackSeed(derive(m2[0].seed >>> 0, 0x50d5, n), MAP2));
+    const want2 = Array.from({ length: RC }, (_, k) => roundTrackSeed(derive(m2[0].seed >>> 0, 0x50d5, k + 1), MAP2));
     check(si.rooms.get(code)!.matchNo === 2 && m2.every((x) => JSON.stringify(x.tracks) === JSON.stringify(want2) && x.map?.mode === 'family') && want2.every((x) => familyOf(x) === 'eight'),
       `the host sets "One family" (figure eight) and starts match 2 on every page (the latecomer from its final standings): a new figure eight each round (${want2.join(', ')})`);
     // the host leaves: the server hands the room to the player who joined earliest (the guest)

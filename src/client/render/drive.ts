@@ -1,7 +1,8 @@
 // The drive view's 3-D rig, from the look mock-up: the detailed car in the player's yellow with each wheel spinning
 // at its own output (backwards when the output is negative), one ray per boundary vector cell, cast along the centre
 // of its field (sensors.bearingDir) up to its 20 m range and brighter as a wall gets closer, and the chase, broadcast
-// and showroom cameras. Poses come from a recorded drive; nothing here feeds the sim. On the figure eight's bridge the
+// and showroom cameras, and a race's director (match polish §3: broadcast shots cut with an onboard POV camera on the
+// back of the car). Poses come from a recorded drive; nothing here feeds the sim. On the figure eight's bridge the
 // car rides up the ramps (pitched) and its rays, like the sim's, skip the walls of the road below (and the reverse).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -10,9 +11,11 @@ import { bearingDir } from '../../common/sim/sensors';
 import { castRay, hiddenLayer, type Track } from '../../common/sim/track';
 import { makeCar, type CarModel } from './car';
 import { assertFiniteArray } from './guard';
+import { covers, type TvSpot } from './sight';
 import { liftAt, pitchOf, toWorld, yawOf } from './trackMesh';
 
-export type CamMode = 'chase' | 'tv' | 'orbit';
+/** chase, broadcast (tv), orbit; 'race' is a race's director: broadcast shots and the onboard POV, cut by themselves. */
+export type CamMode = 'chase' | 'tv' | 'orbit' | 'race';
 export interface DrivePose {
   x: number; y: number; hdg: number; v: number; idx: number;
   /** Fractional track sample (from the run's progress): where on the road, and so how high. */
@@ -38,6 +41,14 @@ const RANGE = CONFIG.senses.boundary.rangeM;
 const MAX_BEAMS = CONFIG.senses.boundary.max;
 /** The broadcast camera: a shot holds at least this long (s), and frames about this much car and road (m, half). */
 const TV_HOLD = 3, TV_FRAME = 11;
+/**
+ * The race director (match polish §3): broadcast for 5–8 s, then the POV for 4–6 s, and so on; no cut in the first
+ * 2 s after Go (the director starts at Go) and none sooner than 3 s after the last (except when the car leaves a
+ * broadcast shot's frame or stretch, as before). Where no spot covers the car, the POV.
+ */
+const DIR = { tv: [5, 8], pov: [4, 6], quiet: 2, gap: TV_HOLD } as const;
+/** The POV mount in the car's frame (+z forward): on top of the back of the car, just over the rear wing (top 1.69 m). */
+const POV_AT = new THREE.Vector3(0, 2.02, -2.15), POV_LOOK = new THREE.Vector3(0, 1.35, 14);
 
 export class DriveRig {
   readonly car: CarModel;
@@ -58,11 +69,21 @@ export class DriveRig {
   private tvHeld = 0;
   /** The camera's own clock (s of frames drawn), and every cut with why (checks). */
   private clock = 0;
-  readonly cuts: { t: number; why: 'snap' | 'spot' | 'out' }[] = [];
+  readonly cuts: { t: number; why: 'snap' | 'spot' | 'out' | 'pov' | 'tv'; spot: number }[] = [];
+  /** The race director: the shot now, how long it has run and is to run (s), the director's clock and last cut (s). */
+  private shot: 'tv' | 'pov' = 'tv';
+  private shotAge = 0;
+  private shotLen = 0;
+  private dirClock = 0;
+  /** The director runs on real seconds (performance.now), not on frame times: a slow frame must not stretch a shot. */
+  private dirLast = -1;
+  private dirDt = 0;
+  private lastCut = -Infinity;
+  private dirSeed = 1;
   /** A chase camera's glide to another car: time left and its length (s). */
   private glideLeft = 0;
   private glideLen = 0;
-  private tvSpots: { i: number; p: THREE.Vector3 }[] = [];
+  private tvSpots: TvSpot[] = [];
   private track: Track | null = null;
   readonly rayDist = new Float64Array(MAX_BEAMS);
   private shown = 0;
@@ -97,13 +118,15 @@ export class DriveRig {
    * snap); the broadcast camera cuts to the best spot for it at once.
    */
   glide(sec: number): void {
-    if (this.mode === 'tv') { this.tvIdx = -1; return; }
+    if (this.mode === 'tv' || this.mode === 'race') { this.tvIdx = -1; return; } // the POV rides the new car at once
     this.glideLeft = this.glideLen = sec;
   }
   /** The car the camera follows takes that car's colour (yours is yellow). */
   setCarColor(c: string): void { this.car.setColor(c); }
-  /** How far the camera's aim is from the followed car (m), for the checks. */
-  lookOff(): number { return this.look.distanceTo(this.v.copy(this.car.car.position)); }
+  /** How far the camera's aim is from the followed car (m), for the checks (the POV rides on it: 0). */
+  lookOff(): number { return this.mode === 'race' && this.shot === 'pov' ? 0 : this.look.distanceTo(this.v.copy(this.car.car.position)); }
+  /** The race director's shot now ('tv' or 'pov'; the other modes: their own name). */
+  get shotNow(): string { return this.mode === 'race' ? this.shot : this.mode; }
 
   /** World unit direction of each boundary cell's beam as drawn (for the beam-direction check). */
   beamDirs(): number[][] {
@@ -145,7 +168,9 @@ export class DriveRig {
       car.updateMatrixWorld();
       assertFiniteArray(car.matrixWorld.elements, `rival car ${k}`);
       // a car right under the chase camera (the one behind yours on the grid) would fill the screen: not drawn
-      car.visible = car.position.distanceToSquared(this.camera.position) > NEAR_CAM * NEAR_CAM;
+      // (on the POV, only a car right on the camera: one just ahead stays in view)
+      const near = this.mode === 'race' && this.shot === 'pov' ? 2.5 : NEAR_CAM;
+      car.visible = car.position.distanceToSquared(this.camera.position) > near * near;
       for (const w of m.wheels) w.spin.rotation.x = (w.spin.rotation.x + (p.v * dt) / w.r) % (2 * Math.PI);
     });
   }
@@ -163,7 +188,7 @@ export class DriveRig {
     return { x: (q.x + 1) / 2, y: (1 - q.y) / 2 };
   }
 
-  setTrack(t: Track, tvSpots: { i: number; p: THREE.Vector3 }[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; }
+  setTrack(t: Track, tvSpots: TvSpot[]): void { this.track = t; this.tvSpots = tvSpots; this.snap = true; this.tvIdx = -1; this.dirSeed = (t.seed >>> 0) || 1; }
 
   setMode(m: CamMode, reduceMotion: boolean): void {
     this.mode = m;
@@ -174,6 +199,16 @@ export class DriveRig {
       this.controls.autoRotate = !reduceMotion;
     }
     this.snap = true; this.tvIdx = -1; this.glideLeft = 0; this.cuts.length = 0;
+    // the director starts on a broadcast shot (or the POV where no spot covers the car); its shot lengths follow the
+    // track's seed, so a race's cuts come out the same each time it is shown
+    this.shot = 'tv'; this.shotAge = 0; this.dirClock = 0; this.dirLast = -1; this.lastCut = -Infinity; this.shotLen = this.lenOf('tv');
+  }
+  /** A shot's length (s), drawn from the director's own sequence (display only). */
+  private lenOf(k: 'tv' | 'pov'): number {
+    let x = (this.dirSeed = (Math.imul(this.dirSeed, 1103515245) + 12345) >>> 0);
+    x ^= x >>> 16;
+    const [a, b] = DIR[k];
+    return a + ((x >>> 0) / 4294967296) * (b - a);
   }
 
   update(p: DrivePose, dt: number, time: number, reduceMotion: boolean): void {
@@ -232,22 +267,10 @@ export class DriveRig {
       cam.lookAt(this.look);
       const fov = 60 + Math.abs(p.v) * 0.1;
       if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * k; cam.updateProjectionMatrix(); }
+    } else if (this.mode === 'race') {
+      this.direct(p, dt, reduceMotion);
     } else if (this.mode === 'tv' && this.tvSpots.length) {
-      const n = this.track ? this.track.n : 1;
-      let best = 0, bv = Infinity;
-      this.tvSpots.forEach((sp, j) => { let rel = ((p.idx - sp.i) % n + n) % n; if (rel > n / 2) rel -= n; const score = Math.abs(rel + 12); if (score < bv) { bv = score; best = j; } });
-      this.tvHeld += dt;
-      // a shot holds at least TV_HOLD s (follow-a-racer plan, broadcast in matches), unless the car has left the frame
-      const out = this.tvIdx >= 0 && !this.inFrame(car.position);
-      if (best !== this.tvIdx && (this.tvIdx < 0 || this.tvHeld >= TV_HOLD || out)) {
-        this.cuts.push({ t: this.clock, why: this.tvIdx < 0 ? 'snap' : out && this.tvHeld < TV_HOLD ? 'out' : 'spot' });
-        if (this.cuts.length > 200) this.cuts.shift();
-        this.tvIdx = best; this.tvHeld = 0; this.snap = true; cam.position.copy(this.tvSpots[best].p);
-      }
-      this.look.lerp(this.v.copy(car.position).setY(car.position.y + 0.8), this.snap ? 1 : 1 - Math.exp(-dt * 7));
-      cam.lookAt(this.look);
-      const dist = cam.position.distanceTo(car.position);
-      cam.fov = Math.min(55, Math.max(9, 2 * Math.atan(TV_FRAME / dist) * 180 / Math.PI)); cam.updateProjectionMatrix();
+      this.broadcast(p, dt, false);
     } else {
       this.v.copy(car.position).sub(this.controls.target);
       cam.position.add(this.v); this.controls.target.copy(car.position);
@@ -256,6 +279,90 @@ export class DriveRig {
     }
     this.snap = false;
     assertFiniteArray(cam.matrixWorld.elements, 'drive camera');
+  }
+
+  private cut(why: DriveRig['cuts'][number]['why'], spot = -1): void {
+    this.cuts.push({ t: this.mode === 'race' ? this.dirClock : this.clock, why, spot });
+    if (this.cuts.length > 200) this.cuts.shift();
+    this.lastCut = this.dirClock;
+  }
+
+  /** The best broadcast spot for sample idx: among those covering it (all of them if `any` and none does), or −1. */
+  private spotFor(idx: number, any: boolean): number {
+    const n = this.track ? this.track.n : 1;
+    let best = -1, bv = Infinity;
+    for (let pass = 0; pass < 2 && best < 0; pass++) {
+      if (pass === 1 && !any) break;
+      this.tvSpots.forEach((sp, j) => {
+        if (pass === 0 && !covers(sp, idx, n)) return;
+        let rel = ((idx - sp.i) % n + n) % n; if (rel > n / 2) rel -= n;
+        const score = Math.abs(rel + 12);
+        if (score < bv) { bv = score; best = j; }
+      });
+    }
+    return best;
+  }
+
+  /**
+   * A broadcast shot: the spot covering the car best (the drive view's tv mode: any spot if none covers it); a shot
+   * holds at least TV_HOLD s (follow-a-racer plan) unless the car has left its frame or its stretch. Returns false if
+   * no spot can show the car (the director then cuts to the POV).
+   */
+  private broadcast(p: DrivePose, dt: number, strict: boolean): boolean {
+    const car = this.car.car, cam = this.camera, n = this.track ? this.track.n : 1;
+    const best = this.spotFor(p.idx, !strict);
+    if (best < 0) return false;
+    this.tvHeld += this.mode === 'race' ? this.dirDt : dt;
+    const out = this.tvIdx >= 0 && (!this.inFrame(car.position) || !covers(this.tvSpots[this.tvIdx], p.idx, n));
+    if (best !== this.tvIdx && (this.tvIdx < 0 || this.tvHeld >= TV_HOLD || out)) {
+      // a race director's cut back from the POV is 'tv'; a first shot, or one after a snap or a new car, 'snap'
+      this.cut(this.tvIdx < 0 ? (this.mode === 'race' && this.shotAge === 0 && this.cuts.length > 0 ? 'tv' : 'snap') : out && this.tvHeld < TV_HOLD ? 'out' : 'spot', best);
+      this.tvIdx = best; this.tvHeld = 0; this.snap = true; cam.position.copy(this.tvSpots[best].p);
+    }
+    this.look.lerp(this.v.copy(car.position).setY(car.position.y + 0.8), this.snap ? 1 : 1 - Math.exp(-dt * 7));
+    cam.lookAt(this.look);
+    const dist = cam.position.distanceTo(car.position);
+    cam.fov = Math.min(55, Math.max(9, 2 * Math.atan(TV_FRAME / Math.max(dist, 1)) * 180 / Math.PI)); cam.updateProjectionMatrix();
+    return true;
+  }
+
+  /** The onboard POV: rigidly on the back of the followed car, looking forward over it, with a slight vibration. */
+  private pov(p: DrivePose, reduceMotion: boolean): void {
+    const car = this.car.car, cam = this.camera;
+    const speed = Math.min(1, Math.abs(p.v) / CONFIG.car.wheelSpeed), shake = reduceMotion ? 0 : 0.004 + 0.012 * speed, ph = this.clock * 47;
+    this.pos.copy(POV_AT);
+    this.pos.y += shake * Math.sin(ph); this.pos.x += shake * 0.5 * Math.sin(ph * 1.37 + 1.1);
+    car.localToWorld(this.pos);
+    this.look.copy(POV_LOOK); this.look.y += shake * 2 * Math.sin(ph * 0.83 + 0.4);
+    car.localToWorld(this.look);
+    cam.position.copy(this.pos);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(this.look);
+    const fov = 68 + speed * 6;
+    cam.fov = fov; cam.near = 0.1; cam.updateProjectionMatrix();
+  }
+
+  /** The race director: broadcast and POV shots in turn (DIR), cut by themselves; the followed car in both. */
+  private direct(p: DrivePose, dt: number, reduceMotion: boolean): void {
+    const now = performance.now() / 1000;
+    this.dirDt = this.dirLast < 0 ? 0 : Math.max(0, Math.min(5, now - this.dirLast));
+    this.dirLast = now;
+    this.dirClock += this.dirDt; this.shotAge += this.dirDt;
+    const sinceCut = this.dirClock - this.lastCut, may = this.dirClock >= DIR.quiet && sinceCut >= DIR.gap;
+    if (this.shot === 'tv') {
+      const due = this.shotAge >= this.shotLen && may;
+      // the shot's time is up, or no spot covers the car (the first shot: at Go, at once): the POV
+      if (due || this.spotFor(p.idx, false) < 0) {
+        this.cut('pov');
+        this.shot = 'pov'; this.shotAge = 0; this.shotLen = this.lenOf('pov'); this.tvIdx = -1;
+      } else if (!this.broadcast(p, dt, true)) {
+        this.cut('pov'); this.shot = 'pov'; this.shotAge = 0; this.shotLen = this.lenOf('pov'); this.tvIdx = -1;
+      }
+    } else if (this.shotAge >= this.shotLen && may && this.spotFor(p.idx, false) >= 0) {
+      this.shot = 'tv'; this.shotAge = 0; this.shotLen = this.lenOf('tv'); this.tvIdx = -1; this.tvHeld = 0;
+      this.broadcast(p, dt, true); // cuts ('tv') to the best spot
+    }
+    if (this.shot === 'pov') this.pov(p, reduceMotion);
   }
 
   /** A point in the camera's view (inside the frame and in front). */

@@ -6,7 +6,7 @@ import { derive, TAG } from '../rng';
 import { genomeHash, zeroGenome } from '../sim/brain';
 import type { BrainSpec, Genome } from '../sim/spec';
 import { seedOfFamily, type Family } from '../sim/track';
-import type { Executor } from './episodes';
+import type { EpisodeSetup, Executor } from './episodes';
 import { MeteredEnv, type Env } from './env';
 import { createTrainer, type TrainerEvent, type TrainerOptions } from './trainer';
 import './neuroevo';
@@ -71,6 +71,8 @@ export interface PhaseOptions {
   phase?: number;
   /** The training tracks' seeds, if not the phase's own (the sandbox's chosen track: chosenTrainTracks). */
   tracks?: number[];
+  /** The tracks are race tracks of this many cars (a match's round: its race track; EpisodeSetup.raceCars). */
+  raceCars?: number;
   /** A clock for timing only (sim code never reads time); defaults to no timing. */
   now?: () => number;
   /** Car-ticks per trainer.step call (default: all of T at once). The training view steps one generation at a time. */
@@ -102,7 +104,7 @@ export function bestSoFar(gens: GenStat[], start: Genome): Genome {
 
 export async function runPhase(exec: Executor, spec: BrainSpec, seed: number, o: PhaseOptions = {}): Promise<PhaseResult> {
   const seeds = phaseSeeds(seed, o.phase ?? 0);
-  const setup = { spec, trackSeeds: o.tracks ?? seeds.trainTracks, episodeTicks: CONFIG.train.episodeTicks };
+  const setup: EpisodeSetup = { spec, trackSeeds: o.tracks ?? seeds.trainTracks, episodeTicks: CONFIG.train.episodeTicks, ...(o.raceCars ? { raceCars: o.raceCars } : {}) };
   // the view's Stop aborts the pool; whenever that lands (even while the workers are still setting up), the run
   // ends as stopped rather than failing
   const aborted = (e: unknown): boolean => !!o.stop?.() && e instanceof Error && e.name === 'AbortError';

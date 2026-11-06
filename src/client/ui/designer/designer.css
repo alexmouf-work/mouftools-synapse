@@ -27,7 +27,7 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 html, body { overflow: hidden; }
 .app { position: fixed; left: 0; top: 0; width: 860px; height: 400px; transform-origin: 0 0; display: grid;
-  grid-template-rows: 36px 30px 1fr; gap: 6px; padding: 6px 10px; font-size: 12px; }
+  grid-template-rows: minmax(36px, auto) 30px 1fr; gap: 6px; padding: 6px 10px; font-size: 12px; }
 .app[hidden] { display: none; }
 .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .word { font-weight: 700; font-size: 15px; }
@@ -104,9 +104,18 @@ dialog#confirm { width: 260px; }
 /* additions beyond the mock-up: the speaker button in the top bar; the wordmark is a button back to the title */
 .top .word { border: 0; background: none; padding: 0; cursor: pointer; color: var(--text); }
 /* the two sound toggles, side by side: Music (a note) and Sound effects (a speaker); pressed = on */
-.sounds { display: inline-flex; gap: 4px; flex: none; }
-.btn.sound { min-height: 30px; width: 30px; padding: 0; display: inline-grid; place-items: center; border-radius: 0; color: var(--text); }
-.btn.sound svg { width: 16px; height: 16px; }
+/* Main menu, Music and Sound effects (match polish §5, principal 2026-11-05: "much larger and easier to interact with"):
+   at least 44 px tall wherever they are, with large icons and text */
+.btn.menu { min-height: 44px; padding: 0 16px; font-size: 15px; font-weight: 700; }
+.sounds { display: inline-flex; gap: 8px; flex: none; }
+.btn.sound { min-height: 44px; width: 44px; padding: 0; display: inline-grid; place-items: center; border-radius: 0; color: var(--text); }
+.btn.sound svg { width: 24px; height: 24px; }
+/* the workbench is drawn at 860 × 400 and scaled to the screen: designer.ts fit() sets --unscale (1 / that scale), so
+   these stay 44 px on screen however small it is drawn */
+.app .btn.menu, .app .btn.sound { min-height: max(40px, calc(44px * var(--unscale, 1))); }
+.app .btn.menu { font-size: 14px; padding: 0 12px; }
+.app .btn.sound { width: max(40px, calc(44px * var(--unscale, 1))); }
+.app .btn.sound svg { width: 22px; height: 22px; }
 .btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }
 .btn.sound[aria-pressed="false"] { color: var(--muted); }
 /* vs CPU (match-flow v2 §1): only the timers move a match on, so the designer has no Train button there */

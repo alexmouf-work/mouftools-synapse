@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { Rng } from '../../common/rng';
 import type { Track } from '../../common/sim/track';
 import { assertCapacity, assertFiniteGeometry, setInstance } from './guard';
+import { inCorridor, type Corridor } from './sight';
 import { trackCentre } from './trackMesh';
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -20,11 +21,20 @@ function fbm(x: number, y: number) { let s = 0, a = 0.5, f = 1; for (let i = 0; 
 
 export interface Scenery { group: THREE.Group; dispose(): void }
 
-/** keepClear: places trees stay away from (stands, boards, camera spots). */
-export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: number; r: number }[] = []): Scenery {
-  const rng = new Rng(seed ^ 0x5ce4e);
-  const rand = () => rng.next();
-  const group = new THREE.Group();
+/**
+ * The terrain's height at world (x, z) round track t (the mesh samples it at its vertices; a hill between a camera spot
+ * and the road would show here first).
+ */
+export interface Terrain {
+  /** Height at world (x, z). */
+  (x: number, z: number): number;
+  /** Height at (x, z) given its distance d from the centreline; that distance; how far the track reaches; its centre. */
+  terrainH(x: number, z: number, d: number): number;
+  distToTrack(x: number, z: number): number;
+  reach: number;
+  centre: THREE.Vector3;
+}
+export function terrainOf(t: Track): Terrain {
   const centre = trackCentre(t);
   // how far the track reaches from its centre: the ridges, the terrain's edge, trees and clouds sit beyond it (laps of
   // 2–3 km reach up to ~600 m; the old ring started 500 m out, so it is measured from the track now)
@@ -44,6 +54,18 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
     const ridge = smooth(reach + 130, reach + 730, Math.hypot(x - centre.x, z - centre.z));
     return -0.35 + far * (n * 55 + 4) + ridge * (n * 160 + 40) + smooth(24, 50, d) * (vnoise(x * 0.05, z * 0.05) - 0.5) * 1.6;
   };
+  return Object.assign((x: number, z: number) => terrainH(x, z, distToTrack(x, z)), { terrainH, distToTrack, reach, centre });
+}
+
+/**
+ * keepClear: places trees stay away from (stands, boards, camera spots); corridors: the broadcast spots' sight lines
+ * (match polish §3), which no tree may stand in.
+ */
+export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: number; r: number }[] = [], corridors: readonly Corridor[] = []): Scenery {
+  const rng = new Rng(seed ^ 0x5ce4e);
+  const rand = () => rng.next();
+  const group = new THREE.Group();
+  const { terrainH, distToTrack, reach, centre } = terrainOf(t);
   const disposables: { dispose(): void }[] = [];
 
   // terrain
@@ -74,6 +96,7 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
     assertFiniteGeometry(g, 'terrain');
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95, envMapIntensity: 0.35 });
     const ground = new THREE.Mesh(g, mat);
+    ground.name = 'terrain';
     ground.receiveShadow = true; group.add(ground);
     disposables.push(g, mat);
   }
@@ -99,6 +122,8 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
       const h = terrainH(x, z, d);
       if (h > 120) continue;
       const size = 2.4 + rand() * 3.6;
+      // out of every camera spot's sight lines: the canopy's widest box (a rotated one: its half diagonal) plus a margin
+      if (corridors.length && inCorridor(corridors, x, z, size * 1.5 + 0.6)) continue;
       const isCone = nr >= MAX || (nc < MAX && rand() < 0.45);
       cc.set(pal[rand() < 0.88 ? Math.floor(rand() * 5) : 5 + Math.floor(rand() * 2)]);
       q.setFromAxisAngle(up, rand() * 6.28);
@@ -121,6 +146,7 @@ export function buildScenery(t: Track, seed: number, keepClear: { x: number; z: 
     for (let k = 0; k < 16; k++) {
       const a = rand() * Math.PI * 2, r = reach + 50 + rand() * 520;
       const g = new THREE.Group(); g.position.set(centre.x + Math.cos(a) * r, 120 + rand() * 110, centre.z + Math.sin(a) * r);
+      g.name = 'cloud';
       const puffs = 4 + Math.floor(rand() * 4);
       for (let p = 0; p < puffs; p++) { const m = new THREE.Mesh(cg, cm); const s = 14 + rand() * 18; m.scale.set(s * 1.4, s * 0.8, s); m.position.set((p - puffs / 2) * 16 + rand() * 6, rand() * 8, rand() * 14 - 7); g.add(m); }
       group.add(g);

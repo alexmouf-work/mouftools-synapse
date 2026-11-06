@@ -10,6 +10,11 @@ export interface PhaseOptions {
   label: string;
   /** Whole seconds to count down from. */
   seconds: number;
+  /**
+   * Or the moment 0 is reached (performance.now() ms), when the phase is measured from a timestamp it shares with
+   * something else: a race's timer ends at its Go + 30 s, the moment its replay ends (match polish §4).
+   */
+  until?: number;
   /** Red at or under this many seconds (default 10). */
   red?: number;
   /** Pulse and tick at or under this many seconds (default 5). */
@@ -72,7 +77,7 @@ export function startPhaseTimer(o: PhaseOptions): void {
   if (getComputedStyle(o.host).position === 'static') o.host.style.position = 'relative';
   n.label.textContent = o.label;
   n.sub.textContent = ''; n.sub.hidden = true;
-  state = 'running'; deadline = performance.now() + o.seconds * 1000; shown = -1;
+  state = 'running'; deadline = o.until ?? performance.now() + o.seconds * 1000; shown = -1;
   n.box.hidden = false;
   n.box.classList.remove('red', 'pulse', 'up');
   document.body.classList.add('timed');

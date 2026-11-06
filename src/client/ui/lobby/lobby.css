@@ -13,7 +13,8 @@
 #mp .btn { min-height: 0; font: 700 15px Arial, Helvetica, sans-serif; padding: 10px 16px; color: var(--text); box-shadow: none; }
 #mp .btn.primary { color: #fff; }
 #mp .btn.big { font-size: 20px; padding: 14px 18px; }
-#mp .btn.sound { padding: 0; min-height: 30px; }
+#mp .btn.sound { padding: 0; min-height: 44px; }
+#mp .btn.menu { min-height: 44px; } /* match polish §5: at least 44 px */
 #mp button:focus-visible, #mp input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* the code card and the name screen */

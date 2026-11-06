@@ -1,8 +1,8 @@
 // A Multiplayer match's shared schedule (match-flow v2 plan §M2): the host's Start match fixes the match's start on the
-// server's clock, and every phase of the 5 rounds starts at a fixed offset from it, so every client derives the same
-// phases from that one time. Round n: build (60 s in round 1, then 20 s), train 20 s, hand in 3 s, the race's countdown
-// 5 s (the server freezes the round's entries as it begins), the race 30 s, the cars hold 1.5 s, then 8 s of standings
-// (after round 5 the final standings stay). Times are milliseconds from the match's start. supabase/schema.sql
+// server's clock, and every phase of the rounds starts at a fixed offset from it, so every client derives the same
+// phases from that one time. Round n of 3 (match polish §1): build (60 s in round 1, then 20 s), train 20 s, hand in
+// 3 s, the race's countdown 5 s (the server freezes the round's entries as it begins), the race 30 s, the cars hold
+// 1.5 s, then 8 s of standings (after the last round the final standings stay). Times are milliseconds from the match's start. supabase/schema.sql
 // computes the same freeze times (synapse_round_start / synapse_round_freeze); tests/unit/schedule.test.ts keeps the
 // two in step.
 import { CONFIG } from './config';
@@ -12,10 +12,10 @@ const RACE = (R.raceTicks / CONFIG.tick.hz) * S;
 
 export type RoomPhase = 'build' | 'train' | 'handIn' | 'countdown' | 'race' | 'hold' | 'standings' | 'over';
 
-/** When round n's phases start (ms from the match's start). `next` is the next round's build (round 5: the end). */
+/** When round n's phases start (ms from the match's start). `next` is the next round's build (the last round: the end). */
 export interface RoundTimes { start: number; train: number; handIn: number; freeze: number; go: number; raceEnd: number; standings: number; next: number }
 
-/** The length of round n (1–5), build to the end of its standings. */
+/** The length of round n (1–CONFIG.rounds.count), build to the end of its standings. */
 export const roundMs = (n: number): number => (R.build[n - 1] + R.train + R.room.handIn + R.room.lead + R.hold + R.nextAfter) * S + RACE;
 
 export function roundTimes(n: number): RoundTimes {
@@ -26,7 +26,7 @@ export function roundTimes(n: number): RoundTimes {
   return { start, train, handIn, freeze, go, raceEnd, standings, next: standings + R.nextAfter * S };
 }
 
-/** From here on the match is over (round 5's final standings, which stay until the host starts another). */
+/** From here on the match is over (the last round's final standings, which stay until the host starts another). */
 export const matchOverMs = (): number => roundTimes(R.count).standings;
 
 /** The round and phase at time t (ms from the match's start; before it counts as round 1's build), and when it ends. */

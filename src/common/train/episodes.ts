@@ -14,6 +14,11 @@ export interface EpisodeSetup {
   spec: BrainSpec;
   trackSeeds: number[];
   episodeTicks: number;
+  /**
+   * Train on these tracks as race tracks of this many cars (generateTrack's raceCars; match polish §2: a match's round
+   * trains on its race's own track, pads and all). 0 or absent: training tracks.
+   */
+  raceCars?: number;
 }
 
 /** Per (policy, track): prog, wallTicks, ticks. */
@@ -88,7 +93,7 @@ export class EpisodeCore {
   private rec: Recording | null = null;
   private lanes: RolloutCore | null = null;
   constructor(readonly s: EpisodeSetup) {
-    this.tracks = s.trackSeeds.map((seed) => generateTrack(seed));
+    this.tracks = s.trackSeeds.map((seed) => generateTrack(seed, s.raceCars ?? 0));
     this.net = compile(zeroGenome(s.spec));
   }
   rollout(job: RolloutJob): LaneOut[] {

@@ -3,12 +3,14 @@
 // broadcast camera spots. Built from a sim Track; textures are passed in so Node tests can build it without a canvas.
 // Lit surfaces stay under the bloom threshold; lit bands and lamp heads are tagged glow. Every stand, board, light and
 // camera spot goes on the side of the road that is clear of the rest of the track (the hairpin's, clover's and figure
-// eight's other roads can be close), and none by the figure eight's crossing.
+// eight's other roads can be close), and none by the figure eight's crossing. Every camera spot sees the road it
+// covers past all of it (match polish §3; sight.ts).
 import * as THREE from 'three';
 import { Rng } from '../../common/rng';
 import type { Track } from '../../common/sim/track';
 import { fadeNear } from './glow';
 import { assertCapacity, assertFiniteGeometry, setInstance } from './guard';
+import { blocker, obstaclesOf, sightTarget, type TvSpot } from './sight';
 import { at, trackCentre, WALL_H, WALL_OUT } from './trackMesh';
 
 export interface StadiumTex {
@@ -18,7 +20,7 @@ export interface StadiumTex {
   chevron: THREE.Texture;
 }
 export interface KeepClear { x: number; z: number; r: number }
-export interface Stadium { group: THREE.Group; tvSpots: { i: number; p: THREE.Vector3 }[]; keepClear: KeepClear[]; dispose(): void }
+export interface Stadium { group: THREE.Group; tvSpots: TvSpot[]; keepClear: KeepClear[]; dispose(): void }
 
 const LIT = new THREE.Color(0.35, 1.9, 2.5);
 
@@ -179,17 +181,42 @@ export function buildStadium(t: Track, tex: StadiumTex): Stadium {
     }
   }
 
-  // broadcast camera spots (follow-a-racer plan, broadcast in matches): about 140 m apart, 40–60 m off the centreline
-  // and 8–18 m up; where neither side is clear that far out (another stretch of track), 30 m if that is clear
-  const tvSpots: Stadium['tvSpots'] = [];
-  for (let i = 5; i < t.n; i += Math.round(140 / t.ds)) {
-    let off = 40 + rand() * 20, s = sideFor(i, [0], [off], WALL_OUT + 4);
-    const hy = 8 + rand() * 10;
-    if (!s) { off = 30; s = sideFor(i, [0], [off], WALL_OUT + 4); }
-    if (!s) continue;
-    const p = at(t, i, s * off, 0);
-    p.y = hy;
-    tvSpots.push({ i, p }); keepClear.push({ x: p.x, z: p.z, r: 10 });
+  // broadcast camera spots (follow-a-racer plan, broadcast in matches; match polish §3): one about every 140 m, 40–60 m
+  // off the centreline and 8–18 m up, each covering the stretch the broadcast camera would show from it (the car about
+  // 12 samples before the spot, half the spacing either way, plus a little). Every sight line from the spot to that
+  // stretch must miss the stand, gates, boards, lights and chevrons built above: the first clear candidate is taken
+  // (outside then inside, other offsets and heights); if none sees the whole stretch, the one that sees the longest
+  // unbroken part round its middle, covering only that; under 50 m of it, no spot there (the race's POV camera covers
+  // it). Trees come later and keep out of the spots' corridors (scenery.ts).
+  const tvSpots: TvSpot[] = [];
+  const obs = obstaclesOf(group);
+  const spacing = Math.round(140 / t.ds), half = Math.round(70 / t.ds) + Math.round(10 / t.ds), minRun = Math.round(50 / t.ds);
+  const tgt = Array.from({ length: t.n }, (_, j) => sightTarget(t, j));
+  for (let i = 5; i < t.n; i += spacing) {
+    const r1 = rand(), r2 = rand();
+    const core = i - 12, from = core - half, len = 2 * half + 1, out = outSide(i);
+    let best: { p: THREE.Vector3; i0: number; n: number } | null = null;
+    for (const s of [out, -out]) {
+      for (const off of [40 + r1 * 20, 50, 30, 60]) {
+        if (!clear(i, s, [0], [off], WALL_OUT + 4)) continue;
+        for (const hy of [8 + r2 * 10, 14, 20]) {
+          const p = at(t, i, s * off, 0);
+          p.y = hy;
+          // visibility of each sample of the stretch, then the longest unbroken run through the core (or the longest)
+          const vis = Array.from({ length: len }, (_, k) => blocker(p, tgt[((from + k) % t.n + t.n) % t.n], obs) === null);
+          let a0 = half, a1 = half;
+          if (vis[half]) { while (a0 > 0 && vis[a0 - 1]) a0--; while (a1 < len - 1 && vis[a1 + 1]) a1++; } else a1 = a0 - 1;
+          let bs = a0, bn = a1 - a0 + 1;
+          if (bn <= 0) for (let k = 0, run = 0; k < len; k++) { run = vis[k] ? run + 1 : 0; if (run > bn) { bn = run; bs = k - run + 1; } }
+          if (!best || bn > best.n) best = { p, i0: ((from + bs) % t.n + t.n) % t.n, n: bn };
+          if (bn === len) break;
+        }
+        if (best?.n === len) break;
+      }
+      if (best?.n === len) break;
+    }
+    if (!best || best.n < minRun) continue;
+    tvSpots.push({ i, ...best }); keepClear.push({ x: best.p.x, z: best.p.z, r: 10 });
   }
   return { group, tvSpots, keepClear, dispose: () => { geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose()); } };
 }

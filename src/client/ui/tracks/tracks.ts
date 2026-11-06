@@ -3,8 +3,8 @@
 //   Shuffle that draws another track of that family; the chosen track's big preview shows its length and features
 //   (the T1 validator's `Track.features`). Remembered on the device as `synapse.track` (family and seed). It is the track
 //   Drive uses and training's first track; training's second is another track of the same family (chosenTrainTracks).
-// - vs CPU's settings screen and a room's Settings: the map for the match's five rounds: "New track each round",
-//   "One family" (a new track of it each round) or "One track" (a family, shuffled to one track for all five rounds).
+// - vs CPU's settings screen and a room's Settings: the map for the match's rounds: "New track each round",
+//   "One family" (a new track of it each round) or "One track" (a family, shuffled to one track for every round).
 // A chosen track is a plain seed whose own family is the family (seedOfFamily), so every view that takes a track seed
 // takes it unchanged. Also here: the player's name for vs CPU and Multiplayer (`synapse.name`). Storage can be missing
 // or throw (private windows, blocked site data): every access is guarded; nothing is remembered then.

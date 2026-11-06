@@ -144,13 +144,14 @@
 <dialog id="rotate" aria-labelledby="rotT"><svg class="rot-icon" viewBox="0 0 64 64" aria-hidden="true"><rect x="22" y="8" width="20" height="34" fill="none" stroke="currentColor" stroke-width="3"/><rect x="14" y="36" width="34" height="20" fill="currentColor" opacity=".25"/><rect x="14" y="36" width="34" height="20" fill="none" stroke="currentColor" stroke-width="3"/><path d="M50 14a14 14 0 0 1 4 18" fill="none" stroke="currentColor" stroke-width="3"/><path d="M57 28l-3 5-4-4" fill="none" stroke="currentColor" stroke-width="3"/></svg><h1 id="rotT">Turn your phone sideways</h1><p class="note">Synapse is played in landscape.</p></dialog>
 <dialog id="trainDlg" aria-labelledby="tdT"><p id="tdT"><b>Train for how many generations?</b></p><div class="gens" id="gens" role="group" aria-label="Generations"></div><label class="count temp" id="tempRow"><span>Temperature</span><b id="tVal"></b><input id="tSlide" type="range" min="-2" max="2" step="0.25" value="0" aria-label="Temperature"><small id="tHint"></small></label><div class="cf"><button class="btn" type="button" id="tdNo">Cancel</button><button class="btn primary" type="button" id="tdGo">Train</button></div></dialog>
 <dialog id="trackDlg" class="tk-dlg" aria-labelledby="tkT"><div class="tk-hd"><div><h2 id="tkT">Track</h2><p class="tk-sub">Drive uses this track, and training starts on it (then another track of its family).</p></div><button class="btn primary" type="button" id="tkDone">Done</button></div><div id="tdPick"></div></dialog>
-<dialog id="mapDlg" class="tk-dlg" aria-labelledby="mdT"><div class="tk-hd"><div><h2 id="mdT">Map</h2><p class="tk-sub">The track for each of the match's five rounds, for everyone in the room.</p></div><div class="cf"><button class="btn" type="button" id="mdNo">Cancel</button><button class="btn primary" type="button" id="mdGo">Done</button></div></div><div id="mdPick"></div></dialog>
+<dialog id="mapDlg" class="tk-dlg" aria-labelledby="mdT"><div class="tk-hd"><div><h2 id="mdT">Map</h2><p class="tk-sub">The track for each of the match's rounds, for everyone in the room.</p></div><div class="cf"><button class="btn" type="button" id="mdNo">Cancel</button><button class="btn primary" type="button" id="mdGo">Done</button></div></div><div id="mdPick"></div></dialog>
 <dialog id="confirm" aria-labelledby="cfT"><p id="cfT"><b>Reset the brain?</b><br>This goes back to the starting brain and clears its training.</p><div class="cf"><button class="btn" type="button" id="cfNo">Cancel</button><button class="btn red" type="button" id="cfYes">Reset</button></div></dialog>
 <div id="arena" class="tv" hidden>
   <canvas id="scene" aria-label="The track in 3-D"></canvas>
   <div class="cam-top" id="camTop"></div>
   <div id="trainOverlay" hidden>
   <aside class="tv-info" aria-label="Training">
+    <div class="side-top"><button class="btn menu" id="tvMenu" type="button">Main menu</button><span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span></div>
     <section class="tv-half" aria-label="Fitness per generation">
       <div class="tv-hd"><h2>Fitness</h2><span class="tv-gen" id="tvGen" aria-live="polite"></span></div>
       <div class="tv-actions">
@@ -159,8 +160,6 @@
         <button class="btn primary" id="tvRace" type="button" hidden>Race</button>
         <button class="btn" id="tvAgain" type="button" hidden>Keep training</button>
         <button class="btn" id="tvBack" type="button" hidden>Back</button>
-        <button class="btn menu" id="tvMenu" type="button">Main menu</button>
-        <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
       </div>
       <canvas id="tvGraph" aria-label="Best and mean fitness per generation"></canvas>
       <div class="tv-key"><span><i class="best"></i>best</span><span><i class="mean"></i>mean</span><span>m per 60 s</span></div>
@@ -178,6 +177,7 @@
   </div>
   <div id="raceOverlay" hidden>
     <aside class="tv-info rc-side" aria-label="Race">
+      <div class="side-top"><button class="btn menu" id="rcMenu" type="button">Main menu</button><span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicRc" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxRc" type="button" aria-label="Sound effects" aria-pressed="true"></button></span></div>
       <section class="tv-half rc-status">
         <div class="tv-hd"><h2 id="rcTitle">vs CPU</h2><span class="tv-gen" id="rcState"></span></div>
         <dl class="kv">
@@ -190,8 +190,6 @@
         <div class="tv-actions">
           <button class="btn" id="rcMine" type="button" hidden>Back to my car</button>
           <button class="btn" id="rcLeave" type="button">Back</button>
-          <button class="btn menu" id="rcMenu" type="button">Main menu</button>
-          <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicRc" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxRc" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
         </div>
       </section>
       <section class="tv-half rc-mini" aria-label="Map">
@@ -212,6 +210,7 @@
   </div>
   <div id="driveOverlay" hidden>
     <aside class="tv-info dv-side" aria-label="Drive">
+      <div class="side-top"><button class="btn menu" id="dvMenu" type="button">Main menu</button><span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicDv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxDv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span></div>
       <section class="tv-half dv-status" aria-live="polite">
         <div class="tv-hd"><h2>Drive</h2><span class="tv-gen" id="dvName"></span></div>
         <dl class="kv">
@@ -231,8 +230,6 @@
         <div class="tv-actions">
           <button class="btn" id="dvNew" type="button">New track</button>
           <button class="btn primary" id="dvBack" type="button">Back to workbench</button>
-          <button class="btn menu" id="dvMenu" type="button">Main menu</button>
-          <span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicDv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxDv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span>
         </div>
       </section>
       <section class="tv-half" aria-label="Map">

@@ -157,11 +157,12 @@ until 1 s after the put-back) and to jump the car without gliding. Distances are
 (ruling 2026-11-05). Training and the drive view never set it. A race is either lapped (Multiplayer: 2 laps capped at
 120 s) or timed (`ROUND_RACE`, a vs CPU round: 600 ticks, no laps, ranked by `RaceCar.dist`, the signed distance
 covered from the car's grid slot). The race hash covers the track, every car's frames, finish and progress, and the
-ranking; names are not hashed (determinism goldens `match`: a lapped race of the round-5 CPU brains; `round`: a timed
-race of the round-1 CPU brains; one race per golden seed).
+ranking; names are not hashed (determinism goldens `match`: a lapped race of the last round's CPU brains; `round`: a
+timed race of the round-1 CPU brains; one race per golden seed; `phaseRaceTrack`: evolution on one race track of ten
+cars, as a match's round trains).
 
-The nine CPU players (`src/assets/cpu/brains.json` v2, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008)
-have a brain per round (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): each player's design grows with the edit
+The nine CPU players (`src/assets/cpu/brains.json` v3, written by `scripts/sim/cpuBrains.ts`, fixed seeds 1000–1008)
+have a brain per round, three rounds since match polish (docs/plans/2026-11-05-rounds.md, match-flow-v2.md): each player's design grows with the edit
 ops while the next step fits that round's energy budget, and is trained with evolution from fresh weights on its share
 of the round's T (`CONFIG.rounds.T`, 12M; 5, 10, 17, 25, 35, 47, 60, 80 and 100%). They are named after the people behind
 the methods (principal 2026-11-05): McCulloch, Pitts, Hebb, Rosenblatt, Holland, Werbos, Barto, Sutton and Hopfield,
@@ -348,9 +349,13 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   at 12×; a new generation cuts instead of flying across), or the champion in the finale; bloom audit), `car.ts` (the mock-up's solid race car), `drive.ts`
   (the drive rig: the yellow car with each wheel spinning at 18 rad/s × its output, so it reverses visibly; one ray
   per boundary vector cell along its field's centre via `sensors.bearingDir`, up to 20 m, brighter as a wall nears;
-  chase, broadcast and showroom cameras), `stadium.ts` (grandstand with crowd and SYNAPSE
-  banner, start and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards on tight corners, broadcast
-  camera spots; trees keep clear of them), `trackMesh.ts` (road, kerbs red/white in corners,
+  chase, broadcast and showroom cameras, and a race's director, mode `race`: broadcast shots for 5–8 s and the onboard
+  POV, rigid on top of the back of the followed car with a slight vibration, for 4–6 s, cut by themselves, none in the
+  first 2 s or sooner than 3 s after the last, the POV wherever no spot covers the car; match polish §3), `stadium.ts`
+  (grandstand with crowd and SYNAPSE banner, start and checkpoint gates, SYNAPSE billboards, floodlights, chevron boards
+  on tight corners, broadcast camera spots: each covers a stretch of road and every sight line from it to that stretch
+  misses every box of scenery, `sight.ts`; trees keep out of those corridors, and a hill never rises into one,
+  tests/unit/sight.test.ts), `trackMesh.ts` (road, kerbs red/white in corners,
   run-off, walls with light strip, boost pads, the start/finish line as a chequered band of four rows of 1 m squares,
   from the sim Track; flat except the figure eight's bridge: 7 m over the crossing on cosine ramps, its walls the
   parapets, an underside and pillar pairs every 14 m that stand clear of the road below; `liftAt`/`sampleOf` give a
@@ -452,6 +457,13 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   set by the host with `synapse_set_settings`, read-only for others, locked while a match is on. Each round's track is
   `roundTrackSeed` of its race seed under the room's map, on every client. The final standings' Play again returns
   everyone to the lobby, where the host starts the next match.
+- Match polish (docs/plans/2026-11-05-match-polish.md): vs CPU and Multiplayer are 3 rounds (`CONFIG.rounds`: build 60,
+  20, 20 s; budgets 20, 40, 64%; `common/schedule.ts` and supabase/schema.sql agree), scored by each player's best
+  single-race distance, ties to the total (`match.ts matchScore`/`byScore`); the standings show "Race n" and "Best". A
+  round trains on its race track only, as a race track of the race's cars (`EpisodeSetup.raceCars`; a room counts the
+  players in since the round's build). The race clock is measured from Go's timestamp: playback, the race timer
+  (`startPhaseTimer`'s `until`) and "finished" all count from it. The training, race and drive sidebars have a top row
+  of Main menu and the sound toggles (44 px); the training and race sidebars split the rest in two halves.
 
 ## scripts
 - `scripts/sim/cpuBrains.ts` — trains the nine CPU brains (B7) and writes `src/assets/cpu/brains.json` (about 40 s on

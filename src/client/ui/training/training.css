@@ -1,6 +1,7 @@
 /* Training, drive and race views (B6; one sidebar since docs/plans/2026-11-05-sidebar-and-main-menu.md): a sidebar of
-   its own on the left, a quarter of the width, with the fitness graph (training) or the status and racers list
-   (drive, race) on top and the map below; the camera fills the rest, with the live brain in its bottom-right corner and
+   its own on the left, a quarter of the width: Main menu and the sound toggles in a row of their own at the top (at
+   least 44 px: match polish §5), then the fitness graph (training) or the status and racers list (race) and the map,
+   each half of what is left (the drive view: its status, then the map); the camera fills the rest, with the live brain in its bottom-right corner and
    a phase's countdown at its top centre. Workbench tokens and Arial throughout; square corners everywhere (principal
    2026-11-04: "use square corners rather than squircles across the whole site"). */
 [hidden] { display: none !important; }
@@ -16,7 +17,15 @@ body.training { overflow: hidden; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
 
 .tv-info { position: absolute; left: 0; top: 0; bottom: 0; width: var(--tv-w); background: var(--panel); color: var(--text);
-  border-right: 1px solid var(--line); display: grid; grid-template-rows: 1fr 1fr; min-width: 0; font-family: Arial, Helvetica, sans-serif; }
+  border-right: 1px solid var(--line); display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); min-width: 0; font-family: Arial, Helvetica, sans-serif; }
+/* Main menu on the left, Music and Sound effects on the right, large and well apart (principal 2026-11-05: "much
+   larger and easier to interact with") */
+.side-top { display: flex; align-items: center; gap: clamp(8px, 1vw, 12px); padding: 6px 8px; border-bottom: 1px solid var(--line); min-width: 0; }
+/* (the sidebar is a quarter of the width: on a phone held sideways, 211 px, the text and padding narrow to fit) */
+.tv-info .side-top .btn.menu { min-height: 44px; padding: 0 clamp(6px, 1vw, 14px); font-size: clamp(12px, 1.4vw, 15px); font-weight: 700; margin: 0; flex: 0 1 auto; min-width: 0; }
+.tv-info .side-top .sounds { margin-left: auto; gap: clamp(6px, 0.8vw, 10px); }
+.tv-info .side-top .btn.sound { min-height: 44px; width: 44px; }
+.tv-info .side-top .btn.sound svg { width: 24px; height: 24px; }
 .tv-half { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 7px 8px; gap: 4px; }
 .tv-half + .tv-half { border-top: 1px solid var(--line); }
 .tv-hd { display: flex; align-items: center; gap: 6px; min-height: 20px; min-width: 0; }
@@ -24,9 +33,6 @@ body.training { overflow: hidden; }
 .tv-gen { margin-left: auto; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .tv-info .tv-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .tv-info .btn { min-height: 24px; padding: 0 8px; font-size: 11px; box-shadow: none; }
-.tv-info .btn.sound { min-height: 24px; width: 24px; }
-.tv-info .btn.sound svg { width: 14px; height: 14px; }
-.tv-info .sounds { margin-left: auto; }
 #tvGraph, .side-map, .tv-brainc canvas { flex: 1; min-height: 0; width: 100%; display: block; }
 .tv-key { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 10.5px; color: var(--muted); }
 .tv-key i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 4px; }
@@ -37,10 +43,11 @@ body.training { overflow: hidden; }
   font-variant-numeric: tabular-nums; text-shadow: 0 2px 10px rgba(0, 0, 0, .45); }
 .tv-mini { position: absolute; right: 10px; bottom: 10px; width: min(28%, 300px); aspect-ratio: 4 / 3; background: var(--panel); color: var(--text);
   border: 1px solid var(--line); display: flex; flex-direction: column; padding: 4px 8px 8px; font-family: Arial, Helvetica, sans-serif; }
-/* the race and drive sidebars: status and list sized to their content, the map takes what height is left */
-.rc-side, .dv-side { grid-template-rows: auto minmax(0, 1fr); }
+/* the race sidebar: status and racers list, then the map, a half each (the list scrolls if a short screen needs it);
+   the drive sidebar: its status sized to its content, the map takes what height is left */
+.dv-side { grid-template-rows: auto auto minmax(0, 1fr); }
+.rc-status .rc-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start; }
 .rc-side .kv, .dv-side .kv { font-size: 12px; gap: 2px 8px; } .rc-side .kv dd, .dv-side .kv dd { font-size: 12px; }
-.tv-info .btn.menu { margin-left: 0; }
 /* a phase's countdown (ui/phaseTimer.ts) at the camera's top centre */
 .cam-top { position: absolute; left: var(--tv-w); right: 0; top: 0; height: clamp(58px, 12vh, 92px); pointer-events: none; z-index: 4; }
 .cam-top .ptimer { top: 8px; bottom: auto; min-width: 170px; padding: 6px 14px; } /* grows with its "gen n" line */

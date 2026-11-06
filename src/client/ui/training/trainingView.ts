@@ -45,11 +45,12 @@ export interface TrainingHooks {
   /** The label of that button ('Race', or 'Hand in' in a room). */
   raceLabel?: string;
   /**
-   * A vs CPU round (rounds plan 2026-11-05): train from the brain as built (weights carried over), phase n − 1 of the
-   * match's training seed, no buttons (the round's timer moves on); `done` gets the trained brain (or the brain as it
-   * was, if training failed or nothing was evaluated).
+   * A match's round (rounds plan 2026-11-05): train from the brain as built, phase n − 1 of the match's training seed,
+   * no buttons (the round's timer moves on); `done` gets the trained brain (or the brain as it was, if training failed
+   * or nothing was evaluated). `track` (match polish §2): the round's race track, the only one it trains on, as a race
+   * track of `cars` cars (the race's own pads).
    */
-  round?: { n: number; seed: number; done(s: Saved): void; startedAt?: number };
+  round?: { n: number; seed: number; done(s: Saved): void; startedAt?: number; track?: number; cars?: number };
 }
 
 export interface TrainingStatus {
@@ -173,12 +174,13 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   const start: 'fresh' | 'carry' = genome.w.slice(0, weightCount(genome.spec)).every((w) => w === 0) ? 'fresh' : 'carry';
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
   const T = p.T ?? (round ? CONFIG.rounds.T : match ? CONFIG.train.T : phaseBudget(generations));
-  // match: the generations the budget allows (evolution's worst case; a gradient trainer's fitness checks)
-  if (match) generations = Math.max(1, saved.trainer === 'evolution' ? Math.floor(T / phaseBudget(1)) : Math.floor(T / CONFIG.train.grad.evalEvery) + 1);
   const seeds = phaseSeeds(seed, phase);
-  // the sandbox's chosen track (tracks-v2 T2): training starts on it, then another track of its family; a match's
-  // training keeps the phase's own tracks
-  const tracks = match || round ? seeds.trainTracks : sandboxTrainTracks(seed, phase) ?? seeds.trainTracks;
+  // the sandbox's chosen track (tracks-v2 T2): training starts on it, then another track of its family; a match's round
+  // trains on its race track only (match polish §2), as that race's track (raceCars); otherwise the phase's own tracks
+  const tracks = round?.track !== undefined ? [round.track >>> 0] : match || round ? seeds.trainTracks : sandboxTrainTracks(seed, phase) ?? seeds.trainTracks;
+  const raceCars = round?.track !== undefined ? round.cars ?? CONFIG.match.cars : 0;
+  // match: the generations the budget allows (evolution's worst case on these tracks; a gradient trainer's fitness checks)
+  if (match) generations = Math.max(1, saved.trainer === 'evolution' ? Math.floor(T / (CONFIG.train.population * tracks.length * CONFIG.train.episodeTicks)) : Math.floor(T / CONFIG.train.grad.evalEvery) + 1);
   lives.clear(); champLive = null;
 
   showArena('train');
@@ -208,11 +210,21 @@ export async function openTraining(saved: Saved, generations: number, temperatur
     stage.swarm.offer(paths, gen, generations > 1 ? (gen - 1) / (generations - 1) : 0);
     setTimeout(() => prepare(paths, gen, genome, st), 0);
   };
+  let lastRec = -Infinity;
   const run = runPhase(thePool, genome.spec, seed, {
-    T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, now: () => performance.now(),
+    T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, raceCars, now: () => performance.now(),
     stepTicks: (env) => env.worstCase(pop),
     // every generation records its seeded handful (display only; not when there is no 3-D view)
-    beforeStep: () => { if (!noGL) { const g = gens.length + 1; thePool.record = (count) => showPick(seed, phase, g, K, count); } },
+    // a match's round, on one track, finishes a generation every ~0.1–0.2 s, far faster than the view shows them (each
+    // stays MIN_SHOW_S): recording every one's ghosts doubled the round's time in the page, so a round records the
+    // first and then one at most every ROUND_REC_MS (the sandbox still records every generation)
+    beforeStep: () => {
+      if (noGL) return;
+      const g = gens.length + 1, now = performance.now();
+      if (round && g > 1 && now - lastRec < ROUND_REC_MS) return;
+      lastRec = now;
+      thePool.record = (count) => showPick(seed, phase, g, K, count);
+    },
     onEvent: (e) => {
       if (e.type !== 'generation') return;
       mark('gen1');
@@ -235,7 +247,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   mark('stage');
   const webgl = stage !== null;
   noGL = !webgl;
-  track0 = generateTrack(tracks[0]);
+  track0 = generateTrack(tracks[0], raceCars);
   mark('track');
   if (stage) await stage.setTrack(track0, 'train');
   mark('scene');
@@ -332,6 +344,9 @@ function prepare(paths: Paths, gen: number, start: Genome, status: TrainingStatu
   status.prepMs = Math.max(status.prepMs, performance.now() - c0);
 }
 
+/** A match round records a generation's ghosts at most this often (ms; display only: no result depends on it). */
+const ROUND_REC_MS = 600;
+
 /** A round's warm-up (prewarmTraining): its worker pool, waiting for the round's training, and the scene's build. */
 let warmPool: BrowserPool | null = null;
 let warming: Promise<void> = Promise.resolve();
@@ -350,17 +365,18 @@ function takeWarmPool(workers: number): BrowserPool | null {
  * of the train phase starting): start the worker pool, make the 3-D stage, build training track 0's scene (the round's
  * tracks follow from the match's training seed) and compile its shaders. Display only: nothing here changes a result.
  */
-export function prewarmTraining(round: { n: number; seed: number }): void {
+export function prewarmTraining(round: { n: number; seed: number; track?: number; cars?: number }): void {
   if (running) return;
   const p = params();
   const workers = p.workers ?? defaultWorkers(navigator.hardwareConcurrency || 2);
   if (!warmPool || warmPool.workers !== workers) { void warmPool?.close(); warmPool = new BrowserPool(workers); }
-  const t0 = phaseSeeds(p.seed ?? round.seed, round.n - 1).trainTracks[0];
+  const t0 = round.track !== undefined ? round.track >>> 0 : phaseSeeds(p.seed ?? round.seed, round.n - 1).trainTracks[0];
+  const cars = round.track !== undefined ? round.cars ?? CONFIG.match.cars : 0;
   warmedTrack = null;
   warming = warming.then(async () => {
     const st = await getStage();
     if (!st || running) return;
-    await st.setTrack(generateTrack(t0), 'train');
+    await st.setTrack(generateTrack(t0, cars), 'train');
     await st.warm();
     if (!running) warmedTrack = t0;
   }).catch((e) => { console.warn('training: warm-up failed', e); });

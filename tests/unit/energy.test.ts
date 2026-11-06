@@ -39,12 +39,12 @@ describe('energy (brain v2: speed follows firing)', () => {
     expect(energyRefusal(big(), 'match')).toMatch(/races allow 100%/);
     expect(energyRefusal(defaultSpec(), 'match')).toBeNull();
   });
-  it('vs CPU rounds (rounds plan §2): 4 wall cells + 5 tanh (9 cells) just fit round 1; 11 such cells don\'t; ×1 ×1.4 ×2 ×2.6 ×3.2', () => {
+  it('vs CPU rounds (rounds plan §2): 4 wall cells + 5 tanh (9 cells) just fit round 1; 11 such cells don\'t; ×1 ×2 ×3.2 (match polish §1: three rounds)', () => {
     const R = CONFIG.rounds.budgets, sp = (b: number, n: number): BrainSpec => ({ v: 2, senses: { boundary: b, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n, fn: 'tanh' }] });
     expect(maxLoad(sp(4, 5))).toBeCloseTo(19.5, 9);
     expect(energyRefusal(sp(4, 5), R[0])).toBeNull();
     for (const [b, n] of [[5, 6], [4, 7], [6, 5]]) expect(energyRefusal(sp(b, n), R[0])).toMatch(/this round allows 20%/);
-    expect(R.map((x) => x / R[0])).toEqual([1, 1.4, 2, 2.6, 3.2]);
+    expect(R.map((x) => x / R[0])).toEqual([1, 2, 3.2]);
     expect(energyRefusal(defaultSpec(), R[0])).toBeNull(); // the starting brain fits round 1
   });
   it('the signed speed cell (ruling 2026-11-05): negative going backwards, mirrored, and it costs its size either way', () => {
