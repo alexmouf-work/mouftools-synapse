@@ -4,7 +4,9 @@
 // - 1 vs 4 workers (and the default pool) → the same hash; training the same saved brain twice → the same result.
 // - Training again continues from the saved weights (carry, next phase) and matches Node.
 // - Stop = the generation limit reached there: the best agent so far is saved (= Node stopped at the same generation =
-//   Node asked for that many), and Drive, Keep training and Back appear.
+//   Node asked for that many), and Drive, Keep training and Back appear (each at least 44 px). Stop is a full-width red
+//   "■ Stop training" right under the top row, at least 48 px, in the sidebar's top quarter (out/s3/stop-button.png);
+//   Esc stops, showing "Stopping…" until the best so far is saved.
 // - Layout (1440×900 and 844×390, light and dark, mid-training and at the end): the sidebar on the left at 25vw, the
 //   fitness graph over the map in it, the camera filling the rest; the live brain in its bottom-right (min(28%, 300px),
 //   4:3, 10 px margins); the
@@ -158,8 +160,26 @@ async function main() {
     //    generations would; the generation being evaluated is dropped; Drive and Keep training appear
     page = await open(`?seed=${SEED}&view=train`);
     await page.waitForFunction(() => (window.__training?.gen ?? 0) >= 2, null, { timeout: 120_000 });
-    await page.click('#tvStop');
+    //    the sandbox's Stop (principal 2026-11-06): a full-width red "■ Stop training" right under the top row, at least
+    //    48 px, in the sidebar's top quarter; Esc stops as it does, showing "Stopping…" until the best so far is saved
+    const sb = await page.evaluate(`(() => { const b = document.getElementById('tvStop'), q = b.getBoundingClientRect(), p = document.querySelector('#trainOverlay .tv-info').getBoundingClientRect(),
+      row = document.querySelector('#trainOverlay .side-top').getBoundingClientRect(), cs = getComputedStyle(b);
+      return { shown: !b.hidden && q.height > 0, text: b.textContent, bg: cs.backgroundColor, color: cs.color, weight: Number(cs.fontWeight), size: parseFloat(cs.fontSize), h: q.height, w: q.width, pw: p.width,
+        under: q.top >= row.bottom - 0.5 && q.top - row.bottom < 12, quarter: q.bottom <= p.top + p.height / 4 + 0.5 }; })()`) as { shown: boolean; text: string; bg: string; color: string; weight: number; size: number; h: number; w: number; pw: number; under: boolean; quarter: boolean };
+    const red = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(sb.bg), isRed = !!red && Number(red[1]) > 180 && Number(red[2]) < 80 && Number(red[3]) < 90;
+    await page.screenshot({ path: `${OUT}/stop-button.png` });
+    check(sb.shown && sb.text === '■ Stop training' && isRed && sb.color === 'rgb(255, 255, 255)' && sb.weight >= 700 && sb.size >= 15 && sb.h >= 48 && sb.w >= sb.pw - 20 && sb.under && sb.quarter,
+      `sandbox training: "${sb.text}" full width (${sb.w.toFixed(0)} of ${sb.pw.toFixed(0)} px), red (${sb.bg}), ${sb.h.toFixed(0)} px tall, bold ${sb.size.toFixed(0)} px, right under the top row and in the sidebar's top quarter (stop-button.png)`);
+    // (the button's states as they happen: stopping can take only a few ms, too quick to read after the key press)
+    await page.evaluate(`(() => { const b = document.getElementById('tvStop'), seen = window.__stopSeen = [];
+      new MutationObserver(() => seen.push({ text: b.textContent, disabled: b.disabled, hidden: b.hidden, saved: window.__training.state }))
+        .observe(b, { childList: true, characterData: true, subtree: true, attributes: true }); })()`);
+    await page.keyboard.press('Escape');
     await waitState(page, 'stopped', 120_000);
+    const seen = await page.evaluate('window.__stopSeen') as { text: string; disabled: boolean; hidden: boolean; saved: string }[];
+    const stopping = seen.filter((x) => x.text === 'Stopping…');
+    check(stopping.length > 0 && stopping.every((x) => x.disabled && !x.hidden && x.saved === 'running') && seen[seen.length - 1].hidden,
+      `Esc stops training: "Stopping…" (disabled) until the best so far is saved, then the button goes (${seen.map((x) => `${x.hidden ? 'hidden' : x.text}`).join(' → ')})`);
     s = await status(page);
     const k = s?.gen ?? 0;
     const nodeStop = await runPhase(new InlineExecutor(), defaultSpec(), SEED, { generations: GENS, stepTicks: (env) => env.worstCase(CONFIG.train.population), stop: (() => { let n = 0; return () => n++ >= k; })() });
@@ -168,7 +188,9 @@ async function main() {
     check(s?.savedOnStop === true && nodeStop.gens.length === k && genomeHash(sv.genome) === genomeHash(nodeStop.final) && genomeHash(nodeStop.final) === genomeHash(nodeLimit.final) && sv.train.phases === 1,
       `Stop after gen ${k}: the best agent so far is saved (= Node stopped there = Node asked for ${k} generations), phases ${sv.train.phases}`);
     const btn = await page.evaluate(() => ['tvDrive', 'tvAgain', 'tvBack', 'tvStop'].map((id) => !(document.getElementById(id) as HTMLElement).hidden));
-    check(btn.join() === 'true,true,true,false' && (await page.locator('#tvAgain').innerText()) === 'Keep training', 'after Stop: Drive, Keep training and Back, as at the end of a run');
+    const tall = await page.evaluate(() => ['tvDrive', 'tvAgain', 'tvBack'].map((id) => (document.getElementById(id) as HTMLElement).getBoundingClientRect().height));
+    check(btn.join() === 'true,true,true,false' && (await page.locator('#tvAgain').innerText()) === 'Keep training' && tall.every((x) => x >= 44),
+      `after Stop: Drive, Keep training and Back, as at the end of a run, each at least 44 px (${tall.map((x) => x.toFixed(0)).join(', ')})`);
     await page.context().close();
 
     // 5. the layout (light and dark, desktop and landscape phone), mid-training and at the end, with screenshots

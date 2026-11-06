@@ -68,5 +68,5 @@ the input neuron types."
    that no two racers share a layer shape and functions, that all four functions appear, and that designs only grow.
 2. The corner brain card (drive/brainPanel.ts, used by the training, race, drive and follow cards) draws each input
    cell's flat 2-D symbol just left of its node (drive/senseGlyph.ts: brick wall, distant wall with a dashed sight
-   line, curved arrow, hexagon of discs, gauge). `BrainPanel.glyphs` records what was drawn; `__race.cardGlyphs()`
+   line, curved arrow, hexagon of discs, gauge), 14–22 px (review follow-up: about twice the first size). `BrainPanel.glyphs` records what was drawn; `__race.cardGlyphs()`
    exposes it. check:race asserts the followed CPU's card and your own card draw one symbol per input, of its type.

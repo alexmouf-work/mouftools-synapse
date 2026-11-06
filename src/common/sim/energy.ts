@@ -71,7 +71,10 @@ export function energyRefusal(s: BrainSpec, rule: Rule): string | null {
   if (rule === 'sandbox') return null;
   const m = maxLoad(s), lim = ruleLimit(rule);
   if (m <= lim + 1e-9) return null;
-  return rule === 'match' ? `Flat out it would use ${Math.round(m)}% of the energy; races allow 100%.` : `Flat out it would use ${Math.round(m)}% of the energy; this round allows ${Math.round(lim)}%.`;
+  if (rule === 'match') return `Flat out it would use ${Math.round(m)}% of the energy; races allow 100%.`;
+  // a round: in shares of the round's power, the same figure as the designer's bar (round power plan 2026-11-06)
+  const n = CONFIG.rounds.budgets.indexOf(lim as (typeof CONFIG.rounds.budgets)[number]) + 1;
+  return `This design needs ${Math.round((m / lim) * 100)}% of ${n > 0 ? `round ${n}'s` : 'the round\'s'} power.`;
 }
 
 /** "At maximum firing rate, uses x% energy" for one cell: its cost plus the wires it drives. */

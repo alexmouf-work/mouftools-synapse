@@ -154,11 +154,13 @@
   <div class="cam-top" id="camTop"></div>
   <div id="trainOverlay" hidden>
   <aside class="tv-info" aria-label="Training">
-    <div class="side-top"><button class="btn menu" id="tvMenu" type="button">Main menu</button><span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span></div>
+    <div class="tv-top">
+      <div class="side-top"><button class="btn menu" id="tvMenu" type="button">Main menu</button><span class="sounds" role="group" aria-label="Sound"><button class="btn sound music" id="musicTv" type="button" aria-label="Music" aria-pressed="true"></button><button class="btn sound sfx" id="sfxTv" type="button" aria-label="Sound effects" aria-pressed="true"></button></span></div>
+      <button class="tv-stop" id="tvStop" type="button" aria-keyshortcuts="Escape">■ Stop training</button>
+    </div>
     <section class="tv-half" aria-label="Fitness per generation">
       <div class="tv-hd"><h2>Fitness</h2><span class="tv-gen" id="tvGen" aria-live="polite"></span></div>
       <div class="tv-actions">
-        <button class="btn" id="tvStop" type="button">Stop</button>
         <button class="btn primary" id="tvDrive" type="button" hidden>Drive</button>
         <button class="btn primary" id="tvRace" type="button" hidden>Race</button>
         <button class="btn" id="tvAgain" type="button" hidden>Keep training</button>

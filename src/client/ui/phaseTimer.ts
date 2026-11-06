@@ -15,6 +15,11 @@ export interface PhaseOptions {
    * something else: a race's timer ends at its Go + 30 s, the moment its replay ends (match polish §4).
    */
   until?: number;
+  /**
+   * Driven by drivePhase() instead of the wall clock: a race's timer shows what the race's own clock says (the same
+   * Go-based clock and the same moment as the sidebar's), and its up text only once the race has ended.
+   */
+  driven?: boolean;
   /** Red at or under this many seconds (default 10). */
   red?: number;
   /** Pulse and tick at or under this many seconds (default 5). */
@@ -29,7 +34,7 @@ export interface PhaseOptions {
 }
 
 type State = 'off' | 'running' | 'up';
-let state: State = 'off', deadline = 0, shown = -1, opts: PhaseOptions | null = null;
+let state: State = 'off', deadline = 0, shown = -1, opts: PhaseOptions | null = null, drivenN = 0;
 let loop: ReturnType<typeof setInterval> | undefined, upTimer: ReturnType<typeof setTimeout> | undefined;
 let node: { box: HTMLElement; label: HTMLElement; num: HTMLElement; sub: HTMLElement } | null = null;
 
@@ -41,7 +46,7 @@ function ensure(): NonNullable<typeof node> {
   box.append(label, num, sub);
   return (node = { box, label, num, sub });
 }
-const left = () => Math.max(0, Math.ceil((deadline - performance.now()) / 1000 - 1e-9));
+const left = () => (opts?.driven ? drivenN : Math.max(0, Math.ceil((deadline - performance.now()) / 1000 - 1e-9)));
 
 function show(): void {
   if (state !== 'running' || !opts || !node) return;
@@ -77,12 +82,23 @@ export function startPhaseTimer(o: PhaseOptions): void {
   if (getComputedStyle(o.host).position === 'static') o.host.style.position = 'relative';
   n.label.textContent = o.label;
   n.sub.textContent = ''; n.sub.hidden = true;
-  state = 'running'; deadline = o.until ?? performance.now() + o.seconds * 1000; shown = -1;
+  state = 'running'; deadline = o.until ?? performance.now() + o.seconds * 1000; shown = -1; drivenN = Math.max(1, Math.ceil(o.seconds - 1e-9));
   n.box.hidden = false;
   n.box.classList.remove('red', 'pulse', 'up');
   document.body.classList.add('timed');
   show();
   loop = setInterval(show, 100);
+}
+
+/**
+ * A driven timer (PhaseOptions.driven): `secondsLeft` on the race's clock, and whether the race has ended. Whole
+ * seconds left round up, so they and the sidebar's elapsed time (rounded down) always add up to the race's length;
+ * the up text shows only once `done`. No-op unless a driven timer is running.
+ */
+export function drivePhase(secondsLeft: number, done: boolean): void {
+  if (state !== 'running' || !opts?.driven) return;
+  drivenN = done ? 0 : Math.max(1, Math.ceil(secondsLeft - 1e-9));
+  show();
 }
 
 /** A second line under the number (the training view's "gen n"), or '' for none. No-op while no countdown shows. */
@@ -98,7 +114,7 @@ export const phaseShowing = (): boolean => state !== 'off';
  * than 0.3 s off (a better clock estimate, or a check's skip). No-op unless one is running.
  */
 export function retimePhase(seconds: number): void {
-  if (state !== 'running') return;
+  if (state !== 'running' || opts?.driven) return;
   const want = performance.now() + seconds * 1000;
   if (Math.abs(want - deadline) > 300) { deadline = want; shown = -1; show(); }
 }

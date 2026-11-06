@@ -279,7 +279,7 @@ function showRace(m: RM, n: number, entries: Entry[]): void {
     // the race timer ends at the race's Go + 30 s, the same timestamp the replay's clock counts from (match polish §4)
     go: (goAt) => {
       if (M !== m || m.round !== n || m.step !== 'race') return;
-      countdown(m, t.raceEnd, { label: label(n, 'Race'), red: 10, upText: 'Finish', host: camHost(), until: goAt + (t.raceEnd - t.go) });
+      countdown(m, t.raceEnd, { label: label(n, 'Race'), red: 10, upText: 'Finish', host: camHost(), until: goAt + (t.raceEnd - t.go), driven: true });
       racePinned = true;
     },
     ended: () => { if (M === m && m.round === n) standings(m, n); },

@@ -173,7 +173,7 @@ function race(): void {
   openRace(roundSetup(saved, m.round, raceSeedOf(m, m.round), { name: m.names[0], trackSeed: trackOfRound(m, m.round) }), {
     back: () => undefined,
     // the race timer counts from the race's Go, the same timestamp the replay's clock counts from (match polish §4)
-    go: (goAt) => { if (M === m && m.phase === 'race') startPhaseTimer({ label: label(m, 'Race'), seconds: R.raceTicks / CONFIG.tick.hz, until: goAt + (R.raceTicks / CONFIG.tick.hz) * 1000, red: 10, upText: 'Finish', host: camHost(), onZero: () => undefined }); },
+    go: (goAt) => { if (M === m && m.phase === 'race') startPhaseTimer({ label: label(m, 'Race'), seconds: R.raceTicks / CONFIG.tick.hz, until: goAt + (R.raceTicks / CONFIG.tick.hz) * 1000, driven: true, red: 10, upText: 'Finish', host: camHost(), onZero: () => undefined }); },
     ended: (res) => { if (M === m) standings(res); },
   }).catch((e) => { console.error(e); });
 }

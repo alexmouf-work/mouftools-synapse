@@ -14,6 +14,8 @@ interface P { x: number; y: number }
 
 export class BrainPanel {
   private pos: P[] = [];
+  /** The input symbols' size (device px): about twice the node, at least 14 CSS px, within the inputs' spacing. */
+  private glyph = 0;
   private w = 0;
   private h = 0;
   private pr = 1;
@@ -22,6 +24,8 @@ export class BrainPanel {
   private readonly ends: [number, number][];
   /** The symbol drawn beside each input cell in the last frame, in node order (checks read it). */
   glyphs: SenseId[] = [];
+  /** Their size in CSS px. */
+  get glyphPx(): number { return this.glyph / this.pr; }
 
   constructor(private readonly cv: HTMLCanvasElement, private readonly net: Net) {
     const w = new Float64Array(net.w.length);
@@ -38,7 +42,7 @@ export class BrainPanel {
     if (w === this.w && h === this.h && this.pos.length) return;
     this.w = this.cv.width = w; this.h = this.cv.height = h;
     const C = columns(this.net.spec), pr = this.pr;
-    const x0 = 30 * pr, x1 = w - 52 * pr; // room left of the inputs for their symbols, right of the wheels for their labels
+    const x0 = 44 * pr, x1 = w - 52 * pr; // room left of the inputs for their symbols, right of the wheels for their labels
     const pos: P[] = [];
     C.forEach((col, c) => {
       const x = C.length === 1 ? x0 : x0 + ((x1 - x0) * c) / (C.length - 1);
@@ -46,6 +50,8 @@ export class BrainPanel {
       col.forEach((_, k) => pos.push({ x, y: h / 2 + (k - (col.length - 1) / 2) * step }));
     });
     this.pos = pos;
+    const step0 = C[0].length > 1 ? Math.abs(pos[1].y - pos[0].y) / pr : Infinity;
+    this.glyph = Math.max(14, Math.min(22, step0 - 2)) * pr;
   }
 
   /** vals: every node's output this tick; spikes: every node's train at `now`; rates: each node's firing rate. */
@@ -88,7 +94,7 @@ export class BrainPanel {
     const glyphs: SenseId[] = [];
     for (let i = 0; i < this.net.nIn; i++) {
       const id = SENSE_IDS[this.net.sense[i]], p = pos[i];
-      drawGlyph(g, id, p.x - r - 9 * pr, p.y, 12 * pr, muted);
+      drawGlyph(g, id, p.x - r - 4 * pr - this.glyph / 2, p.y, this.glyph, text);
       glyphs.push(id);
     }
     this.glyphs = glyphs;

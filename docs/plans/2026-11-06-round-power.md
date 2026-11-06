@@ -61,3 +61,22 @@ and the bar reads "Brain 4–11% of 20%".
   `phaseTemp2`, `race`, `track`), so S1 stands.
 - Checks: tests/unit/energy.test.ts (round power); check:race asserts the bar's figures and line in rounds 1 and 2
   against Node.
+
+## Review follow-ups (2026-11-06)
+- **Refusal in shares of the round's power** (coordinator): "This design needs 118% of round 1's power.", the same
+  rounded figure as the bar's flat-out "Brain" share (energy.ts `energyRefusal`). check:race asserts the toast and the
+  bar agree. Multiplayer's 100% rule keeps its own wording.
+- **The race timer reads the race's clock** (principal, again: "Finish" showed while the sidebar read 0:29). phaseTimer
+  `driven` timers (vs CPU and Multiplayer races) are set by raceView's `drivePhase(secondsLeft, ended)`, in the same
+  update as the sidebar's clock. The timer shows the whole seconds left rounded up, and the sidebar shows the time
+  gone rounded down, so the two always add up to 30. "Finish" shows only once the race has ended, the same `ended`
+  that makes the sidebar say "finished". The cause: the timer ran on the wall clock from Go, while a check's hold or
+  seek moved only the race's clock. check:race watches both, on two pages, at every change of the page: they agree
+  at every sampled moment, and "Finish" shows only after "finished".
+- **Brain card symbols** about twice the size: 14–22 px, to fit the inputs' spacing, in the text colour. The nodes
+  sit further right to make room. check:race asserts at least 14 px.
+- **Sandbox Stop** (principal: "in sandbox mode, the stop button during training isn't obvious"): a full-width red
+  "■ Stop training", 52 px, bold, directly under the Main menu / sound row. It reads "Stopping…" until the best so
+  far is saved, then gives way to Drive / Keep training / Back (44 px). Esc stops too. Matches have no Stop.
+  check:training asserts the colour, size, place, Esc, "Stopping…" and the 44 px buttons
+  (out/s3/stop-button.png).

@@ -498,14 +498,24 @@ let roundRun = false;
 /** Each run's number: a run left meanwhile (Main menu) saves nothing when it ends. */
 let runId = 0;
 function setButtons(state: 'running' | 'done' | 'stopped') {
-  $('tvStop').hidden = state !== 'running' || roundRun;
+  $('tvStop').hidden = state !== 'running' || roundRun || matchRun; // matches: timers only
   $('tvBack').hidden = state === 'running' || roundRun;
   $('tvAgain').hidden = state !== 'done' || matchRun;
   $('tvDrive').hidden = state !== 'done' || matchRun;
   $('tvRace').hidden = state !== 'done' || !matchRun || roundRun;
-  $('tvStop').onclick = () => { stopAsked = true; ($('tvStop') as HTMLButtonElement).disabled = true; pool?.abort(); };
+  $('tvStop').onclick = () => { stopAsked = true; ($('tvStop') as HTMLButtonElement).disabled = true; $('tvStop').textContent = 'Stopping…'; pool?.abort(); };
   ($('tvStop') as HTMLButtonElement).disabled = false;
+  $('tvStop').textContent = '■ Stop training';
 }
+
+// Esc stops a sandbox run, as the Stop button does (only while that button shows and isn't already stopping)
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape' || !running) return;
+  const b = document.getElementById('tvStop') as HTMLButtonElement | null;
+  if (!b || b.hidden || b.disabled || (document.getElementById('trainOverlay') as HTMLElement | null)?.hidden) return;
+  ev.preventDefault();
+  b.click();
+});
 
 /** Fitness per generation: best and mean; the x-axis spans every generation asked for, axes through 0. */
 let graph: { gens: GenStat[]; N: number } = { gens: [], N: 1 };

@@ -72,6 +72,31 @@ const BIG: BrainSpec = { v: 2, senses: { boundary: 4, far: 0, hd: 0, grid: 0, sp
 const raceSeedOf = (match: number, round: number) => derive(match >>> 0, 0x50d5, round);
 const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
 const NAME = 'Tester';
+/**
+ * The race timer and the sidebar's clock, compared at every change of the page (a MutationObserver): the timer's whole
+ * seconds = the race's length − the sidebar's elapsed seconds, and "Finish" only once the sidebar says "finished" and
+ * the race's clock has reached its end (the same Go-based clock; a check's hold or seek moves both).
+ */
+const WATCH_CLOCK = `(() => {
+  const LEN = ${CONFIG.rounds.raceTicks / CONFIG.tick.hz}, bad = window.__clockBad = [];
+  window.__clockN = 0; window.__clockFinish = 0;
+  const chk = () => {
+    const p = window.__phase, r = window.__race, t = document.getElementById('rcTime'), s = document.getElementById('rcState'), n = document.getElementById('ptN');
+    if (!p || !r || !t || !s || !n || p.state === 'off' || !/Race/.test(p.label) || document.getElementById('phaseTimer').hidden) return;
+    const m = /^(\\d+):(\\d+)/.exec(t.textContent || '');
+    if (!m) return;
+    const el = Number(m[1]) * 60 + Number(m[2]), fin = s.textContent === 'finished', txt = n.textContent;
+    window.__clockN++;
+    if (txt === 'Finish') window.__clockFinish++;
+    const ok = txt === 'Finish' ? fin && r.t >= LEN - 1e-9 : !fin && Number(txt) === LEN - el;
+    if (!ok && bad.length < 20) bad.push(txt + ' | ' + t.textContent + ' | ' + s.textContent + ' | t ' + r.t.toFixed(2));
+  };
+  new MutationObserver(chk).observe(document.body, { childList: true, characterData: true, subtree: true });
+})()`;
+async function clockAgreed(page: Page, what: string): Promise<void> {
+  const c = await page.evaluate('({ bad: window.__clockBad, n: window.__clockN, fin: window.__clockFinish })') as { bad: string[]; n: number; fin: number };
+  check(c.n > 50 && c.fin > 0 && c.bad.length === 0, `${what}: the race timer and the sidebar's clock agree at all ${c.n} sampled moments; "Finish" (${c.fin} of them) only once the race had finished${c.bad.length ? ` (disagreed: ${c.bad.join('; ')})` : ''}`);
+}
 /** The designer's energy bar in round n (round power plan 2026-11-06): brain and speed as shares of the round's power P,
  * resting–flat out, and the flat-out top speed under it. */
 function barOf(s: BrainSpec, n: number): { brain: string; speed: string; top: string } {
@@ -257,6 +282,7 @@ async function main() {
 
     // 1. the round 1 build: the timer, the budget, a design past it
     let page = await open(`?seed=${SEED}&T=${T}&race=${MATCH}&starter=default`); // the fixture brain, as Node's runs
+    await page.evaluate(WATCH_CLOCK);
     await startCpu(page);
     const m0 = await page.evaluate(() => window.__match!);
     let bt = await pt(page);
@@ -289,7 +315,8 @@ async function main() {
     check(up.text === 'Time’s up' && up.designer, `at 0: "${up.text}" over the designer`);
     await page.waitForTimeout(1200);
     const toast = await page.locator('#toast').innerText();
-    check(await page.evaluate(() => window.__match!.phase === 'build') && await page.locator('#arena').isHidden() && /this round allows 20%/.test(toast), `a design past round 1's budget doesn't train at 0 ("${toast}")`);
+    check(await page.evaluate(() => window.__match!.phase === 'build') && await page.locator('#arena').isHidden() && toast.includes(`This design needs ${Math.round((maxLoad(BIG) / R.budgets[0]) * 100)}% of round 1's power.`)
+      && (await page.locator('#aBrain').innerText()).endsWith(`${Math.round((maxLoad(BIG) / R.budgets[0]) * 100)}%`), `a design past round 1's power doesn't train at 0 ("${toast}"; the bar says the same: "Brain ${await page.locator('#aBrain').innerText()}")`);
     await page.evaluate((g) => window.__designer!.load(g), defaultGenome());
 
     // 2. training: started by the timer, 10 s, no buttons; the trained brain = Node
@@ -398,9 +425,9 @@ async function main() {
     const fk = fr[0], fk2 = fr[1];
     await page.click(`#rcList button[data-k="${fk}"]`);
     await frames(page, 3);
-    const fol = async () => page.evaluate(`(() => { const r = window.__race, t = r.t; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), glyphs: r.cardGlyphs(), own: r.ownVals(), look: r.lookOff(), main: r.drawn()[0], t,
+    const fol = async () => page.evaluate(`(() => { const r = window.__race, t = r.t; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), glyphs: r.cardGlyphs(), glyphPx: r.cardGlyphPx(), own: r.ownVals(), look: r.lookOff(), main: r.drawn()[0], t,
       outlined: [...document.querySelectorAll('#rcList li.followed span')].map((e) => e.textContent), you: document.querySelector('#rcList li.you span')?.textContent ?? '', mine: !document.getElementById('rcMine').hidden,
-      card: !document.getElementById('rcBrainC').hidden, pos: document.getElementById('rcPos').textContent }; })()`) as Promise<{ k: number; title: string; vals: number[] | null; glyphs: string[] | null; own: number[] | null; look: number; main: number[]; t: number; outlined: string[]; you: string; mine: boolean; card: boolean; pos: string }>;
+      card: !document.getElementById('rcBrainC').hidden, pos: document.getElementById('rcPos').textContent }; })()`) as Promise<{ k: number; title: string; vals: number[] | null; glyphs: string[] | null; glyphPx: number; own: number[] | null; look: number; main: number[]; t: number; outlined: string[]; you: string; mine: boolean; card: boolean; pos: string }>;
     const f1 = await fol();
     // the card's values this frame = Node's replay of that car alone at the same tick
     const replay = (k: number, t: number) => { const rec = recordCar(k === 0 ? trained : cpu1[k - 1], node.track, node.cars[k].slot, roundRace(1)), nN = compile(k === 0 ? trained : cpu1[k - 1]).nNodes, b = Math.min(Math.floor(t * HZ - 1) + 1, rec.ticks - 1); return Array.from(rec.act.subarray(b * nN, (b + 1) * nN)); };
@@ -412,8 +439,8 @@ async function main() {
     // the card draws each input cell with its type's symbol (card icons plan 2026-11-06 §2)
     const typesOf = (g: Genome) => { const n = compile(g); return Array.from(n.sense.subarray(0, n.nIn), (c) => SENSE_IDS[c]); };
     const wantIn = typesOf(fk === 0 ? trained : cpu1[fk - 1]);
-    check(JSON.stringify(f1.glyphs) === JSON.stringify(wantIn) && wantIn.length > 0,
-      `the card draws ${NAMES[fk]}'s ${wantIn.length} input cells, each with its type's symbol (${(f1.glyphs ?? []).join(', ')})`);
+    check(JSON.stringify(f1.glyphs) === JSON.stringify(wantIn) && wantIn.length > 0 && f1.glyphPx >= 14,
+      `the card draws ${NAMES[fk]}'s ${wantIn.length} input cells, each with its type's symbol (${(f1.glyphs ?? []).join(', ')}), ${f1.glyphPx.toFixed(0)} px`);
     await page.focus(`#rcList button[data-k="${fk2}"]`);
     await page.keyboard.press('Space');
     await frames(page, 2);
@@ -477,6 +504,7 @@ async function main() {
     await page.click('#toTitle');
     await page.click('#lvGo');
     check(await page.locator('#title').isVisible() && await page.evaluate(() => window.__phase!.state === 'off' && window.__match!.phase === 'none'), 'Main menu → Leave: back to the title, the match and its timer gone');
+    await clockAgreed(page, 'round 1 (following racers, held, seeked)');
     await page.context().close();
 
     // 5b. without ?T= a round trains on the round's budget: T = the full-skill CPU's (CONFIG.rounds.T), all of it if time allows
@@ -575,6 +603,7 @@ async function main() {
 
     // 8. landscape phone: the sidebar and the standings on screen and apart
     page = await open(`?view=race&race=${MATCH}&round=1`, 844, 390, trained);
+    await page.evaluate(WATCH_CLOCK);
     await page.waitForFunction(() => (window.__race?.frames ?? 0) > 1, null, { timeout: 60_000 });
     const lay = await page.evaluate(`(() => {
       const q = (s) => document.querySelector(s).getBoundingClientRect(), on = (b) => b.left >= -0.5 && b.top >= -0.5 && b.right <= innerWidth + 0.5 && b.bottom <= innerHeight + 0.5;
@@ -602,6 +631,7 @@ async function main() {
     await page.waitForFunction(() => window.__match?.phase === 'standings', null, { timeout: 30_000 });
     check(await page.evaluate(`(() => { const on = (id) => { const q = document.getElementById(id).getBoundingClientRect(); return q.width > 0 && q.top >= 0 && q.bottom <= innerHeight && q.left >= 0 && q.right <= innerWidth; }; return on('rcResults') && on('rcResT'); })()`) as boolean, '844×390: the standings fit on screen');
     await page.screenshot({ path: `${OUT}/standings-844x390.png` });
+    await clockAgreed(page, '844×390 race played through');
     await page.context().close();
 
     check(errors.length === 0, `console clean${errors.length ? ': ' + errors.join(' | ') : ''}`);

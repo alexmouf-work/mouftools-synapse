@@ -32,6 +32,15 @@ body.training { overflow: hidden; }
 .tv-hd h2 { margin: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .tv-gen { margin-left: auto; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .tv-info .tv-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+/* the sandbox's Stop (principal 2026-11-06: "the stop button during training isn't obvious"): full width and red,
+   directly under the top row; Esc does the same. Drive / Keep training / Back after it, at least 44 px. */
+.tv-top { min-width: 0; }
+.tv-stop { display: block; width: calc(100% - 16px); margin: 8px; min-height: 52px; border: 0; border-radius: 0; background: #d92d3f;
+  color: #fff; font: 700 clamp(15px, 1.6vw, 19px)/1.1 Arial, Helvetica, sans-serif; cursor: pointer; }
+.tv-stop:hover:not([disabled]) { background: #c0202f; }
+.tv-stop[disabled] { cursor: progress; opacity: .85; }
+.tv-stop[hidden] { display: none; }
+#trainOverlay .tv-info .tv-actions .btn { min-height: 44px; padding: 0 12px; font-size: 13px; font-weight: 700; }
 .tv-info .btn { min-height: 24px; padding: 0 8px; font-size: 11px; box-shadow: none; }
 #tvGraph, .side-map, .tv-brainc canvas { flex: 1; min-height: 0; width: 100%; display: block; }
 .tv-key { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 10.5px; color: var(--muted); }
