@@ -7,7 +7,7 @@
 //   input δ = Σ w · δ               (B2e: the error at each sense cell, for its learned field; sim/fieldgrad.ts)
 // A_RP's stochastic wheels give their error at z itself (y − E[y] is ∂log P(y)/∂z), so it can skip the wheels' slope.
 // Brain v2: the wheels are tanh like any neuron, and there is no over-budget noise any more.
-import { transferSlope, type Net } from '../sim/brain';
+import { slopeOf, type Net } from '../sim/brain';
 
 /** Pre-activations of every non-input node from one tick's node values (the very sums evalNet formed). */
 export function preActivations(net: Net, vals: ArrayLike<number>, z: Float64Array): void {
@@ -26,7 +26,7 @@ export function preActivations(net: Net, vals: ArrayLike<number>, z: Float64Arra
  * already the error at the wheels' pre-activation (their slope is not applied).
  */
 export function backward(
-  net: Net, vals: ArrayLike<number>, z: Float64Array, err: ArrayLike<number>,
+  net: Net, vals: ArrayLike<number>, _z: Float64Array | null, err: ArrayLike<number>,
   delta: Float64Array, grad: Float64Array, scale = 1, errAtZ = false,
 ): void {
   const { nIn, nNodes, outStart, act, inStart, from, w, specIdx, wires } = net;
@@ -34,7 +34,8 @@ export function backward(
   for (let k = 0; k < nNodes - outStart; k++) delta[outStart + k] = err[k];
   // nodes in reverse order: every wire runs forward, so a node's δ is complete before its own wires are visited
   for (let d = nNodes - 1; d >= nIn; d--) {
-    if (!errAtZ || d < outStart) delta[d] *= transferSlope(act[d], z[d]); // delta held e (wheels) or Σ w·δ (hidden) until now
+    // delta held e (wheels) or Σ w·δ (hidden) until now; the slope from the node's output (bit for bit f′(z))
+    if (!errAtZ || d < outStart) delta[d] *= slopeOf(act[d], vals[d]);
     const dd = delta[d];
     if (dd === 0) continue;
     grad[wires + d - nIn] += scale * dd; // the bias: Δb ∝ δ

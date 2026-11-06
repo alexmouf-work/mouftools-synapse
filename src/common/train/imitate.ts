@@ -6,7 +6,7 @@
 //   params: [β]   stats: [Σ e² over the four wheels, samples, ticks the teacher drove]
 import { fieldGrads } from '../sim/fieldgrad';
 import { teacherWheels } from '../sim/teacher';
-import { backward, preActivations } from './grad';
+import { backward } from './grad';
 import { episodeDraw, type Kernel, type KernelCtx, type Lane } from './rollout';
 
 let z = new Float64Array(0), delta = new Float64Array(0);
@@ -20,8 +20,7 @@ function act(vals: Float64Array, o: number): void {
   teacherWheels(c, t, target, c.cap); // the state before this tick's physics: what the brain just saw, at its speed cap
   let sse = 0;
   for (let k = 0; k < 4; k++) { err[k] = target[k] - vals[o + k]; sse += err[k] * err[k]; }
-  preActivations(ctx.net, vals, z);
-  backward(ctx.net, vals, z, err, delta, grad);
+  backward(ctx.net, vals, null, err, delta, grad);
   fieldGrads(ctx.net, c, t, delta, grad); // the cells' learned fields, from the error at each cell (B2e)
   stats[0] += sse; stats[1] += 1;
   if (lane.mode === 1) { for (let k = 0; k < 4; k++) vals[o + k] = target[k]; stats[2] += 1; }

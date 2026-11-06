@@ -13,7 +13,7 @@ import type { Net } from '../sim/brain';
 import type { CarState } from '../sim/car';
 import { fieldGrads } from '../sim/fieldgrad';
 import { episodeNoise } from './acKernel';
-import { backward, preActivations } from './grad';
+import { backward } from './grad';
 import type { Kernel, KernelCtx, Lane } from './rollout';
 
 let z = new Float64Array(0), delta = new Float64Array(0);
@@ -50,8 +50,7 @@ export const arp: Kernel = {
     for (let k = 0; k < 4; k++) err[k] = reward ? Y[k] - E[k] : lam * (-Y[k] - E[k]);
     // the node values the brain computed this tick (act rewrote only the wheels, which feed nothing)
     const vals = runner.lastValues();
-    preActivations(net, vals, z);
-    backward(net, vals, z, err, delta, grad, 1, true);
+      backward(net, vals, null, err, delta, grad, 1, true);
     fieldGrads(net, seen!, t, delta, grad);
     if (reward) stats[0] += 1;
     stats[1] += 1;

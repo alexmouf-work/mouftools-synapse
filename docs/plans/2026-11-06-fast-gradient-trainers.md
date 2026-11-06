@@ -45,3 +45,37 @@ Rule strip's equations should stay true, so update them if the rule changes.
 **Report.** A table of before and after (phase time in Node and Chrome; S1 (a)–(d) on the default and sighted
 brains), plus the goldens that change and why. Regenerate any CPU brains a trainer produces (if any).
 Checks (affected only): types, purity, unit (contract tests per trainer), determinism, training, bench.
+
+## Built so far (2026-11-06): profile and the engine step; the 3× goal is blocked
+**Profile** (seed 1, the default brain, T 6M, Node: `--cpu-prof` inline over 1.5M, and a timed NodePool(4) run).
+- Pooled, where the time goes: rollouts are 97–98% of it (935 rounds of 16 lanes × 400 ticks, 4.3–5.9 ms each);
+  fitness checks 0.03–0.07 s (most check episodes end early by the stall rule); the trainer's own update under 0.1 s.
+- Message passing is not the cost: 64 lanes a round (4× fewer round trips) saved 1% (backprop), 15% (actor-critic)
+  and 12% (A_RP), and would change the algorithm, so it is not kept.
+- Per car-tick, inline: evolution 1.22 µs, backprop 1.93, actor-critic 2.47, A_RP 1.81. Self time: the ray casts
+  (`castRay`, 15–27%), the forward pass (`evalNet`, 4–18%), fmath's exp/cos/sin (12–18%: tanh, the fields, the
+  heading), physics (7–9%), sensing (5–8%), GC (4–6%); on top of that per trainer: backprop's `act` with the
+  teacher's own rays (`teacherWheels`, 16% together), actor-critic's Gaussian noise (`gauss`, 10%, four Box–Muller
+  draws a tick), and the backward pass with a second exp per tanh neuron for its slope (5–10%).
+- Workers run each tick about 1.45× slower than one thread does (4 workers on this 4-vCPU container), for evolution
+  and the gradient trainers alike.
+**Engine step (results bit for bit the same; every golden unchanged).** The backward pass takes each neuron's slope
+from its output (`brain.ts slopeOf`: tanh 1 − y², sigmoid y(1 − y), ReLU and linear from the bounds, exactly f′(z)),
+so the kernels no longer recompute the pre-activations or a second exp; a boundary cell's rays compute their
+direction inline instead of an object per ray.
+
+| T 6M, seed 1, Node, 4 workers (median of 2, alternating) | before | after | |
+|---|---|---|---|
+| backprop | 5.02 s | 4.27 s | 1.18× |
+| actor-critic | 5.64 s | 4.93 s | 1.14× |
+| A_RP | 4.13 s | 3.77 s | 1.10× |
+| evolution, for reference | 2.8–3.1 s | 2.8 s | |
+
+**Blocked: 3× (and step 3).** A gradient trainer can't spend T 3× faster while it drives cars with the same sim:
+the shared per-tick work (rays, physics, the forward pass) is about 1.2 µs of every trainer's 1.8–2.5 µs, and it is
+what bounds evolution too. With no gradient cost at all a gradient trainer would only match evolution, about 1.5×
+faster than now. Going further needs a decision: a cheaper sense or physics model (changes every result and S1), a
+shared-memory worker design (SharedArrayBuffer needs cross-origin isolation headers on the site), or fewer car-ticks
+per update (changes what T buys). Step 3's learning changes need S1 runs of each change; not started.
+Chrome times not measured (the engine change is the same code in both). S1 unchanged (bit-identical training).
+Checked: types, purity, unit, determinism, bench (2478 ms, limit 4185), training.

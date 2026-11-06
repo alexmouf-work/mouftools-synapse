@@ -139,6 +139,21 @@ export function transferSlope(code: number, z: number): number {
   }
 }
 
+/**
+ * f′(z) from the node's output y = f(z) alone (fast gradient trainers plan, step 2): sigmoid y(1 − y), tanh 1 − y²
+ * (the very y the forward pass computed, so no second exp), ReLU 1 inside (0, cap), linear 1 inside (−1, 1): y equals
+ * z exactly there and sits on the bound outside, so this is bit for bit transferSlope(code, z).
+ */
+export function slopeOf(code: number, y: number): number {
+  switch (code) {
+    case 1: return y > 0 && y < CONFIG.brain.reluCap ? 1 : 0;
+    case 2: return y * (1 - y);
+    case 3: return 1 - y * y;
+    case 5: return y > -1 && y < 1 ? 1 : 0;
+    default: throw new Error(`brain: no slope for transfer code ${code}`);
+  }
+}
+
 /** A node's firing rate 0..1 from its output: tanh and linear map −1..1, ReLU saturates at 1, sigmoid is its own. */
 export function rateOf(code: number, y: number): number {
   const r = code === 2 ? y : code === 1 ? y : (y + 1) / 2;

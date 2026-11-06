@@ -16,7 +16,7 @@ import { cos, log, TAU } from '../fmath';
 import { derive, hashU, TAG } from '../rng';
 import type { Net } from '../sim/brain';
 import { fieldGrads } from '../sim/fieldgrad';
-import { backward, preActivations } from './grad';
+import { backward } from './grad';
 import type { Kernel, KernelCtx, Lane } from './rollout';
 
 /** The critic's features: a constant, every input cell and hidden neuron, the car's speed. */
@@ -75,9 +75,8 @@ function act(vals: Float64Array, o: number): void {
   if (open) settle(prevR + params[1] * V - prevV, grad, stats);
   // the policy's score ∂log π/∂w at this state, into the traces
   for (let k = 0; k < 4; k++) { eps[k] = gauss(lane.mode, c.tick, 2 * k); err[k] = eps[k] / sigma; }
-  preActivations(net, vals, z);
   g.fill(0);
-  backward(net, vals, z, err, delta, g);
+  backward(net, vals, null, err, delta, g);
   fieldGrads(net, c, t, delta, g); // the cells' learned fields, where they have a gradient
   for (let i = 0; i < g.length; i++) tA[i] = gl * tA[i] + g[i];
   for (let j = 0; j < phi.length; j++) tC[j] = gl * tC[j] + phi[j];

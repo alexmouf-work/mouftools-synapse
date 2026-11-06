@@ -25,7 +25,7 @@ export function boundaryValue(c: CarState, t: Track, dir: number, w: number, R: 
   let best = 0, bd = R, be = 0;
   const skip = hiddenLayer(t, c.idx); // at the figure eight's crossing, the other pass's walls are not seen
   for (let j = -1; j <= 1; j++) {
-    const off = (j * w) / 2, { dx, dy } = bearingDir(c.hdg, dir + off);
+    const off = (j * w) / 2, ang = c.hdg - (dir + off) * DEG, dx = cos(ang), dy = sin(ang); // bearingDir, inline (no object per ray)
     const d = castRay(t.grid, c.x, c.y, dx, dy, R, skip), a = fieldAct(off, d, R, w);
     if (a > best) { best = a; bd = d; be = fieldAct(off, 0, R, w); }
   }
