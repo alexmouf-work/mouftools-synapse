@@ -1,14 +1,14 @@
 // The nine vs CPU players (tracks plan §4, coordinator's calls 2026-11-05; rounds plan 2026-11-05 §1): each has a brain
-// per round, made offline by scripts/sim/cpuBrains.ts and stored as JSON in src/assets/cpu/brains.json. Each round
-// grows the last round's design within that round's budget and trains it from fresh weights (match-flow v2), as a
-// player does, on a share of the round's T. Their names, in budget order (the first trains on 5% of T a round, the
+// per round, made offline by scripts/sim/cpuBrains.ts and stored as JSON in src/assets/cpu/brains.json. Each player has
+// its own design style, growing round by round within the round's power (CPU designs plan 2026-11-06), trained from
+// fresh weights (match-flow v2), as a player does, on a share of the round's T under the round's power. Their names, in budget order (the first trains on 5% of T a round, the
 // last on all of it), and the check every loaded set must pass: a round count of nine valid genomes each (three since
 // match polish), within each round's energy budget.
 import { CONFIG } from '../config';
 import { energyRefusal } from './energy';
 import { validateGenome, type Genome } from './spec';
 
-export const CPU_VERSION = 3;
+export const CPU_VERSION = 4; // 4: a design style each, trained and raced under each round's power (2026-11-06 plans)
 /** Named after the people behind the methods (principal 2026-11-05; they replace Axon … Hippo), weakest budget first. */
 export const CPU_NAMES = ['McCulloch', 'Pitts', 'Hebb', 'Rosenblatt', 'Holland', 'Werbos', 'Barto', 'Sutton', 'Hopfield'] as const;
 

@@ -44,3 +44,29 @@ the input neuron types."
 - Live firing still shows on the node.
 - Check: check:race asserts that the card's input count equals the brain's input count, and that each input is drawn
   with its type's symbol (exposed through a test hook).
+
+## Built (2026-11-06)
+1. scripts/sim/cpuBrains.ts gives each racer its own design per round (`STYLES`), checked before training: 2–8 inputs,
+   1–3 layers 2–8 wide, within the round's power. Trained under round power (docs/plans/2026-11-06-round-power.md)
+   with the long-range cell inverted, so the set is regenerated once (`CPU_VERSION` 4). Shares of T unchanged.
+   Distances: 30 s alone from pole on ten race tracks, smallest / median.
+
+   | Racer | Style | R1 (P 20) | R2 (P 40) | R3 (P 64) |
+   |---|---|---|---|---|
+   | McCulloch | small linear | 2 wall · 2 lin; 253 / 261 m | 3 wall · 3 lin; 323 / 694 m | 3 wall + speed · 4 lin; 1056 / 1108 m |
+   | Pitts | two ReLU layers | 2 wall · 3 relu → 2 relu; 296 / 311 m | 3 wall · 4 → 2 relu; 670 / 676 m | 4 wall + speed · 5 → 3 relu; 994 / 1203 m |
+   | Hebb | wide tanh | 2 wall · 4 tanh; 337 / 338 m | 2 wall + hd · 6 tanh; 762 / 780 m | 3 wall + hd + grid · 8 tanh; 1086 / 1269 m |
+   | Rosenblatt | sigmoid, many walls | 4 wall · 2 sig; 350 / 379 m | 6 wall · 3 sig; 812 / 837 m | 7 wall + speed · 4 sig; 1127 / 1269 m |
+   | Holland | three mixed layers | 2 wall · 2 relu → 2 sig → 2 tanh; 355 / 395 m | 3 wall + speed · 3 → 2 → 2; 802 / 856 m | 3 wall + far + speed · 4 → 3 → 2; 1218 / 1333 m |
+   | Werbos | deep narrow tanh | 2 wall · 2 → 2 tanh; 414 / 418 m | 3 wall · 2 → 2 → 2 tanh; 858 / 866 m | 3 wall + hd · 3 → 2 → 2 tanh; 910 / 1346 m |
+   | Barto | ReLU → tanh, speed | 2 wall + speed · 2 relu → 2 tanh; 391 / 410 m | 3 wall + speed · 3 → 3; 917 / 927 m | 4 wall + speed · 5 → 3; 1311 / 1371 m |
+   | Sutton | long range + heading | 2 far + hd · 3 sig → 2 lin; 327 / 382 m | 3 far + hd · 4 → 2; 812 / 880 m | wall + 3 far + 2 hd · 5 → 3; 1234 / 1316 m |
+   | Hopfield | balanced mix | 2 wall + far · 3 tanh → 2 relu; 250 / 424 m | 3 wall + far + speed · 4 → 3; 869 / 884 m | 4 wall + far + hd + speed · 5 tanh → 3 relu → 2 lin; 1311 / 1383 m |
+
+   Every brain moves forward on every track (the smallest distance is 250 m). Round 1's distances are short because
+   round 1's power caps the car near a third of full speed or below. tests/unit/match.test.ts checks the design rules,
+   that no two racers share a layer shape and functions, that all four functions appear, and that designs only grow.
+2. The corner brain card (drive/brainPanel.ts, used by the training, race, drive and follow cards) draws each input
+   cell's flat 2-D symbol just left of its node (drive/senseGlyph.ts: brick wall, distant wall with a dashed sight
+   line, curved arrow, hexagon of discs, gauge). `BrainPanel.glyphs` records what was drawn; `__race.cardGlyphs()`
+   exposes it. check:race asserts the followed CPU's card and your own card draw one symbol per input, of its type.

@@ -26,9 +26,9 @@ export function fieldGrads(net: Net, c: CarState, _t: Track, delta: ArrayLike<nu
       case SENSE_CODE.boundary:
       case SENSE_CODE.far: {
         // the strongest of the three rays (kept by the reading this tick); only its distance falloff depends smoothly
-        // on the range: x = e · (1 − d/R), ∂x/∂R = e · d / R²
+        // on the range: x = e · (1 − d/R), ∂x/∂R = e · d / R²; the long-range cell reads 1 − that (inverted), so minus
         const R = tune[q + 2], bd = net.ray[2 * i], be = net.ray[2 * i + 1];
-        if (be > 0 && bd < R) grad[at + 2] += s * be * (bd / (R * R)) * tuneD[q + 2];
+        if (be > 0 && bd < R) grad[at + 2] += (net.sense[i] === SENSE_CODE.far ? -s : s) * be * (bd / (R * R)) * tuneD[q + 2];
         break;
       }
       case SENSE_CODE.hd:

@@ -106,7 +106,7 @@ export class Runner {
     readSensors(c, t, net, this.inputs);
     const load = evalNet(net, this.inputs, this.vals);
     if (!Number.isFinite(load)) throw new Error(`race: non-finite energy at tick ${c.tick}`);
-    c.load = load; c.cap = speedCap(load); // what the brain spends this tick, speed gets the rest
+    c.load = load; c.cap = speedCap(load, net.power); // what the brain spends this tick, speed gets the rest of the power
     const o = net.outStart, v = this.vals;
     if (actionNoise) {
       for (let k = 0; k < 4; k++) { const x = v[o + k] + actionNoise[k]; v[o + k] = x < -1 ? -1 : x > 1 ? 1 : x; }

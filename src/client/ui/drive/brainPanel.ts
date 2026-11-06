@@ -1,9 +1,11 @@
 // The live brain panel of the drive view (brain v2): the designer's columns drawn small on a canvas each frame, the
 // sense cells on the left, a line per hidden layer, the four wheels on the right. Wires show their weights
 // (weights.ts: red −1, black 0, green +1; thicker and brighter with |w|). Every cell flashes yellow at its firing rate
-// (spikes.ts: 14 Hz × rate), or glows steadily with it under prefers-reduced-motion; wheels show their speed.
+// (spikes.ts: 14 Hz × rate), or glows steadily with it under prefers-reduced-motion; wheels show their speed. Each
+// input cell has its type's flat symbol just to its left (senseGlyph.ts; card icons plan 2026-11-06 §2).
 import { SENSE_CODE } from '../../../common/sim/brain';
-import { columns, wireList } from '../../../common/sim/spec';
+import { columns, SENSE_IDS, wireList, type SenseId } from '../../../common/sim/spec';
+import { drawGlyph } from './senseGlyph';
 import type { Net } from '../../../common/sim/brain';
 import { weightStyle, type WireStyle } from '../weights';
 import type { SpikeTrains } from './spikes';
@@ -18,6 +20,8 @@ export class BrainPanel {
   /** Wire styles in canonical order (weights do not change while driving), and each wire's ends as node indices. */
   private readonly wires: WireStyle[];
   private readonly ends: [number, number][];
+  /** The symbol drawn beside each input cell in the last frame, in node order (checks read it). */
+  glyphs: SenseId[] = [];
 
   constructor(private readonly cv: HTMLCanvasElement, private readonly net: Net) {
     const w = new Float64Array(net.w.length);
@@ -34,7 +38,7 @@ export class BrainPanel {
     if (w === this.w && h === this.h && this.pos.length) return;
     this.w = this.cv.width = w; this.h = this.cv.height = h;
     const C = columns(this.net.spec), pr = this.pr;
-    const x0 = 18 * pr, x1 = w - 52 * pr; // room right of the wheels for their labels
+    const x0 = 30 * pr, x1 = w - 52 * pr; // room left of the inputs for their symbols, right of the wheels for their labels
     const pos: P[] = [];
     C.forEach((col, c) => {
       const x = C.length === 1 ? x0 : x0 + ((x1 - x0) * c) / (C.length - 1);
@@ -80,6 +84,14 @@ export class BrainPanel {
         g.globalAlpha = 1;
       }
     }
+    // each input's type, as a flat symbol just left of its node
+    const glyphs: SenseId[] = [];
+    for (let i = 0; i < this.net.nIn; i++) {
+      const id = SENSE_IDS[this.net.sense[i]], p = pos[i];
+      drawGlyph(g, id, p.x - r - 9 * pr, p.y, 12 * pr, muted);
+      glyphs.push(id);
+    }
+    this.glyphs = glyphs;
     // wheel labels with their speed
     g.font = `${10 * pr}px Arial, Helvetica, sans-serif`; g.textBaseline = 'middle'; g.textAlign = 'left';
     // a speed cell's signed value under it (its flashes show the rate, |value|; the sign says forwards or backwards)

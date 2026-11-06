@@ -67,3 +67,13 @@ inversion of the short range BVC."
   drawn inverted to match.
 - The field gradients (fieldgrad.ts) follow the inverted response. A finite-difference unit test checks them.
 - Goldens with long-range cells change. This lands before the CPU brains are regenerated (round-power stage).
+
+### Built (2026-11-06)
+- senses.ts `farAct` = 1 − `fieldAct`, so the cell reads d / R along its field's centre, 1 with no wall in range and
+  near 0 when a wall is close. sensors.ts reads the long-range cell as 1 − the short cell's ray response. fieldgrad.ts
+  flips the sign of its range gradient. The new unit test in tests/unit/fields.test.ts checks the values against
+  finite differences, and the existing all-senses finite-difference test still passes.
+- Description: "Fires faster the further away the wall is (up to 60 m)." The inspector's polar field for this cell is
+  drawn with `farAct`, which inverts it. check:workbench asserts the text.
+- Goldens `raceHeavy` and `raceEight` change (the heavy brain has long-range cells). Every training-phase golden on
+  `defaultSpec()` is unchanged. The CPU brains are regenerated with the round-power stage.

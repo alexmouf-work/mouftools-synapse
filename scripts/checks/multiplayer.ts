@@ -42,7 +42,7 @@ import { roundTimes } from '../../src/common/schedule';
 import { compile, genomeToJSON, zeroGenome } from '../../src/common/sim/brain';
 import { energyRefusal } from '../../src/common/sim/energy';
 import { cpuRounds } from '../../src/common/sim/cpu';
-import { recordCar, ROUND_RACE, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../src/common/sim/match';
+import { recordCar, roundRace, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../src/common/sim/match';
 import { familyOf } from '../../src/common/sim/track';
 import { createHash } from 'node:crypto';
 import type { BrainSpec, Genome } from '../../src/common/sim/spec';
@@ -318,7 +318,7 @@ async function main() {
       const entries = JSON.parse(si.rooms.get(code)!.frozen.get(n)!) as { id: string; name: string; brain: string }[];
       const ok = entries.filter((e) => energyRefusal((JSON.parse(e.brain) as Genome).spec, CONFIG.rounds.budgets[n - 1]) === null);
       const genomes = ok.map((e) => JSON.parse(e.brain) as Genome);
-      node[n - 1] = runRace(genomes, derive(matchSeed >>> 0, 0x50d5, n), undefined, ROUND_RACE, roundTrackSeed(derive(matchSeed >>> 0, 0x50d5, n), MAP));
+      node[n - 1] = runRace(genomes, derive(matchSeed >>> 0, 0x50d5, n), undefined, roundRace(n), roundTrackSeed(derive(matchSeed >>> 0, 0x50d5, n), MAP));
       return { entries, ok, genomes, race: node[n - 1] };
     };
     /** Build → train (no buttons) → hand in → the race (= Node on every page) → standings; returns Node's round. */
@@ -416,7 +416,7 @@ async function main() {
     await host.waitForFunction((f) => (window.__race?.frames ?? 0) > f + 2, fr0, { timeout: 30_000 });
     const fo = await host.evaluate(`(() => { const r = window.__race; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), own: r.ownVals(), main: r.drawn()[0], others: r.drawn().slice(1).map((p) => p[4]), look: r.lookOff(), cam: r.cam().mode, t: r.t, mine: !document.getElementById('rcMine').hidden }; })()`) as
       { k: number; title: string; vals: number[] | null; own: number[] | null; main: number[]; others: number[]; look: number; cam: string; t: number; mine: boolean };
-    const fg = n1.genomes[far.k], frec = recordCar(fg, n1.race.track, n1.race.cars[far.k].slot, ROUND_RACE), fN = compile(fg).nNodes, fb = Math.min(Math.floor(fo.t * HZ - 1) + 1, frec.ticks - 1);
+    const fg = n1.genomes[far.k], frec = recordCar(fg, n1.race.track, n1.race.cars[far.k].slot, roundRace(1)), fN = compile(fg).nNodes, fb = Math.min(Math.floor(fo.t * HZ - 1) + 1, frec.ticks - 1);
     const fvals = Array.from(frec.act.subarray(fb * fN, (fb + 1) * fN));
     const fp = posAt(far.k), dk = n1.race.cars.map((_, k) => { const p = posAt(k); return k === far.k ? Infinity : (p[0] - fp[0]) ** 2 + (p[1] - fp[1]) ** 2; });
     const wantF = n1.race.cars.map((_, k) => k).sort((a, b) => dk[a] - dk[b] || a - b).slice(0, MAX_RIVALS).sort((a, b) => a - b);

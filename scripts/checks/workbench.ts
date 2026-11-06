@@ -146,7 +146,7 @@ async function main() {
     // the long-range boundary vector cell (senses plan §3): in the tray, named and described, its own icon
     await page.click('#tray [data-s="far"]');
     const far = { n: (await spec(page)).senses.far, h: await page.locator('#insp h2').innerText(), d: await page.locator('#insp .desc').innerText(), lab: await page.locator('#tray [data-s="far"]').getAttribute('aria-label') };
-    check(far.n === 1 && far.h.toLowerCase() === 'long-range boundary vector cell' && far.d === 'Fires faster as a distant wall comes into range.' && far.lab === 'Add a long-range boundary vector cell',
+    check(far.n === 1 && far.h.toLowerCase() === 'long-range boundary vector cell' && far.d === 'Fires faster the further away the wall is (up to 60 m).' && far.lab === 'Add a long-range boundary vector cell',
       `tap the long-range tile: a long-range boundary vector cell ("${far.h}": "${far.d}"; tile "${far.lab}")`);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/far-cell.png` });
@@ -267,7 +267,7 @@ async function main() {
       page = await open({ w, h: hgt, mobile: w < 900 });
       const bar = await page.evaluate(`(() => { const t = document.querySelector('.app .top'), cs = [...t.children].filter((c) => c.offsetWidth > 0).map((c) => c.getBoundingClientRect());
         const apart = cs.every((a, i) => cs.every((b, j) => j <= i || a.right <= b.left + 0.5 || b.right <= a.left + 0.5));
-        const clipped = [...document.querySelectorAll('.alloc > span')].some((e) => e.scrollWidth > e.clientWidth + 1);
+        const clipped = [...document.querySelectorAll('.alloc .arow > span')].some((e) => e.scrollWidth > e.clientWidth + 1);
         const b = document.getElementById('trackBtn'); return { apart, clipped, fits: t.scrollWidth <= t.clientWidth + 1, text: b.textContent, label: b.getAttribute('aria-label') }; })()`) as { apart: boolean; clipped: boolean; fits: boolean; text: string; label: string };
       check(bar.apart && !bar.clipped && bar.fits && bar.text === 'Track' && bar.label === 'Track: Random', `${w}×${hgt}: the Track button in the top bar ("${bar.label}"), nothing in the bar overlapping or clipped`);
       await page.click('#trackBtn');

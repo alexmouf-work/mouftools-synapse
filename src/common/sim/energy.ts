@@ -44,10 +44,26 @@ export function restLoad(s: BrainSpec, restRate: (fn: BrainSpec['layers'][number
   return e;
 }
 
-/** The speed share for a tick's load (%): what is left of the supply, never below the floor. As a fraction 0..1. */
-export function speedCap(load: number): number {
-  const left = 100 - load;
-  return (left < E.speedFloor ? E.speedFloor : left) / 100;
+/**
+ * Power (round power plan 2026-11-06): what the brain and the wheels share, on the costs' scale. The sandbox has the
+ * whole supply, which is also its reference (P = P_ref = 100: speed cap 100% − load, as before). A match round has
+ * CONFIG.rounds.budgets[n − 1] (20, 40, 64) and its reference is the last round's power, so round 1's car is slow even
+ * with a tiny brain and round 3's small brain nears full speed.
+ */
+export const SANDBOX_POWER = 100;
+const ROUND_REF = CONFIG.rounds.budgets[CONFIG.rounds.budgets.length - 1];
+/** Round n's power (1-based). */
+export const roundPower = (n: number): number => CONFIG.rounds.budgets[n - 1];
+/** The power that would give full speed with a weightless brain: the sandbox's own 100, a round's P_ref. */
+export const powerRef = (power: number): number => (power >= SANDBOX_POWER ? SANDBOX_POWER : ROUND_REF);
+
+/**
+ * The speed share for a tick's load (%) under a power: what is left of it over the reference, never below the floor
+ * (10% of full speed). As a fraction 0..1; the sandbox's is 100% − load.
+ */
+export function speedCap(load: number, power = SANDBOX_POWER): number {
+  const ref = powerRef(power), left = power - load, floor = (E.speedFloor * ref) / 100;
+  return (left < floor ? floor : left) / ref;
 }
 
 /** Why a design can't be raced under this rule, or null. The sandbox refuses nothing; a vs CPU round names its budget. */

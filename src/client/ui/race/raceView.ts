@@ -14,7 +14,7 @@ import cpuData from '../../../assets/cpu/brains.json';
 import { CONFIG } from '../../../common/config';
 import { compile, nodeRate, type Net } from '../../../common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../../common/sim/cpu';
-import { gridCar, LAPPED, rank, recordCar, ROUND_RACE, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
+import { gridCar, LAPPED, rank, recordCar, roundRace, runRace, type RaceLength, type RaceResult } from '../../../common/sim/match';
 import type { Recording } from '../../../common/sim/race';
 import type { Genome } from '../../../common/sim/spec';
 import { MAX_RIVALS, type DrivePose, type RivalPose } from '../../render/drive';
@@ -123,6 +123,8 @@ export interface RaceStatus {
    * followed car (m), the camera's mode and its cuts (s on the camera's clock, and why).
    */
   following: () => number; cardTitle: () => string; cardVals: () => number[] | null; ownVals: () => number[] | null;
+  /** The brain card's input cells as drawn last frame: each one's symbol (its sense), in node order; null with no card. */
+  cardGlyphs: () => string[] | null;
   lookOff: () => number; cam: () => { mode: string; shot: string; cuts: { t: number; why: string; spot: number }[] };
   /** Where car k's dot is on the sidebar map (CSS px in the page), or null. */
   dotAt: (k: number) => { x: number; y: number } | null;
@@ -155,7 +157,7 @@ export function firstSeed(): number {
  */
 export function roundSetup(saved: Saved, round: number, raceSeed: number, o: { name?: string; trackSeed?: number } = {}): RaceSetup {
   const cpu = cpuRounds(cpuData)[round - 1];
-  return { kind: 'cpu', title: `Round ${round} of ${CONFIG.rounds.count}`, names: [o.name ?? 'You', ...CPU_NAMES], genomes: [saved.genome, ...cpu.map((b) => b.genome)], me: 0, raceSeed, trackSeed: o.trackSeed, len: ROUND_RACE };
+  return { kind: 'cpu', title: `Round ${round} of ${CONFIG.rounds.count}`, names: [o.name ?? 'You', ...CPU_NAMES], genomes: [saved.genome, ...cpu.map((b) => b.genome)], me: 0, raceSeed, trackSeed: o.trackSeed, len: roundRace(round) };
 }
 export const newRaceSeed = newSeed;
 
@@ -301,7 +303,7 @@ export async function openRace(setup: RaceSetup, hooks: RaceHooks): Promise<void
     shown: () => { const o = listOrder(), r = listRows(n, o.indexOf(follow)); return r.idx.flatMap((i, j) => (r.gap && j === 3 ? ['⋯', names[o[i]]] : [names[o[i]]])); },
     drawn: () => (stage ? stage.drive.drawn().map((p, i) => [...p, i ? drawnIdx[i - 1] : follow]) : []), dots: () => dots.length,
     hold: false,
-    following: () => follow, cardTitle: () => $('rcBrainT').textContent ?? '', cardVals: () => (card ? Array.from(card.vals) : null), ownVals: () => (mine ? Array.from(ownNow) : null),
+    following: () => follow, cardTitle: () => $('rcBrainT').textContent ?? '', cardVals: () => (card ? Array.from(card.vals) : null), cardGlyphs: () => (card ? [...card.panel.glyphs] : null), ownVals: () => (mine ? Array.from(ownNow) : null),
     lookOff: () => (stage ? stage.drive.lookOff() : -1), cam: () => ({ mode: stage?.drive.mode ?? '', shot: stage?.drive.shotNow ?? '', cuts: stage ? [...stage.drive.cuts] : [] }),
     dotAt: (k) => { const q = map?.cssOf(dots[k].x, dots[k].y), r = $('rcMap').getBoundingClientRect(); return q ? { x: r.left + q.x, y: r.top + q.y } : null; },
     seek: (sec) => { endCount(); playT = Math.max(0, Math.min(sec, end)); goRef = performance.now() - playT * 1000; stage?.drive.snapNow(); },

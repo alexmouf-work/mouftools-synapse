@@ -19,6 +19,8 @@ export interface EpisodeSetup {
    * trains on its race's own track, pads and all). 0 or absent: training tracks.
    */
   raceCars?: number;
+  /** The power the cars run under (a match round's P, energy.ts); absent: the sandbox's. */
+  power?: number;
 }
 
 /** Per (policy, track): prog, wallTicks, ticks. */
@@ -94,7 +96,7 @@ export class EpisodeCore {
   private lanes: RolloutCore | null = null;
   constructor(readonly s: EpisodeSetup) {
     this.tracks = s.trackSeeds.map((seed) => generateTrack(seed, s.raceCars ?? 0));
-    this.net = compile(zeroGenome(s.spec));
+    this.net = compile(zeroGenome(s.spec), s.power);
   }
   rollout(job: RolloutJob): LaneOut[] {
     return (this.lanes ??= new RolloutCore(this.s, this.tracks, KERNELS)).run(job);

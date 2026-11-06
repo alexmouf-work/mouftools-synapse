@@ -1,6 +1,7 @@
 // Sense cells read from the car and the track, through the rules in senses.ts (one definition, shared with the
 // designer's graphs). Boundary vector cells: a wall inside a 20 m field facing one way, sampled by three short rays
-// across the field. Long-range boundary vector cells: the same out to 60 m (senses plan §3). Head direction: the cosine
+// across the field. Long-range boundary vector cells: the same out to 60 m, inverted (senses plan §3 and its
+// 2026-11-06 section: 1 − the short cell's response, so d / R along the field's centre, 1 with no wall in range). Head direction: the cosine
 // of the heading against the preferred one. Grid cells: the hexagonal pattern at the car's position. Speed: v / top.
 // Each cell reads with its own learned tuning (net.tune, decoded from its field parameters; B2e).
 import { cos, PI, sin } from '../fmath';
@@ -39,8 +40,9 @@ export function readSensors(c: CarState, t: Track, net: Net, out: Float64Array):
   for (let i = 0; i < net.nIn; i++) {
     const q = 4 * i;
     switch (net.sense[i]) {
-      case SENSE_CODE.boundary:
-      case SENSE_CODE.far: out[i] = boundaryValue(c, t, tu[q], tu[q + 1], tu[q + 2], net.ray, 2 * i); break;
+      case SENSE_CODE.boundary: out[i] = boundaryValue(c, t, tu[q], tu[q + 1], tu[q + 2], net.ray, 2 * i); break;
+      // the long-range cell is the short one's response inverted (senses.ts farAct): d / R along its centre, 1 on open road
+      case SENSE_CODE.far: out[i] = 1 - boundaryValue(c, t, tu[q], tu[q + 1], tu[q + 2], net.ray, 2 * i); break;
       case SENSE_CODE.hd: out[i] = hdAct(c.hdg, tu[q]); break;
       case SENSE_CODE.grid: out[i] = gridAct(c.x, c.y, tu[q], net.gridPhase[i], tu[q + 1], tu[q + 2], tu[q + 3]); break;
       default: out[i] = speedAct(c.v, tu[q]);

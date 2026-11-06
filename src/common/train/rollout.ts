@@ -92,7 +92,7 @@ export class RolloutCore {
   private net: Net;
   private readonly runner = new Runner();
   constructor(readonly setup: EpisodeSetup, readonly tracks: Track[], private readonly kernels: Record<KernelId, Kernel>) {
-    this.net = compile(zeroGenome(setup.spec));
+    this.net = compile(zeroGenome(setup.spec), setup.power);
   }
 
   run(job: RolloutJob): LaneOut[] {

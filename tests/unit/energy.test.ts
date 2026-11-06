@@ -3,7 +3,7 @@ import { CONFIG } from '../../src/common/config';
 import { compile, evalNet, nodeRate, restRate, zeroGenome } from '../../src/common/sim/brain';
 import { speedAct } from '../../src/common/sim/senses';
 import { startCar, stepPhysics } from '../../src/common/sim/car';
-import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap } from '../../src/common/sim/energy';
+import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, roundPower, SANDBOX_POWER, senseMax, speedCap } from '../../src/common/sim/energy';
 import { defaultSpec, starterSpec, type BrainSpec } from '../../src/common/sim/spec';
 import { generateTrack } from '../../src/common/sim/track';
 
@@ -26,6 +26,20 @@ describe('energy (brain v2: speed follows firing)', () => {
     expect(speedCap(30)).toBeCloseTo(0.7, 12);
     expect(speedCap(95)).toBe(E.speedFloor / 100);
     expect(speedCap(400)).toBe(E.speedFloor / 100);
+  });
+  it('round power (2026-11-06): cap = max(floor, (P − load) / P_ref), P_ref = round 3\'s power; the sandbox unchanged', () => {
+    const B = CONFIG.rounds.budgets, ref = B[B.length - 1];
+    expect(B.map((_, r) => roundPower(r + 1))).toEqual([20, 40, 64]);
+    for (const load of [0, 3.7, 11.35, 30, 95, 400]) expect(speedCap(load, SANDBOX_POWER)).toBe(speedCap(load)); // the sandbox: P = P_ref = 100
+    expect(speedCap(0, roundPower(1))).toBeCloseTo(20 / ref, 12); // round 1: about a third of full speed, even weightless
+    expect(speedCap(10, roundPower(2))).toBeCloseTo(30 / ref, 12);
+    expect(speedCap(0, roundPower(3))).toBe(1);
+    expect(speedCap(19, roundPower(1))).toBe(E.speedFloor / 100); // the floor: 10% of full speed
+    expect(speedCap(5, roundPower(1))).toBeLessThan(speedCap(5, roundPower(2))); // faster as the rounds go …
+    expect(speedCap(20, roundPower(3))).toBeLessThan(speedCap(5, roundPower(3))); // … and a heavy brain costs speed
+    const net = compile(zeroGenome(defaultSpec()), roundPower(1));
+    expect(net.power).toBe(20);
+    expect(compile(zeroGenome(defaultSpec())).power).toBe(SANDBOX_POWER);
   });
   it('the cap slows the wheels: half the speed share, half the speed', () => {
     const t = generateTrack(3), a = startCar(t), b = startCar(t);

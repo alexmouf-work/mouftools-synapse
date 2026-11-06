@@ -101,7 +101,7 @@ export class MeteredEnv implements Env {
 
   openCar(w: ArrayLike<number>, trackIndex: number): CarHandle {
     const t = this.track(trackIndex);
-    const net: Net = compile({ spec: this.setup.spec, w: Array.from(w) });
+    const net: Net = compile({ spec: this.setup.spec, w: Array.from(w) }, this.setup.power);
     setWeights(net, w);
     const state = startCar(t), runner = new Runner();
     return {

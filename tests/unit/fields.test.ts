@@ -6,7 +6,7 @@ import { CONFIG } from '../../src/common/config';
 import { compile, setWeights, zeroGenome } from '../../src/common/sim/brain';
 import { startCar } from '../../src/common/sim/car';
 import { fieldGrads } from '../../src/common/sim/fieldgrad';
-import { FIELD_BOUNDS, fieldDirDeg, fieldOf, fieldWidthDeg, gridOf, gridPhase, gridScale, hdOf, hdPreferred, speedGainOf } from '../../src/common/sim/senses';
+import { farAct, fieldAct, FIELD_BOUNDS, fieldDirDeg, fieldOf, fieldWidthDeg, gridOf, gridPhase, gridScale, hdOf, hdPreferred, speedGainOf } from '../../src/common/sim/senses';
 import { readSensors } from '../../src/common/sim/sensors';
 import { FIELD_PARAMS, fieldCount, fieldIndex, inputIds, paramCount, type BrainSpec, type SenseId } from '../../src/common/sim/spec';
 import { generateTrack } from '../../src/common/sim/track';
@@ -88,5 +88,41 @@ describe('learned receptive fields', () => {
       }
     }
     expect(compared).toBeGreaterThan(100);
+  });
+
+  it('the long-range cell is the short one inverted (2026-11-06): d / R, 1 on open road; its range gradient = finite differences', () => {
+    const R = CONFIG.senses.far.rangeM;
+    expect(farAct(0, 15, R, 60)).toBeCloseTo(15 / R, 12);
+    expect(farAct(0, 0.5, R, 60)).toBeCloseTo(0.5 / R, 12);
+    expect(farAct(0, R + 10, R, 60)).toBe(1);
+    expect(farAct(10, 20, R, 60)).toBeCloseTo(1 - fieldAct(10, 20, R, 60), 12);
+    const FAR: BrainSpec = { v: 2, senses: { boundary: 0, far: 3, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'linear' }] };
+    const t = generateTrack(5), r = new Rng(9), nW = paramCount(FAR), w = new Array(nW).fill(0);
+    for (let a = fieldIndex(FAR, 'i:far:0'); a < nW; a++) w[a] = r.range(-1, 1);
+    const net = compile({ spec: FAR, w }), x = new Float64Array(net.nIn), p = new Float64Array(net.nIn), m = new Float64Array(net.nIn);
+    let compared = 0, open = 0;
+    for (let s = 0; s < 60; s++) {
+      const c = startCar(t, (t.startIdx + s * 41) % t.n);
+      c.x += r.range(-6, 6); c.y += r.range(-6, 6); c.hdg += r.range(-1, 1);
+      for (let i = 0; i < net.nIn; i++) {
+        setWeights(net, w); readSensors(c, t, net, x);
+        expect(x[i]).toBeGreaterThanOrEqual(0); expect(x[i]).toBeLessThanOrEqual(1);
+        if (x[i] === 1) open++;
+        const delta = new Float64Array(net.nNodes); delta[i] = 1;
+        const grad = new Float64Array(nW);
+        fieldGrads(net, c, t, delta, grad);
+        const a = net.fieldAt[i] + 2, num = (h: number) => {
+          const wp = [...w], wm = [...w]; wp[a] += h; wm[a] -= h;
+          setWeights(net, wp); readSensors(c, t, net, p); setWeights(net, wm); readSensors(c, t, net, m);
+          return (p[i] - m[i]) / (2 * h);
+        };
+        const n1 = num(1e-5), n2 = num(2e-5);
+        if (Math.abs(n1 - n2) > 1e-4 * (1 + Math.abs(n1))) continue;
+        expect(grad[a]).toBeCloseTo(n1, 5);
+        if (grad[a] !== 0) { compared++; expect(grad[a]).toBeLessThan(0); } // a longer range makes a seen wall relatively nearer: it reads lower
+      }
+    }
+    expect(compared).toBeGreaterThan(20);
+    expect(open).toBeGreaterThan(0);
   });
 });

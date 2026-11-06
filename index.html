@@ -120,9 +120,12 @@
     <button class="btn menu" type="button" id="toTitle">Main menu</button>
     <div class="tr" id="trainers" role="group" aria-label="Trainer"></div>
     <div class="alloc" aria-label="Energy split: brain power against speed">
-      <span>Brain <b id="aBrain"></b></span>
-      <div class="split"><s id="aRange"></s><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
-      <span>Speed <b id="aSpeed"></b></span>
+      <div class="arow">
+        <span>Brain <b id="aBrain"></b></span>
+        <div class="split"><s id="aRange"></s><i id="aFill"></i><em title="The mean car: 50/50"></em></div>
+        <span>Speed <b id="aSpeed"></b></span>
+      </div>
+      <small class="atop" id="aTop" hidden></small>
     </div>
     <button class="btn" type="button" id="trackBtn" aria-haspopup="dialog">Track</button>
     <button class="btn" type="button" id="reset">Reset</button>

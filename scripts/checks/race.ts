@@ -42,13 +42,13 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
 import cpuData from '../../src/assets/cpu/brains.json';
 import { CONFIG } from '../../src/common/config';
-import { compile, defaultGenome, genomeHash, zeroGenome } from '../../src/common/sim/brain';
+import { compile, defaultGenome, genomeHash, restRate, zeroGenome } from '../../src/common/sim/brain';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
-import { energyRefusal } from '../../src/common/sim/energy';
-import { gridCar, raceTrackSeed, recordCar, ROUND_RACE, roundTrackSeed, runRace } from '../../src/common/sim/match';
+import { energyRefusal, maxLoad, restLoad, roundPower, speedCap } from '../../src/common/sim/energy';
+import { gridCar, raceTrackSeed, recordCar, roundRace, roundTrackSeed, runRace } from '../../src/common/sim/match';
 import { Runner } from '../../src/common/sim/race';
 import { derive } from '../../src/common/rng';
-import { biasIndex, defaultSpec, OUTPUTS, type BrainSpec, type Genome } from '../../src/common/sim/spec';
+import { biasIndex, defaultSpec, OUTPUTS, SENSE_IDS, type BrainSpec, type Genome } from '../../src/common/sim/spec';
 import { familyOf, generateTrack } from '../../src/common/sim/track';
 import { InlineExecutor } from '../../src/common/train/episodes';
 import { runPhase } from '../../src/common/train/phase';
@@ -72,6 +72,14 @@ const BIG: BrainSpec = { v: 2, senses: { boundary: 4, far: 0, hd: 0, grid: 0, sp
 const raceSeedOf = (match: number, round: number) => derive(match >>> 0, 0x50d5, round);
 const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };
 const NAME = 'Tester';
+/** The designer's energy bar in round n (round power plan 2026-11-06): brain and speed as shares of the round's power P,
+ * resting–flat out, and the flat-out top speed under it. */
+function barOf(s: BrainSpec, n: number): { brain: string; speed: string; top: string } {
+  const P = roundPower(n), f = (v: number) => Math.round(Math.max(0, (v / P) * 100)), x0 = f(restLoad(s, restRate)), x1 = f(maxLoad(s));
+  return { brain: x0 === x1 ? `${x0}%` : `${x0}–${x1}%`, speed: x0 === x1 ? `${100 - x0}%` : `${100 - x1}–${100 - x0}%`,
+    top: `Round ${n} power: top speed about ${Math.round(CONFIG.car.wheelSpeed * speedCap(maxLoad(s), P) * 3.6)} km/h` };
+}
+const barText = async (page: Page) => ({ brain: await page.locator('#aBrain').innerText(), speed: await page.locator('#aSpeed').innerText(), top: await page.locator('#aTop').innerText() });
 const NAMES = [NAME, ...CPU_NAMES];
 
 async function main() {
@@ -81,12 +89,12 @@ async function main() {
   // round 1 trains the starting brain from scratch (phase 0 of the match's training seed) on round 1's race track only,
   // as that race's track of ten cars (match polish §2)
   const track1 = raceTrackSeed(raceSeedOf(MATCH, 1));
-  const trained = (await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, phase: 0, tracks: [track1], raceCars: CONFIG.match.cars })).final;
-  const node = runRace([trained, ...cpu1], raceSeedOf(MATCH, 1), undefined, ROUND_RACE);
+  const trained = (await runPhase(new InlineExecutor(), defaultSpec(), SEED, { T, phase: 0, tracks: [track1], raceCars: CONFIG.match.cars, power: roundPower(1) })).final;
+  const node = runRace([trained, ...cpu1], raceSeedOf(MATCH, 1), undefined, roundRace(1));
   // a last round you lead: the strongest last-round CPU brain as yours (search the first match seeds)
   const strong = cpuL[cpuL.length - 1];
   let WIN = -1;
-  for (let s = 1; s <= 80 && WIN < 0; s++) if (runRace([strong, ...cpuL], raceSeedOf(s, LAST), undefined, ROUND_RACE).ranking[0] === 0) WIN = s;
+  for (let s = 1; s <= 80 && WIN < 0; s++) if (runRace([strong, ...cpuL], raceSeedOf(s, LAST), undefined, roundRace(LAST)).ranking[0] === 0) WIN = s;
   check(WIN > 0, `a match seed where the strongest round-${LAST} brain, raced as yours, leads round ${LAST}: ${WIN}`);
 
   // the wrong-way reset: each round-1 CPU brain alone from pole on ten race tracks, without it and with it (30 s)
@@ -109,7 +117,7 @@ async function main() {
   // a brain that drives backwards (every wheel's bias at the cap), raced as yours
   const back: Genome = defaultGenome();
   for (const o of OUTPUTS) back.w[biasIndex(back.spec, o.id)] = -CONFIG.brain.weightCap;
-  const bw = runRace([back, ...cpu1], raceSeedOf(MATCH, 1), undefined, ROUND_RACE), bwRec = bw.cars[0].rec;
+  const bw = runRace([back, ...cpu1], raceSeedOf(MATCH, 1), undefined, roundRace(1)), bwRec = bw.cars[0].rec;
   const bwShow = bwRec.wrong.findIndex((w) => w >= HZ && w < W); // "Wrong way" showing: 1 s of falling progress
   const bwReset = bwRec.wrong.findIndex((w) => w >= W);
   check(bwShow > 0 && bwReset > bwShow && bw.cars[0].dist <= 0, `a backwards brain: falling 1 s at tick ${bwShow}, put back at tick ${bwReset}; ends at ${bw.cars[0].dist.toFixed(1)} m`);
@@ -256,8 +264,9 @@ async function main() {
     check(m0.phase === 'build' && m0.round === 1 && bt.state === 'running' && bt.shown && bt.label === `Round 1 of ${LAST} · Build` && bt.text === '60' && bt.bg === 'rgb(255, 194, 26)' && !bt.red
       && Math.abs(bt.cx - lay0.cx) < 2 && bt.top >= lay0.topBottom - 0.5 && (bt.top - lay0.appTop) / lay0.appH < 0.2 && bt.h >= lay0.row,
       `vs CPU starts round 1 of ${LAST} in the designer: "${bt.label}" ${bt.text}, vs CPU yellow, top centre under the top bar, ${bt.h.toFixed(0)} px tall (Train's row ${lay0.row.toFixed(0)} px)`);
-    const alloc = await page.locator('#aBrain').innerText();
-    check(/ of 20%$/.test(alloc) && JSON.stringify(await page.evaluate(() => window.__designer!.spec())) === JSON.stringify(defaultSpec()), `round 1 starts from the starting brain; the energy bar's full scale is round 1's budget ("Brain ${alloc}")`);
+    const alloc = await barText(page), want1 = barOf(defaultSpec(), 1);
+    check(JSON.stringify(alloc) === JSON.stringify(want1) && JSON.stringify(await page.evaluate(() => window.__designer!.spec())) === JSON.stringify(defaultSpec()),
+      `round 1 starts from the starting brain; the energy bar is 0–100% of round 1's power: "Brain ${alloc.brain} · Speed ${alloc.speed}", "${alloc.top}" (= Node)`);
     await page.screenshot({ path: `${OUT}/build-60.png` });
     // the timer grows the rule strip and so shrinks the board without the window resizing: the diagram (and the 3-D
     // symbols drawn at its positions) must re-lay out to the board's new size, or the symbols sit off their circles
@@ -389,17 +398,22 @@ async function main() {
     const fk = fr[0], fk2 = fr[1];
     await page.click(`#rcList button[data-k="${fk}"]`);
     await frames(page, 3);
-    const fol = async () => page.evaluate(`(() => { const r = window.__race, t = r.t; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), own: r.ownVals(), look: r.lookOff(), main: r.drawn()[0], t,
+    const fol = async () => page.evaluate(`(() => { const r = window.__race, t = r.t; return { k: r.following(), title: r.cardTitle(), vals: r.cardVals(), glyphs: r.cardGlyphs(), own: r.ownVals(), look: r.lookOff(), main: r.drawn()[0], t,
       outlined: [...document.querySelectorAll('#rcList li.followed span')].map((e) => e.textContent), you: document.querySelector('#rcList li.you span')?.textContent ?? '', mine: !document.getElementById('rcMine').hidden,
-      card: !document.getElementById('rcBrainC').hidden, pos: document.getElementById('rcPos').textContent }; })()`) as Promise<{ k: number; title: string; vals: number[] | null; own: number[] | null; look: number; main: number[]; t: number; outlined: string[]; you: string; mine: boolean; card: boolean; pos: string }>;
+      card: !document.getElementById('rcBrainC').hidden, pos: document.getElementById('rcPos').textContent }; })()`) as Promise<{ k: number; title: string; vals: number[] | null; glyphs: string[] | null; own: number[] | null; look: number; main: number[]; t: number; outlined: string[]; you: string; mine: boolean; card: boolean; pos: string }>;
     const f1 = await fol();
     // the card's values this frame = Node's replay of that car alone at the same tick
-    const replay = (k: number, t: number) => { const rec = recordCar(k === 0 ? trained : cpu1[k - 1], node.track, node.cars[k].slot, ROUND_RACE), nN = compile(k === 0 ? trained : cpu1[k - 1]).nNodes, b = Math.min(Math.floor(t * HZ - 1) + 1, rec.ticks - 1); return Array.from(rec.act.subarray(b * nN, (b + 1) * nN)); };
+    const replay = (k: number, t: number) => { const rec = recordCar(k === 0 ? trained : cpu1[k - 1], node.track, node.cars[k].slot, roundRace(1)), nN = compile(k === 0 ? trained : cpu1[k - 1]).nNodes, b = Math.min(Math.floor(t * HZ - 1) + 1, rec.ticks - 1); return Array.from(rec.act.subarray(b * nN, (b + 1) * nN)); };
     const close = (a: number[] | null, b: number[]) => !!a && a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
     check(f1.k === fk && f1.title === `Brain · ${NAMES[fk]}` && close(f1.vals, replay(fk, f1.t)) && JSON.stringify(f1.vals) !== JSON.stringify(f1.own) && f1.main[4] === fk && f1.look < 3
       && JSON.stringify(f1.outlined) === JSON.stringify([NAMES[fk]]) && f1.you === NAME && f1.mine && f1.card && /^\d+(st|nd|rd|th) of 10$/.test(f1.pos),
       `click ${NAMES[fk]}'s row: the camera follows that car (aim ${f1.look.toFixed(2)} m off it), the card reads "${f1.title}" with its brain firing as Node's replay of it, not yours; its row outlined, yours still marked; "Back to my car" shows; Position stays yours (${f1.pos})`);
     await page.screenshot({ path: `${OUT}/follow-cpu.png` });
+    // the card draws each input cell with its type's symbol (card icons plan 2026-11-06 §2)
+    const typesOf = (g: Genome) => { const n = compile(g); return Array.from(n.sense.subarray(0, n.nIn), (c) => SENSE_IDS[c]); };
+    const wantIn = typesOf(fk === 0 ? trained : cpu1[fk - 1]);
+    check(JSON.stringify(f1.glyphs) === JSON.stringify(wantIn) && wantIn.length > 0,
+      `the card draws ${NAMES[fk]}'s ${wantIn.length} input cells, each with its type's symbol (${(f1.glyphs ?? []).join(', ')})`);
     await page.focus(`#rcList button[data-k="${fk2}"]`);
     await page.keyboard.press('Space');
     await frames(page, 2);
@@ -410,6 +424,7 @@ async function main() {
     const f3 = await fol();
     check(f3.k === 0 && f3.title === 'Brain · live' && close(f3.vals, f3.own ?? []) && f3.main[4] === 0 && !f3.mine && f3.outlined.length === 0 && f3.look < 3,
       '"Back to my car": the camera and the card are yours again, and the button goes');
+    check(JSON.stringify(f3.glyphs) === JSON.stringify(typesOf(trained)), `your card's input symbols: ${(f3.glyphs ?? []).join(', ')} (= your brain's inputs)`);
     await page.evaluate(() => { window.__race!.hold = false; });
     const pr = await page.evaluate(() => window.__race!.probe!());
     check(pr.mean > 20 && pr.sd > 8, `render smoke: mean ${pr.mean.toFixed(1)}, spread ${pr.sd.toFixed(1)}`);
@@ -446,9 +461,9 @@ async function main() {
     await page.waitForFunction(() => window.__match?.phase === 'build' && window.__match.round === 2, null, { timeout: 10_000, polling: 100 });
     bt = await pt(page);
     const g2 = await page.evaluate(() => window.__designer!.genome());
-    check(bt.label === `Round 2 of ${LAST} · Build` && Number(bt.text) <= 20 && Number(bt.text) >= 19 && /of 40%$/.test(await page.locator('#aBrain').innerText())
+    check(bt.label === `Round 2 of ${LAST} · Build` && Number(bt.text) <= 20 && Number(bt.text) >= 19 && JSON.stringify(await barText(page)) === JSON.stringify(barOf(await page.evaluate(() => window.__designer!.spec()), 2))
       && JSON.stringify(g2.spec) === JSON.stringify(trained.spec) && g2.w.every((x) => x === 0),
-      `after 8 s: "${bt.label}" ${bt.text}, the budget 40%; round 1's design carries over with fresh weights, biases and fields (match-flow v2)`);
+      `after 8 s: "${bt.label}" ${bt.text}, the bar 0–100% of round 2's power ("${(await barText(page)).top}"); round 1's design carries over with fresh weights, biases and fields (match-flow v2)`);
     // an upgrade keeps the trained weights: one more boundary cell
     await page.click('#tray [data-s="boundary"]');
     const g3 = await page.evaluate(() => window.__designer!.genome());
@@ -512,7 +527,7 @@ async function main() {
     await page.context().close();
 
     // 6. the last round, which you lead: the final standings and the winner music
-    const nw = runRace([strong, ...cpuL], raceSeedOf(WIN, LAST), undefined, ROUND_RACE);
+    const nw = runRace([strong, ...cpuL], raceSeedOf(WIN, LAST), undefined, roundRace(LAST));
     page = await open(`?view=race&race=${WIN}&round=${LAST}`, 1440, 900, strong);
     await page.waitForFunction(() => (window.__race?.frames ?? 0) > 1, null, { timeout: 60_000 });
     r = (await race(page))!;

@@ -10,7 +10,7 @@ import {
   type EditResult,
 } from '../../../common/sim/brain';
 import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode, type Rule } from '../../../common/sim/energy';
-import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, isFieldSense, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
+import { farAct, fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, isFieldSense, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
 import { biasIndex, columns, defaultSpec, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
@@ -265,21 +265,38 @@ function cellLabel(id: string): string {
 // ---- the energy split: brain power against speed (resting to flat out while building) ----
 function showAlloc(): void {
   const s = spec(), top = maxLoad(s), lo = restLoad(s, restRate), f = (v: number) => Math.round(Math.max(0, v));
-  // a vs CPU round's budget is the bar's full scale (rounds plan §2); otherwise the whole supply
-  const lim = typeof RULE === 'number' ? RULE : 100, bar = (v: number) => clamp((v / lim) * 100, 0, 100);
-  const sp = (load: number) => Math.round(speedCap(load) * 100);
-  $('aFill').style.width = `${bar(lo)}%`;
-  $('aRange').style.width = `${bar(top)}%`;
-  document.querySelector('.alloc')?.classList.toggle('budget', lim !== 100);
-  $('aBrain').textContent = (f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`) + (lim !== 100 ? ` of ${lim}%` : '');
-  $('aSpeed').textContent = sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%`;
+  const round = roundOfRule();
+  $('aTop').hidden = round === 0;
+  if (round === 0) { // the sandbox: the whole supply, speed = 100% − load (unchanged)
+    const sp = (load: number) => Math.round(speedCap(load) * 100), bar = (v: number) => clamp(v, 0, 100);
+    $('aFill').style.width = `${bar(lo)}%`;
+    $('aRange').style.width = `${bar(top)}%`;
+    document.querySelector('.alloc')?.classList.remove('budget');
+    $('aBrain').textContent = f(lo) === f(top) ? `${f(lo)}%` : `${f(lo)}–${f(top)}%`;
+    $('aSpeed').textContent = sp(top) === sp(lo) ? `${sp(lo)}%` : `${sp(top)}–${sp(lo)}%`;
+    return;
+  }
+  // a match round (round power plan 2026-11-06): the bar is always 0–100% of the round's power P, the brain's share
+  // and what is left for speed; under it, the car's flat-out top speed with this design
+  const P = RULE as number, share = (v: number) => (v / P) * 100, x0 = f(share(lo)), x1 = f(share(top));
+  $('aFill').style.width = `${clamp(share(lo), 0, 100)}%`;
+  $('aRange').style.width = `${clamp(share(top), 0, 100)}%`;
+  document.querySelector('.alloc')?.classList.add('budget');
+  $('aBrain').textContent = x0 === x1 ? `${x0}%` : `${x0}–${x1}%`;
+  $('aSpeed').textContent = x0 === x1 ? `${100 - x0}%` : `${100 - x1}–${100 - x0}%`;
+  $('aTop').textContent = `Round ${round} power: top speed about ${topKmh(top, P)} km/h`;
 }
+/** Which match round the rule is (1-based: its power is that round's), or 0 (the sandbox, or no round's power). */
+const roundOfRule = (): number => (typeof RULE === 'number' ? CONFIG.rounds.budgets.indexOf(RULE as (typeof CONFIG.rounds.budgets)[number]) + 1 : 0);
+/** The car's flat-out top speed (km/h) with this load under power P. */
+const topKmh = (load: number, P: number): number => Math.round(CONFIG.car.wheelSpeed * speedCap(load, P) * 3.6);
 
 // ---- side panel ----
 const BIN = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const binBtn = (id: string, label: string) => `<button class="bin" id="${id}" type="button" aria-label="${label}">${BIN}</button>`;
 const fmtE = (v: number) => `${Math.round(v * 10) / 10}%`;
-const useLine = (v: number) => `<p class="use">At maximum firing rate, uses <b>${fmtE(v)}</b> energy</p>`;
+/** In a match round, as a share of the round's power (round power plan 2026-11-06); in the sandbox, of the supply. */
+const useLine = (v: number) => `<p class="use">At maximum firing rate, uses <b>${fmtE(roundOfRule() ? (v / (RULE as number)) * 100 : v)}</b> energy</p>`;
 /** A neuron's or wheel's built-in bias (shown once the brain is trained; 0 before, so omitted). */
 const biasOf = (id: string): number => (trained() ? W.saved.genome.w[biasIndex(spec(), id)] : 0);
 const biasLine = (b: number) => (trained() ? `<p class="use" data-bias>Bias <b>${b >= 0 ? '+' : '−'}${Math.abs(b).toFixed(2)}</b></p>` : '');
@@ -360,7 +377,7 @@ export const heat = (a: number, alpha = 0.9) => {
   return `rgba(${c0.map((v, k) => Math.round(v + (c1[k] - v) * t)).join(',')},${alpha})`;
 };
 /** A circular map around the car (front up): the cell's activation for a target at each distance and bearing. */
-function polar(fieldDeg: number, range: number, width: number, ringStep: number): void {
+function polar(fieldDeg: number, range: number, width: number, ringStep: number, inverted = false): void {
   const { g, w } = gctx(), c = w / 2, Rr = w / 2 - 12;
   g.fillStyle = css('--canvas'); g.beginPath(); g.arc(c, c, Rr, 0, 7); g.fill();
   for (let y = -Rr; y <= Rr; y += 1) for (let x = -Rr; x <= Rr; x += 1) {
@@ -368,7 +385,7 @@ function polar(fieldDeg: number, range: number, width: number, ringStep: number)
     if (r > Rr) continue;
     let off = Math.atan2(x, -y) * 180 / Math.PI - fieldDeg;
     off -= 360 * Math.round(off / 360);
-    g.fillStyle = heat(fieldAct(off, (r / Rr) * range, range, width), 0.9);
+    g.fillStyle = heat((inverted ? farAct : fieldAct)(off, (r / Rr) * range, range, width), 0.9);
     g.fillRect(c + x - 0.5, c + y - 0.5, 1.2, 1.2);
   }
   g.lineWidth = 0.75; g.font = `9px ${FONT}`; g.strokeStyle = '#ffffff'; g.fillStyle = '#ffffff';
@@ -441,7 +458,7 @@ function graphSense(id: SenseId, k: number, n: number): void {
   const p = fieldParams(id, k);
   if (isFieldSense(id)) {
     const f = fieldOf(id, k, n, p[0], p[1], p[2]);
-    polar(f.dirDeg, f.rangeM, f.widthDeg, id === 'boundary' ? 5 : 20);
+    polar(f.dirDeg, f.rangeM, f.widthDeg, id === 'boundary' ? 5 : 20, id === 'far'); // the long-range cell's map inverted
   } else if (id === 'hd') wave(hdOf(k, n, p[0]));
   else if (id === 'grid') gridMap(k);
   else speedLine(speedGainOf(p[0]));

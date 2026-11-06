@@ -10,6 +10,7 @@ import { CONFIG } from '../config';
 import { Hasher } from '../hash';
 import { derive, Rng, TAG } from '../rng';
 import { compile } from './brain';
+import { roundPower } from './energy';
 import { newRecording, Runner, type Recording } from './race';
 import type { CarState } from './car';
 import type { Genome } from './spec';
@@ -118,16 +119,22 @@ export const byScore = (a: MatchScore, b: MatchScore): number => b.best - a.best
 
 /** A race's length: `laps` to finish within `ticks` (Multiplayer: 2 laps in 120 s), or laps 0: a timed race, every car
  * running all `ticks` and ranked by its signed distance then (vs CPU's rounds: 30 s). */
-export interface RaceLength { ticks: number; laps: number }
+export interface RaceLength {
+  ticks: number;
+  laps: number;
+  /** The power every car races under (a round's P: round power plan 2026-11-06); absent: the sandbox's (energy.ts). */
+  power?: number;
+}
 export const LAPPED: RaceLength = { ticks: M.capTicks, laps: M.laps };
-export const ROUND_RACE: RaceLength = { ticks: CONFIG.rounds.raceTicks, laps: 0 };
+/** Round n's race: 30 s, no laps, under the round's power. */
+export const roundRace = (n: number): RaceLength => ({ ticks: CONFIG.rounds.raceTicks, laps: 0, power: roundPower(n) });
 
 /**
  * One car of a race run again on its own, keeping every node's output per tick (follow-a-racer plan: the brain card of
  * a racer you follow). Cars never touch, so this is the same run as that car's in runRace, tick for tick.
  */
 export function recordCar(genome: Genome, track: Track, slot: number, len: RaceLength = LAPPED): Recording {
-  const net = compile(genome), rec = newRecording(net, len.ticks, true);
+  const net = compile(genome, len.power), rec = newRecording(net, len.ticks, true);
   new Runner().run(net, track, { ticks: len.ticks, earlyStop: false, record: rec, start: gridCar(track, slot), wrongWay: true });
   return rec;
 }
@@ -141,7 +148,7 @@ export function runRace(genomes: readonly Genome[], raceSeed: number, act: (k: n
   const track = generateTrack(trackSeed, genomes.length), order = gridOrder(raceSeed, genomes.length);
   const goal = len.laps * track.len, cap = len.ticks, runner = new Runner();
   const cars: RaceCar[] = genomes.map((g, k) => {
-    const net = compile(g), rec = newRecording(net, cap, act(k));
+    const net = compile(g, len.power), rec = newRecording(net, cap, act(k));
     runner.run(net, track, { ticks: cap, earlyStop: false, record: rec, start: gridCar(track, order[k]), wrongWay: true });
     let finish: number | null = null;
     if (len.laps > 0) for (let j = 0, prev = -gridPlace(track, order[k]).back; j < rec.ticks; prev = rec.prog[j], j++) {

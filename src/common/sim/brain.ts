@@ -5,7 +5,7 @@
 import { CONFIG, type Act } from '../config';
 import { log, PI, sigmoid, tanh, wrapAngle } from '../fmath';
 import { Hasher } from '../hash';
-import { energyRefusal, nodeCoefs, type Rule } from './energy';
+import { energyRefusal, nodeCoefs, SANDBOX_POWER, type Rule } from './energy';
 import { columns, FIELD_PARAMS, fieldCount, fieldIndex, inputIds, migrateGenome, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
 import { FIELD_DIR_DEG, FIELD_LOG2, fieldOf, fieldWidthDeg, gridOf, GRID_ROT, GRID_SHIFT_M, gridScale, HD_STEP, hdOf, hdPreferred, SPEED_LOG2, speedGainOf, fieldDirDeg, isFieldSense } from './senses';
 
@@ -51,11 +51,13 @@ export interface Net {
   ray: Float64Array;
   /** Per node: energy (% of the supply) per unit of firing rate, its own cost plus the wires it drives. */
   coef: Float64Array;
+  /** The power this brain races and trains under (energy.ts: the sandbox's 100, or a match round's P); sets its speed cap. */
+  power: number;
   /** Node ids, in node order. */
   ids: string[];
 }
 
-export function compile(g: Genome): Net {
+export function compile(g: Genome, power = SANDBOX_POWER): Net {
   validateGenome(g);
   const s = g.spec, C = columns(s), ids = C.flat();
   const nIn = C[0].length, nNodes = ids.length, outStart = nNodes - OUTPUTS.length;
@@ -78,7 +80,7 @@ export function compile(g: Genome): Net {
   const net: Net = {
     spec: s, nIn, nHidden: outStart - nIn, nNodes, outStart, act, sense, cellK, cellN, inStart, from, w, specIdx, bias, wires: m,
     fields: fieldCount(s), fieldAt, tune: new Float64Array(4 * nIn), tuneD: new Float64Array(4 * nIn), gridPhase: new Float64Array(nIn), ray: new Float64Array(2 * nIn),
-    coef: Float64Array.from(nodeCoefs(s)), ids,
+    coef: Float64Array.from(nodeCoefs(s)), power, ids,
   };
   retune(net, g.w);
   return net;

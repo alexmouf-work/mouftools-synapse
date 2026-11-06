@@ -43,6 +43,11 @@ export function fieldAct(offDeg: number, dist: number, range: number, widthDeg: 
   const u = offDeg / widthDeg, near = 1 - dist / range;
   return near <= 0 ? 0 : exp(-(u * u)) * near;
 }
+/**
+ * The long-range cell (senses plan, "Long-range cell inverted" 2026-11-06): the short cell's response inverted, so it
+ * fires d / R along its field's centre (capped at 1: 1 with no wall in range, near 0 with a wall close by).
+ */
+export const farAct = (offDeg: number, dist: number, range: number, widthDeg: number): number => 1 - fieldAct(offDeg, dist, range, widthDeg);
 
 /** Head-direction cell k of n: preferred heading (radians, counter-clockwise like the sim); two cells are cos and sin. */
 export const hdPreferred = (k: number, n: number): number => (2 * PI * k / n) * (n === 2 ? 0.5 : 1);
@@ -124,7 +129,7 @@ export const senseRate = (id: SenseId, v: number): number => (id === 'hd' ? (v +
 /** Text for the designer. */
 export const SENSE_INFO: Record<SenseId, { name: string; desc: string }> = {
   boundary: { name: 'Boundary vector cells', desc: 'Fires faster when approaching a wall.' },
-  far: { name: 'Long-range boundary vector cells', desc: 'Fires faster as a distant wall comes into range.' },
+  far: { name: 'Long-range boundary vector cells', desc: 'Fires faster the further away the wall is (up to 60 m).' },
   hd: { name: 'Head direction cells', desc: 'Fires faster when facing a given angle.' },
   grid: { name: 'Grid cells', desc: 'Fires on a hexagonal grid.' },
   speed: { name: 'Speed cells', desc: '+1 at top speed forwards, −1 at top speed backwards.' },

@@ -8,7 +8,7 @@ import { newRecording, putBack, Runner } from '../../src/common/sim/race';
 import { biasIndex, OUTPUTS, type Genome } from '../../src/common/sim/spec';
 import { CPU_NAMES, cpuRounds } from '../../src/common/sim/cpu';
 import { maxLoad } from '../../src/common/sim/energy';
-import { gridCar, gridOrder, gridPlace, NEW_EACH_ROUND, rank, raceTrackSeed, recordCar, ROUND_RACE, roundTrackSeed, runRace, validMap } from '../../src/common/sim/match';
+import { gridCar, gridOrder, gridPlace, NEW_EACH_ROUND, rank, raceTrackSeed, recordCar, roundRace, roundTrackSeed, runRace, validMap } from '../../src/common/sim/match';
 import { FAMILIES, familyOf, generateTrack, gridDepth, seedOfFamily } from '../../src/common/sim/track';
 import { chosenTrainTracks } from '../../src/common/train/phase';
 
@@ -152,7 +152,7 @@ describe('the wrong-way reset (races only)', () => {
     expect(runRace(g, 77).hash).toBe(runRace(g, 77).hash);
   });
   it('a round\'s timed race: 30 s, no finishers, ranked by the signed distance covered from each grid slot', () => {
-    const g = [backwards(), ...cpuRounds(data)[0].map((b) => b.genome)], r = runRace(g, 5, undefined, ROUND_RACE);
+    const g = [backwards(), ...cpuRounds(data)[0].map((b) => b.genome)], r = runRace(g, 5, undefined, roundRace(1));
     expect(r.endTicks).toBe(CONFIG.rounds.raceTicks);
     for (const c of r.cars) {
       expect(c.finish).toBeNull();
@@ -164,7 +164,7 @@ describe('the wrong-way reset (races only)', () => {
     const c0 = r.cars[0], back0 = gridPlace(r.track, c0.slot).back;
     expect(Math.min(...c0.rec.prog.slice(0, c0.rec.ticks)) + back0).toBeLessThan(0);
     expect(c0.dist).toBeLessThanOrEqual(0);
-    expect(runRace(g, 5, undefined, ROUND_RACE).hash).toBe(r.hash);
+    expect(runRace(g, 5, undefined, roundRace(1)).hash).toBe(r.hash);
   });
 });
 
@@ -183,7 +183,7 @@ describe('a match\'s score (match polish §1: the best single race, ties to the 
 });
 
 describe('the CPU brains', () => {
-  it('a round count (3) of nine, named, each within its round\'s budget, trained on 5% to 100% of T, growing round to round', () => {
+  it('a round count (3) of nine, named, each within its round\'s budget, trained on 5% to 100% of T, a design style each, growing round to round', () => {
     const rounds = cpuRounds(data);
     expect(rounds.length).toBe(CONFIG.rounds.count);
     expect(rounds.length).toBe(3); // match polish §1
@@ -193,11 +193,24 @@ describe('the CPU brains', () => {
       expect(b[0].budget).toBe(Math.round(0.05 * CONFIG.rounds.T));
       expect(b[8].budget).toBe(CONFIG.rounds.T);
     });
-    // each player's design only grows: every later round has at least the cells it had
+    // each player's design style (CPU designs plan 2026-11-06): 2–8 inputs, 1–3 hidden layers 2–8 wide, no two players
+    // with the same layer shape and functions in a round; and it only grows (a layer may be added at the end)
+    rounds.forEach((b) => {
+      const shapes = b.map((x) => x.genome.spec.layers.map((l) => `${l.n}${l.fn}`).join('-'));
+      expect(new Set(shapes).size).toBe(b.length);
+      for (const x of b) {
+        const s = x.genome.spec, n = Object.values(s.senses).reduce((a, c) => a + c, 0);
+        expect(n).toBeGreaterThanOrEqual(2); expect(n).toBeLessThanOrEqual(8);
+        expect(s.layers.length).toBeGreaterThanOrEqual(1); expect(s.layers.length).toBeLessThanOrEqual(3);
+        for (const l of s.layers) { expect(l.n).toBeGreaterThanOrEqual(2); expect(l.n).toBeLessThanOrEqual(8); }
+      }
+    });
+    const fns = new Set(rounds.flat().flatMap((x) => x.genome.spec.layers.map((l) => l.fn)));
+    expect([...fns].sort()).toEqual(['linear', 'relu', 'sigmoid', 'tanh']);
     for (let k = 0; k < CPU_NAMES.length; k++) for (let r = 1; r < rounds.length; r++) {
       const a = rounds[r - 1][k].genome.spec, c = rounds[r][k].genome.spec;
-      expect(c.layers.length).toBe(a.layers.length);
-      a.layers.forEach((l, L) => expect(c.layers[L].n).toBeGreaterThanOrEqual(l.n));
+      expect(c.layers.length).toBeGreaterThanOrEqual(a.layers.length);
+      a.layers.forEach((l, L) => { expect(c.layers[L].n).toBeGreaterThanOrEqual(l.n); expect(c.layers[L].fn).toBe(l.fn); });
       for (const id of Object.keys(a.senses) as (keyof typeof a.senses)[]) expect(c.senses[id]).toBeGreaterThanOrEqual(a.senses[id]);
     }
   });
@@ -205,12 +218,12 @@ describe('the CPU brains', () => {
 
 describe('following a racer', () => {
   it('recordCar replays one car of a race exactly, with its brain\'s activity (the followed racer\'s brain card)', () => {
-    const g = [defaultGenome(), ...cpuRounds(data)[2].map((b) => b.genome)], r = runRace(g, 11, (k) => k === 0, ROUND_RACE);
+    const g = [defaultGenome(), ...cpuRounds(data)[2].map((b) => b.genome)], r = runRace(g, 11, (k) => k === 0, roundRace(3));
     for (const k of [0, 3, 9]) {
-      const c = r.cars[k], rec = recordCar(g[k], r.track, c.slot, ROUND_RACE), nN = compile(g[k]).nNodes;
+      const c = r.cars[k], rec = recordCar(g[k], r.track, c.slot, roundRace(3)), nN = compile(g[k]).nNodes;
       expect(rec.ticks).toBe(c.rec.ticks);
       for (const f of ['x', 'y', 'hdg', 'v', 'prog', 'wrong'] as const) expect(Array.from(rec[f])).toEqual(Array.from(c.rec[f]));
-      expect(rec.act.length).toBe(ROUND_RACE.ticks * nN);
+      expect(rec.act.length).toBe(roundRace(3).ticks * nN);
       if (k === 0) expect(Array.from(rec.act)).toEqual(Array.from(c.rec.act));
       expect(rec.act.every(Number.isFinite)).toBe(true);
     }

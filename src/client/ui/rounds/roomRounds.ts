@@ -19,7 +19,7 @@ import { derive } from '../../../common/rng';
 import { firstRound, phaseAt, roundTimes } from '../../../common/schedule';
 import { defaultGenome, genomeToJSON, zeroGenome } from '../../../common/sim/brain';
 import { energyRefusal } from '../../../common/sim/energy';
-import { byScore, matchScore, NEW_EACH_ROUND, ROUND_RACE, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../../common/sim/match';
+import { byScore, matchScore, NEW_EACH_ROUND, roundRace, roundTrackSeed, runRace, type MapSetting, type RaceResult } from '../../../common/sim/match';
 import { validateGenome, type Genome } from '../../../common/sim/spec';
 import { win } from '../../audio/music';
 import { roundEntries, serverNow, shiftClock, submitResult, submitRoundBrain, type Entry, type Me, type RoomPlayer } from '../../net/rooms';
@@ -243,7 +243,7 @@ export const roomTrackSeed = (matchSeed: number, n: number, map: MapSetting = NE
 function computeRace(m: RM, n: number, entries: Entry[], mine: string | null): RoundRace {
   const { ok, genomes } = racing(entries, n), me = mine === null ? -1 : ok.findIndex((e) => e.id === mine);
   const c0 = performance.now();
-  const result = genomes.length ? runRace(genomes, roomRaceSeed(m.info.seed, n), (k) => k === me, ROUND_RACE, roomTrackSeed(m.info.seed, n, m.info.map)) : null;
+  const result = genomes.length ? runRace(genomes, roomRaceSeed(m.info.seed, n), (k) => k === me, roundRace(n), roomTrackSeed(m.info.seed, n, m.info.map)) : null;
   m.computeMs[n - 1] = performance.now() - c0;
   const d = new Map<string, number>();
   for (const e of entries) { m.names.set(e.id, e.name); d.set(e.id, 0); }
@@ -273,7 +273,7 @@ function showRace(m: RM, n: number, entries: Entry[]): void {
   const t = roundTimes(n), me = rr.ok.findIndex((e) => e.id === m.info.me.player);
   openRace({
     kind: 'room', title: `${label(n, 'Race')} · Room ${m.info.me.code}`, names: rr.ok.map((e) => e.name), genomes: rr.genomes, me,
-    raceSeed: rr.result.raceSeed, goAt: performance.now() + (t.go - rel(m)), raceNo: n, len: ROUND_RACE, result: rr.result,
+    raceSeed: rr.result.raceSeed, goAt: performance.now() + (t.go - rel(m)), raceNo: n, len: roundRace(n), result: rr.result,
   }, {
     back: noop,
     // the race timer ends at the race's Go + 30 s, the same timestamp the replay's clock counts from (match polish §4)

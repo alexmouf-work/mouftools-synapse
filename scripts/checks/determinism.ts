@@ -3,9 +3,9 @@
 // skip the other deck), and a short training phase per trainer
 // (evolution, backprop, actor-critic, A_RP, and evolution at temperature ×2) of the default brain run inline and on 4
 // worker_threads (must match each other and the golden; ×2 must differ from ×1), evolution on one race track of ten
-// cars (a match's round trains on its race track only: match polish §2), a 2-lap race of the nine stored CPU brains of
+// cars under round 1's power (a match's round trains on its race track only: match polish §2), a 2-lap race of the nine stored CPU brains of
 // the last round (B7: race track, grid, 2 laps, ranking; as Multiplayer races), and a vs CPU round's 30 s timed race
-// of round 1's (rounds plan 2026-11-05). golden.json is written only by this script:
+// of round 1's under round 1's power (rounds plan 2026-11-05; round power plan 2026-11-06). golden.json is written only by this script:
 //   npx tsx scripts/checks/determinism.ts            check
 //   npx tsx scripts/checks/determinism.ts --update   regenerate (say why in the commit)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -22,7 +22,8 @@ import { phaseSeeds, runPhase } from '../../src/common/train/phase';
 import { NodePool } from '../sim/nodePool';
 import cpuData from '../../src/assets/cpu/brains.json';
 import { cpuRounds } from '../../src/common/sim/cpu';
-import { raceTrackSeed, ROUND_RACE, runRace } from '../../src/common/sim/match';
+import { raceTrackSeed, roundRace, runRace } from '../../src/common/sim/match';
+import { roundPower } from '../../src/common/sim/energy';
 
 const SEEDS = [1, 2, 3];
 const PHASE_T = 600_000; // a few generations of 60 s episodes
@@ -61,14 +62,14 @@ async function main() {
       if (a.hash !== b.hash) { bad++; console.error(`seed ${seed} ${id}: inline ${a.hash} ≠ 4 workers ${b.hash}`); }
       rl[key] = a.hash;
     }
-    const onRace = { T: PHASE_T, tracks: [raceTrackSeed(seed)], raceCars: CONFIG.match.cars };
+    const onRace = { T: PHASE_T, tracks: [raceTrackSeed(seed)], raceCars: CONFIG.match.cars, power: roundPower(1) }; // a round-1 round's training
     const rcInline = await runPhase(new InlineExecutor(), defaultSpec(), seed, onRace), rcPooled = await runPhase(pool, defaultSpec(), seed, onRace);
     if (rcInline.hash !== rcPooled.hash) { bad++; console.error(`seed ${seed} race track: inline ${rcInline.hash} ≠ 4 workers ${rcPooled.hash}`); }
     const hotInline = await runPhase(new InlineExecutor(), defaultSpec(), seed, { T: PHASE_T, temperature: 1 });
     const hotPooled = await runPhase(pool, defaultSpec(), seed, { T: PHASE_T, temperature: 1 });
     if (hotInline.hash !== hotPooled.hash) { bad++; console.error(`seed ${seed} ×2: inline ${hotInline.hash} ≠ 4 workers ${hotPooled.hash}`); }
     if (hotInline.hash === inline.hash) { bad++; console.error(`seed ${seed}: temperature ×2 gave the ×1 hash ${inline.hash}`); }
-    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), raceEight: raceHash(seed, HEAVY, EIGHT_TRACK), phase: inline.hash, phaseBackprop: bpInline.hash, ...rl, phaseTemp2: hotInline.hash, phaseRaceTrack: rcInline.hash, match: runRace(cpuRounds(cpuData)[cpuRounds(cpuData).length - 1].map((b) => b.genome), seed).hash, round: runRace(cpuRounds(cpuData)[0].map((b) => b.genome), seed, undefined, ROUND_RACE).hash };
+    got[seed] = { track, race: raceHash(seed, defaultSpec()), raceHeavy: raceHash(seed, HEAVY), raceEight: raceHash(seed, HEAVY, EIGHT_TRACK), phase: inline.hash, phaseBackprop: bpInline.hash, ...rl, phaseTemp2: hotInline.hash, phaseRaceTrack: rcInline.hash, match: runRace(cpuRounds(cpuData)[cpuRounds(cpuData).length - 1].map((b) => b.genome), seed).hash, round: runRace(cpuRounds(cpuData)[0].map((b) => b.genome), seed, undefined, roundRace(1)).hash };
   }
   await pool.close();
   if (update) {

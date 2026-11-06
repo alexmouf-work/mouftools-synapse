@@ -11,6 +11,7 @@ import { phaseShowing, setPhaseSub } from '../phaseTimer';
 import { CONFIG } from '../../../common/config';
 import { compile, genomeHash, nodeRate, weightCount, zeroGenome, type Net } from '../../../common/sim/brain';
 import { newRecording, Runner } from '../../../common/sim/race';
+import { roundPower } from '../../../common/sim/energy';
 import type { Genome } from '../../../common/sim/spec';
 import { generateTrack, type Track } from '../../../common/sim/track';
 import { derive, Rng } from '../../../common/rng';
@@ -179,6 +180,8 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   // trains on its race track only (match polish §2), as that race's track (raceCars); otherwise the phase's own tracks
   const tracks = round?.track !== undefined ? [round.track >>> 0] : match || round ? seeds.trainTracks : sandboxTrainTracks(seed, phase) ?? seeds.trainTracks;
   const raceCars = round?.track !== undefined ? round.cars ?? CONFIG.match.cars : 0;
+  // a round trains under its power (round power plan 2026-11-06); the sandbox under its own
+  const power = round ? roundPower(round.n) : undefined;
   // match: the generations the budget allows (evolution's worst case on these tracks; a gradient trainer's fitness checks)
   if (match) generations = Math.max(1, saved.trainer === 'evolution' ? Math.floor(T / (CONFIG.train.population * tracks.length * CONFIG.train.episodeTicks)) : Math.floor(T / CONFIG.train.grad.evalEvery) + 1);
   lives.clear(); champLive = null;
@@ -212,7 +215,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
   };
   let lastRec = -Infinity;
   const run = runPhase(thePool, genome.spec, seed, {
-    T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, raceCars, now: () => performance.now(),
+    T, generations: match ? undefined : generations, temperature: temp, trainer: saved.trainer, phase, start, genome, tracks, raceCars, power, now: () => performance.now(),
     stepTicks: (env) => env.worstCase(pop),
     // every generation records its seeded handful (display only; not when there is no 3-D view)
     // a match's round, on one track, finishes a generation every ~0.1–0.2 s, far faster than the view shows them (each
@@ -302,7 +305,7 @@ export async function openTraining(saved: Saved, generations: number, temperatur
     st.ms = result.trainMs;
     if (stage && track0) {
       const best = result.gens.reduce((b, g, i, a) => (g.best > a[b].best ? i : b), 0);
-      const lap = championLap(result.final, track0, result.gens[best].gen);
+      const lap = championLap(result.final, track0, result.gens[best].gen, power);
       champLive = live(compile(result.final), lap.rec.act, lap.rec.ticks, lap.gen);
       stage.swarm.finish(lap);
     }
@@ -387,8 +390,8 @@ declare global { interface Window { __trainWarm?: { track: number | null } } }
 Object.defineProperty(window, '__trainWarm', { get: () => ({ track: warmedTrack }) });
 
 /** The champion's 1-minute run on training track 0, replayed for display only (no experience charged). */
-function championLap(g: Genome, t: Track, gen: number) {
-  const net = compile(g);
+function championLap(g: Genome, t: Track, gen: number, power?: number) {
+  const net = compile(g, power);
   const rec = newRecording(net, CONFIG.drive.ticks);
   new Runner().run(net, t, { ticks: CONFIG.drive.ticks, earlyStop: false, record: rec });
   return { x: rec.x, y: rec.y, hdg: rec.hdg, v: rec.v, prog: rec.prog, ticks: rec.ticks, gen, rec };

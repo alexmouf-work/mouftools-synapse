@@ -33,3 +33,31 @@ and the bar reads "Brain 4–11% of 20%".
 - Report the speeds that result: top speed per round for the starter brain and for a medium brain, and how far the
   starter gets in a 30 s race in each round.
 - Checks (affected only): types, purity, unit (energy), determinism, workbench (bar labels), race, training.
+
+## Built (2026-11-06)
+- energy.ts: `speedCap(load, power = SANDBOX_POWER)` = max(10% of full speed, (P − load) / P_ref). P_ref is 64 (the
+  last round's power) for a round and 100 for the sandbox. The sandbox's cap is bit-identical to before. `roundPower(n)`
+  = CONFIG.rounds.budgets[n − 1]. The compiled `Net` carries `power` (`compile(g, power)`), and `Runner.tick` caps
+  with it. `EpisodeSetup.power` / `PhaseOptions.power` carry it into training, inline and in workers.
+  `RaceLength.power` carries it into races: `roundRace(n)` replaces `ROUND_RACE` for vs CPU and Multiplayer rounds.
+  A round's training uses its round's power (trainingView), and so does its champion lap.
+- Designer, in a round: the bar is 0–100% of P: "Brain x0–x1%" (resting to flat out, as in the sandbox) and
+  "Speed (100 − x1)–(100 − x0)%". The 50/50 mark is hidden. Under the bar: "Round n power: top speed about N km/h",
+  the car's flat-out top speed with the design. The inspector's "uses z% energy" is a share of P. The sandbox bar is
+  unchanged. The refusal is unchanged: more than 100% of P flat out ("this round allows 20%").
+- Resulting speeds (CONFIG.car.wheelSpeed 60 m/s = 216 km/h):
+
+  | Brain (flat out) | R1 (P 20) | R2 (P 40) | R3 (P 64) | Sandbox |
+  |---|---|---|---|---|
+  | Starter, `defaultSpec()` (11.35) | 29 km/h | 97 km/h | 178 km/h | 191 km/h |
+  | Medium: 3 wall + 1 hd · 4 tanh (16.9) | 22 km/h (floor) | 78 km/h | 159 km/h | 179 km/h |
+
+  The starter trained on a round's 12M on its race track (seed 7, race seeds 1–3), 30 s alone from pole:
+  R1 62 / 451 / 406 m, R2 986 / 972 / 974 m, R3 1500 / 340 / 1247 m.
+- CPU brains regenerated under the rule, together with their new designs and the inverted long-range cell
+  (docs/plans/2026-11-06-cpu-designs-and-card-icons.md, Built). Goldens: `phaseRaceTrack` (round 1's power), `round`
+  (roundRace(1)) and `match` (the new CPU brains) change. `raceHeavy` and `raceEight` change for the long-range cell.
+  Every other training-phase and sandbox golden is bit-identical (`phase`, `phaseBackprop`, actor-critic, A_RP,
+  `phaseTemp2`, `race`, `track`), so S1 stands.
+- Checks: tests/unit/energy.test.ts (round power); check:race asserts the bar's figures and line in rounds 1 and 2
+  against Node.
