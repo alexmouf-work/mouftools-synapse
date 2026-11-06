@@ -330,3 +330,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   types." (2026-11-06) → `docs/plans/2026-11-06-cpu-designs-and-card-icons.md`.
 - "the long range BVC should fire more when something is further away, less when it's close. this is an inversion of the
   short range BVC." (2026-11-06) → senses plan, "Long-range cell inverted".
+- "in sandbox mode, the stop button during training isn't obvious." (2026-11-06) → a full-width red "■ Stop training" at
+  the top of the sidebar (≥48 px; Escape also stops); matches keep no Stop.
