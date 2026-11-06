@@ -6,12 +6,12 @@ import { CONFIG, type Act } from '../config';
 import { log, PI, sigmoid, tanh, wrapAngle } from '../fmath';
 import { Hasher } from '../hash';
 import { energyRefusal, nodeCoefs, type Rule } from './energy';
-import { columns, FIELD_PARAMS, fieldCount, fieldIndex, inputIds, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
-import { FIELD_DIR_DEG, FIELD_LOG2, fieldOf, fieldWidthDeg, gridOf, GRID_ROT, GRID_SHIFT_M, gridScale, HD_STEP, hdOf, hdPreferred, SPEED_LOG2, speedGainOf, fieldDirDeg } from './senses';
+import { columns, FIELD_PARAMS, fieldCount, fieldIndex, inputIds, migrateGenome, OUTPUTS, paramCount, SENSE_IDS, validateGenome, validateSpec, wireList, defaultSpec, type BrainSpec, type Genome, type SenseId } from './spec';
+import { FIELD_DIR_DEG, FIELD_LOG2, fieldOf, fieldWidthDeg, gridOf, GRID_ROT, GRID_SHIFT_M, gridScale, HD_STEP, hdOf, hdPreferred, SPEED_LOG2, speedGainOf, fieldDirDeg, isFieldSense } from './senses';
 
 export const ACT_CODE: Record<Act, number> = { relu: 1, sigmoid: 2, tanh: 3, linear: 5 };
 const TANH = ACT_CODE.tanh;
-export const SENSE_CODE: Record<SenseId, number> = { boundary: 0, landmark: 1, hd: 2, grid: 3, speed: 4 };
+export const SENSE_CODE: Record<SenseId, number> = { boundary: 0, far: 1, hd: 2, grid: 3, speed: 4 };
 
 export interface Net {
   spec: BrainSpec;
@@ -40,7 +40,7 @@ export interface Net {
   fields: number;
   fieldAt: Int32Array;
   /**
-   * Per input cell, its learned tuning (4 slots; senses.ts): boundary and landmark [direction °, width °, range m],
+   * Per input cell, its learned tuning (4 slots; senses.ts): both boundary kinds [direction °, width °, range m],
    * head direction [preferred angle], grid [scale m, offset x m, offset y m, orientation], speed [gain]; tuneD holds
    * d(tuning)/d(parameter) for each slot (0 where a bound clamps it), for backprop; gridPhase the grid cell's phase.
    */
@@ -90,7 +90,7 @@ function retune(net: Net, params: ArrayLike<number>): void {
   const { tune, tuneD } = net;
   for (let i = 0; i < net.nIn; i++) {
     const id = SENSE_OF[net.sense[i]], k = net.cellK[i], n = net.cellN[i], a = net.fieldAt[i], q = 4 * i;
-    if (id === 'boundary' || id === 'landmark') {
+    if (isFieldSense(id)) {
       const f = fieldOf(id, k, n, params[a], params[a + 1], params[a + 2]);
       tune[q] = f.dirDeg; tune[q + 1] = f.widthDeg; tune[q + 2] = f.rangeM;
       tuneD[q] = FIELD_DIR_DEG; tuneD[q + 1] = f.dWidth; tuneD[q + 2] = f.dRange;
@@ -217,7 +217,7 @@ function absFields(g: Genome, id: SenseId): number[][] {
   const n = g.spec.senses[id], out: number[][] = [];
   for (let k = 0; k < n; k++) {
     const a = fieldIndex(g.spec, `i:${id}:${k}`), p = g.w.slice(a, a + FIELD_PARAMS[id]);
-    if (id === 'boundary' || id === 'landmark') { const f = fieldOf(id, k, n, p[0], p[1], p[2]); out.push([f.dirDeg, f.widthDeg, f.rangeM]); }
+    if (isFieldSense(id)) { const f = fieldOf(id, k, n, p[0], p[1], p[2]); out.push([f.dirDeg, f.widthDeg, f.rangeM]); }
     else if (id === 'hd') out.push([hdOf(k, n, p[0])]);
     else if (id === 'grid') { const gr = gridOf(k, p[0], p[1], p[2], p[3]); out.push([gr.scale, p[1], p[2], p[3]]); }
     else out.push([p[0]]);
@@ -249,12 +249,12 @@ export function carryFields(old: Genome, g: Genome): void {
     const abs = absFields(old, id);
     for (let k = 0; k < n; k++) {
       const a = fieldIndex(s, `i:${id}:${k}`), f = k < abs.length ? abs[k] : null;
-      if (id === 'boundary' || id === 'landmark') {
+      if (isFieldSense(id)) {
         const dir = f ? f[0] : widestGap(abs.map((x) => x[0]));
         g.w[a] = clampP(wrapDeg(dir - fieldDirDeg(id, k, n)) / FIELD_DIR_DEG);
         if (f) {
           g.w[a + 1] = clampP(log2(f[1] / fieldWidthDeg(id, n, k)) / FIELD_LOG2);
-          g.w[a + 2] = clampP(log2(f[2] / (id === 'boundary' ? CONFIG.senses.boundary.rangeM : CONFIG.senses.landmark.rangeM)) / FIELD_LOG2);
+          g.w[a + 2] = clampP(log2(f[2] / CONFIG.senses[id].rangeM) / FIELD_LOG2);
         }
       } else if (id === 'hd') {
         const ang = f ? f[0] : (widestGap(abs.map((x) => (x[0] * 180) / PI)) * PI) / 180;
@@ -281,7 +281,7 @@ export function removeSense(g: Genome, id: SenseId, rule: Rule = 'sandbox'): Edi
 export function insertLayer(g: Genome, at: number, rule: Rule = 'sandbox'): EditResult {
   if (g.spec.layers.length >= CONFIG.brain.maxLayers) return { ok: false, reason: 'full' };
   const i = Math.max(0, Math.min(at, g.spec.layers.length));
-  const s = clone(g.spec); s.layers.splice(i, 0, { n: CONFIG.brain.newLayerNeurons, fn: 'tanh' });
+  const s = clone(g.spec); s.layers.splice(i, 0, { n: CONFIG.brain.newLayerNeurons, fn: 'linear' }); // Linear by default (senses plan §2)
   return done(s, rule, g);
 }
 export function removeLayer(g: Genome, L: number, rule: Rule = 'sandbox'): EditResult {
@@ -313,7 +313,7 @@ export function genomeToJSON(g: Genome): string {
 }
 
 export function genomeFromJSON(json: string): Genome {
-  const o = JSON.parse(json) as Genome;
+  const o = migrateGenome(JSON.parse(json) as Genome); // landmark cells (before senses plan §3) load as long-range cells
   validateGenome(o);
   return o;
 }

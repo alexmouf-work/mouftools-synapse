@@ -8,7 +8,7 @@ import { defaultSpec, starterSpec, type BrainSpec } from '../../src/common/sim/s
 import { generateTrack } from '../../src/common/sim/track';
 
 const E = CONFIG.energy;
-const big = (): BrainSpec => ({ v: 2, senses: { boundary: 7, landmark: 5, hd: 8, grid: 6, speed: 1 }, layers: Array.from({ length: 8 }, () => ({ n: 8, fn: 'sigmoid' as const })) });
+const big = (): BrainSpec => ({ v: 2, senses: { boundary: 7, far: 5, hd: 8, grid: 6, speed: 1 }, layers: Array.from({ length: 8 }, () => ({ n: 8, fn: 'sigmoid' as const })) });
 
 describe('energy (brain v2: speed follows firing)', () => {
   it('the default brain flat out: every cost plus every wire (hand-computed)', () => {
@@ -40,7 +40,7 @@ describe('energy (brain v2: speed follows firing)', () => {
     expect(energyRefusal(defaultSpec(), 'match')).toBeNull();
   });
   it('vs CPU rounds (rounds plan §2): 4 wall cells + 5 tanh (9 cells) just fit round 1; 11 such cells don\'t; ×1 ×2 ×3.2 (match polish §1: three rounds)', () => {
-    const R = CONFIG.rounds.budgets, sp = (b: number, n: number): BrainSpec => ({ v: 2, senses: { boundary: b, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n, fn: 'tanh' }] });
+    const R = CONFIG.rounds.budgets, sp = (b: number, n: number): BrainSpec => ({ v: 2, senses: { boundary: b, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n, fn: 'tanh' }] });
     expect(maxLoad(sp(4, 5))).toBeCloseTo(19.5, 9);
     expect(energyRefusal(sp(4, 5), R[0])).toBeNull();
     for (const [b, n] of [[5, 6], [4, 7], [6, 5]]) expect(energyRefusal(sp(b, n), R[0])).toMatch(/this round allows 20%/);
@@ -53,7 +53,7 @@ describe('energy (brain v2: speed follows firing)', () => {
     expect(speedAct(-top / 2)).toBeCloseTo(-0.5, 12);
     expect(speedAct(-2 * top)).toBe(-1);
     expect(speedAct(2 * top)).toBe(1);
-    const s: BrainSpec = { v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn: 'linear' }] }, net = compile(zeroGenome(s));
+    const s: BrainSpec = { v: 2, senses: { boundary: 0, far: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn: 'linear' }] }, net = compile(zeroGenome(s));
     expect(nodeRate(net, 0, -0.5)).toBe(0.5);
     const out = new Float64Array(net.nNodes);
     expect(evalNet(net, [-0.5], out)).toBeCloseTo(evalNet(net, [0.5], out), 12);

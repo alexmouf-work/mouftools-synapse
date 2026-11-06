@@ -73,7 +73,7 @@ function cpuStart(name: string, map: MapSetting) {
   startMatch(matchViews, { seed: q !== null && /^\d+$/.test(q) ? Number(q) : undefined, name, map });
 }
 /** The room's lobby (or, if the host removed you meanwhile, Multiplayer's code screen saying so). */
-function lobby() { stopPhaseTimer(); where = 'room'; showLobby(true); setMode('build'); }
+function lobby() { stopPhaseTimer(); where = 'room'; showLobby(true); setMode('lounge'); } // the lobby plays the title's lounge (senses plan §1)
 const back = () => (where === 'room' ? lobby() : sandbox());
 /** Back to the title from anywhere: whatever runs stops (a match, training, a race, a drive). */
 function title() {
@@ -123,7 +123,7 @@ start({ onTrain: train });
 startTitle({ onSandbox: sandbox, onCpu: () => cpu() });
 startCpuSettings({ start: cpuStart, menu: () => title() });
 startLobby({
-  show: (on) => { if (on) { stopPhaseTimer(); setActive(false); app!.hidden = true; showTitle(false); setMode('build'); } else title(); },
+  show: (on) => { if (on) { stopPhaseTimer(); setActive(false); app!.hidden = true; showTitle(false); setMode('lounge'); } else title(); },
   match: (info) => { where = 'room'; startRoomMatch(roomViews, info); },
   // removed from the room (or it closed) mid-match: whatever the match showed stops; the code screen says why
   lost: () => { abortRoomMatch(); leaveTraining(); leaveRace(); hideArena(); stopPhaseTimer(); useMatchBrain(null); document.body.classList.remove('rounds'); setActive(false); app!.hidden = true; },

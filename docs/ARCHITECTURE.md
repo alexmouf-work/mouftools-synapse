@@ -26,13 +26,13 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 | `rng.ts` | splitmix32 seed derivation (`derive`, fixed `TAG` labels), sfc32 streams (`Rng`), counter-based `hashU`. |
 | `hash.ts` | FNV-1a over canonical bytes (doubles as little-endian IEEE bytes). |
 | `sim/spec.ts` | Brain v2 shape: sense counts and hidden layers (`BrainSpec`), the fixed default brain and the random starter, column ids, the canonical wire order (`wireList`), the parameter layout (weights, biases, then each input cell's field: `paramCount`, `biasIndex`, `FIELD_PARAMS`, `fieldIndex`), `Genome`, validation. |
-| `sim/senses.ts` | THE sense rules (boundary vector and landmark fields, head direction, grid, speed), shared by the sim and the designer's graphs; each cell's default tuning and its learned field (`fieldOf`, `hdOf`, `gridOf`, `speedGainOf`). |
+| `sim/senses.ts` | THE sense rules (the two boundary vector fields, short and long-range, head direction, grid, speed), shared by the sim and the designer's graphs; each cell's default tuning and its learned field (`fieldOf`, `hdOf`, `gridOf`, `speedGainOf`). |
 | `sim/energy.ts` | THE energy rule: per-node coefficients, the flat-out and resting loads, the speed cap (floor 10%), the match refusal, the designer's "at maximum firing rate" figures. |
 | `sim/brain.ts` | Spec → compiled net, evaluation (returns the tick's energy load), firing rates, pure edit ops, canonical genome JSON and hash. |
 | `sim/track.ts` | Track families, generator + validation, the figure eight's crossing and decks, wall grid, ray cast (grid DDA, skipping the other deck), nearest-sample search; `seedOfFamily` (a seed whose track is of a given family: the picker's Shuffle, "One family" rounds, training's second track). |
 | `sim/car.ts` | Skid-steer physics, walls, boost pads, progress. |
 | `sim/sensors.ts` | Every sense cell's reading for a car on a track (through senses.ts, with the net's learned tuning); `bearingDir`, the one field-direction rule. |
-| `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, landmark, boundary range. |
+| `sim/fieldgrad.ts` | ∂(cell reading)/∂(field parameter) for the gradient trainers (B2e, B4): head direction, grid, speed, both boundary cells' range. |
 | `sim/race.ts` | `Runner`: one car for N ticks (from the start line, or a given start such as a grid slot), optional recording of frames and activations (or frames only), early stop for training (`stopCheck`, the one stop rule); `runDrive` (the drive view's 60 s run, also replayed by the checks) and `recordingHash`. `Runner.tick` takes a training-only `act` hook that sees every node value before physics and may rewrite the wheels. |
 | `sim/match.ts` | vs CPU races (B7): the race seed's track (`raceTrackSeed`, a race track) and grid order (`gridOrder`), grid slots two by two behind the line (`gridPlace`, `gridCar`), `runRace` (every car its own run for the 120 s cap; finish time to a fraction of a tick after 2 laps), `rank` (finish time, then progress at the end, then slot) and the race hash. Tracks-v2 T2: a match's `MapSetting` (new track each round, one family, one track), `roundTrackSeed`, and `runRace`'s optional track seed (default the race seed's own). |
 | `sim/cpu.ts` | The nine CPU brains' names and the check every stored set passes (`cpuBrains`: nine valid genomes within the match energy limit). |
@@ -53,8 +53,9 @@ will re-run races on every client. `scripts/checks/purity.ts` enforces this (Mat
 ### Brain (v2, 2026-11-04; plan `docs/plans/2026-11-04-brain-designer-v2.md`)
 A brain is its sense counts and its hidden layers; every column is fully wired to the next, always (no wiring by
 hand). Senses, each up to its maximum: boundary vector (≤ 7; a wall within a 20 m field facing one way, read by
-three short rays across the field; fields spread across the front), landmark (≤ 5; the finish line within 40 m, in
-the field's direction), head direction (≤ 8; cos(heading − preferred), preferred angles spread evenly, two = cos and
+three short rays across the field; fields spread across the front), long-range boundary vector (`far`, ≤ 5; the same out to 60 m, learnable 30–80 m,
+costing 1.25× a boundary cell; in the landmark cell's place since the senses plan of 2026-11-05: a save's landmark
+cells load as long-range cells, weights kept, fields reset, `spec.ts migrateGenome`), head direction (≤ 8; cos(heading − preferred), preferred angles spread evenly, two = cos and
 sin), grid (≤ 6; three plane waves 60° apart; the first two at two scales, more at spread phases), speed (≤ 1). Adding
 a cell re-tunes the set (cells are numbered by count). Hidden layers: 1–8, each 1–8 neurons of one function
 (Linear = z kept to −1..1, ReLU capped at 4, Sigmoid, Tanh); a new layer starts with two tanh neurons. The wheels are
@@ -62,7 +63,7 @@ tanh. Every hidden neuron and every wheel has a built-in bias (2026-11-04, §3ab
 and costs nothing itself. Node order: sense cells (by sense, then cell), hidden layer by layer, wheels. A genome's
 parameters are the weights in `wireList` order (column by column, source by source, then target), then the biases
 in node order (`paramCount`, `biasIndex`), then each input cell's field parameters in input order (B2e, §3ad:
-boundary and landmark direction, width, range; head direction its angle; grid scale, offset x/y, orientation; speed
+both boundary kinds' direction, width, range; head direction its angle; grid scale, offset x/y, orientation; speed
 its gain; `fieldIndex`). Every parameter is a number within the weight cap; a field parameter of 0 is the even
 spread, so an untrained cell reads exactly as before (the race goldens with fields at 0 reproduce the B2d hashes).
 They map to bounded tunings (direction default + 45°·p, any; width default·2^(p/2) in 20–180°; range default·2^(p/2)
@@ -93,8 +94,8 @@ in match mode, on energy. Any edit leaves an untrained brain: every weight and b
 has learned goes in the widest gap between the others (direction, or head-direction angle); a sense that never
 learned keeps its untrained spread for the new count. Boundary vector cells' untrained directions come from a fixed
 table by count (`senses.ts BOUNDARY_DIRS`, match-flow v2 plan §4: mirror-symmetric, weighted to the front, reaching the
-sides as the count grows; each width 0.6 × the gap to its nearest neighbour, 20–60°); landmark cells keep the even
-spread.
+sides as the count grows; each width 0.6 × the gap to its nearest neighbour, 20–60°); long-range cells use the same table by their own count. New hidden layers and the random starter's layer
+are Linear (senses plan §2); `defaultSpec()` keeps its tanh layer as the fixture.
 
 ### Car (skid-steer)
 Per wheel target speed = 60 m/s × output. The car eases toward the mean side speed (accel 14, brake 30 m/s²), yaws

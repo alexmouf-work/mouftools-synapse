@@ -19,17 +19,20 @@ export const BOUNDARY_DIRS: readonly (readonly number[])[] = [
   [], [0], [-30, 30], [-45, 0, 45], [-60, -20, 20, 60], [-75, -30, 0, 30, 75], [-80, -45, -15, 15, 45, 80],
   [-90, -55, -25, 0, 25, 55, 90], [-90, -60, -35, -12, 12, 35, 60, 90],
 ];
-/** An untrained field's direction for cell k of n: boundary cells from the table, landmark cells the even spread. */
-export const fieldDirDeg = (sense: 'boundary' | 'landmark', k: number, n: number): number =>
-  sense === 'boundary' && n < BOUNDARY_DIRS.length ? BOUNDARY_DIRS[n][k] : spreadDeg(k, n);
+/** The two kinds of boundary vector cell: the short one, and the long-range one (senses plan §3). */
+export type FieldSense = 'boundary' | 'far';
+export const isFieldSense = (id: SenseId): id is FieldSense => id === 'boundary' || id === 'far';
+/** An untrained field's direction for cell k of n: both kinds of boundary cell from the table, by their own count. */
+export const fieldDirDeg = (_sense: FieldSense, k: number, n: number): number =>
+  n < BOUNDARY_DIRS.length ? BOUNDARY_DIRS[n][k] : spreadDeg(k, n);
 /**
- * A field's untrained angular width (degrees). Boundary cells: 0.6 × the gap to the nearest neighbour, so neighbouring
- * fields cross at half activation (exp(−(0.5/0.6)²) ≈ 0.5), within 20–60°; one cell alone keeps 60°. Landmark cells:
- * narrower the more cells share the front.
+ * A field's untrained angular width (degrees), for both kinds of boundary cell: 0.6 × the gap to the nearest
+ * neighbour, so neighbouring fields cross at half activation (exp(−(0.5/0.6)²) ≈ 0.5), within 20–60°; one cell alone
+ * keeps 60°.
  */
-export function fieldWidthDeg(sense: 'boundary' | 'landmark', n: number, k = 0): number {
-  if (sense === 'landmark' || n >= BOUNDARY_DIRS.length) return n > 1 ? S.fieldSpreadDeg / n : sense === 'boundary' ? S.boundary.widthDeg : S.landmark.widthDeg;
-  if (n <= 1) return S.boundary.widthDeg;
+export function fieldWidthDeg(sense: FieldSense, n: number, k = 0): number {
+  if (n >= BOUNDARY_DIRS.length) return n > 1 ? S.fieldSpreadDeg / n : S[sense].widthDeg;
+  if (n <= 1) return S[sense].widthDeg;
   const d = BOUNDARY_DIRS[n], gap = Math.min(k > 0 ? d[k] - d[k - 1] : Infinity, k < n - 1 ? d[k + 1] - d[k] : Infinity);
   const w = 0.6 * gap;
   return w < 20 ? 20 : w > S.boundary.widthDeg ? S.boundary.widthDeg : w;
@@ -69,15 +72,15 @@ export const speedAct = (v: number, gain = 1): number => { const x = (v * gain) 
 // ---- learnable receptive fields (B2e, plan §3ad) ----
 // Each cell's tuning is its default (the even spread above) moved by its field parameters in the genome, each
 // a number in −cap..cap like a weight (0 = the default, so an untrained cell is exactly as before):
-//   boundary, landmark: direction = default + 45°·p0 (any direction), width = default · 2^(p1/2) in 20–180°,
-//                       range = default · 2^(p2/2) in 5–20 m (boundary) or 10–40 m (landmark)
+//   boundary, far:      direction = default + 45°·p0 (any direction), width = default · 2^(p1/2) in 20–180°,
+//                       range = default · 2^(p2/2) in 5–20 m (boundary) or 30–80 m (far, default 60 m)
 //   head direction:     preferred = default + p0 · 45°
 //   grid:               scale = default · 2^(p0/2) in 10–60 m, offset (15 m · p1, 15 m · p2), orientation p3 · 15°
 //   speed:              gain = 2^(p0/4), 0.5–2×
 // Energy costs don't change with the field.
 export const FIELD_DIR_DEG = 45, FIELD_LOG2 = 0.5, GRID_SHIFT_M = 15, GRID_ROT = PI / 12, HD_STEP = PI / 4, SPEED_LOG2 = 0.25;
 export const FIELD_BOUNDS = {
-  width: [20, 180], boundaryRange: [5, 20], landmarkRange: [10, 40], gridScale: [10, 60], speedGain: [0.5, 2],
+  width: [20, 180], boundaryRange: [5, 20], farRange: [30, 80], gridScale: [10, 60], speedGain: [0.5, 2],
 } as const;
 const LN2 = 0.6931471805599453;
 /** 2^x with fmath's exp (no engine maths in the sim). */
@@ -94,14 +97,14 @@ export function scaled(def: number, p: number, k: number, lo: number, hi: number
   return { v, dv: v * LN2 * k };
 }
 
-/** A boundary or landmark cell's field: direction (degrees clockwise from the nose, −180..180), width (°), range (m). */
+/** A boundary cell's field (either kind): direction (degrees clockwise from the nose, −180..180), width (°), range (m). */
 export interface Field { dirDeg: number; widthDeg: number; rangeM: number; dWidth: number; dRange: number }
-export function fieldOf(sense: 'boundary' | 'landmark', k: number, n: number, p0 = 0, p1 = 0, p2 = 0): Field {
+export function fieldOf(sense: FieldSense, k: number, n: number, p0 = 0, p1 = 0, p2 = 0): Field {
   let dir = fieldDirDeg(sense, k, n) + FIELD_DIR_DEG * p0;
   dir -= 360 * Math.round(dir / 360);
-  const [wl, wh] = FIELD_BOUNDS.width, [rl, rh] = sense === 'boundary' ? FIELD_BOUNDS.boundaryRange : FIELD_BOUNDS.landmarkRange;
+  const [wl, wh] = FIELD_BOUNDS.width, [rl, rh] = sense === 'boundary' ? FIELD_BOUNDS.boundaryRange : FIELD_BOUNDS.farRange;
   const w = scaled(fieldWidthDeg(sense, n, k), p1, FIELD_LOG2, wl, wh);
-  const r = scaled(sense === 'boundary' ? S.boundary.rangeM : S.landmark.rangeM, p2, FIELD_LOG2, rl, rh);
+  const r = scaled(S[sense].rangeM, p2, FIELD_LOG2, rl, rh);
   return { dirDeg: dir, widthDeg: w.v, rangeM: r.v, dWidth: w.dv, dRange: r.dv };
 }
 /** A head-direction cell's preferred heading (radians). */
@@ -121,7 +124,7 @@ export const senseRate = (id: SenseId, v: number): number => (id === 'hd' ? (v +
 /** Text for the designer. */
 export const SENSE_INFO: Record<SenseId, { name: string; desc: string }> = {
   boundary: { name: 'Boundary vector cells', desc: 'Fires faster when approaching a wall.' },
-  landmark: { name: 'Landmark cells', desc: 'Fires faster when the finish line is in view.' },
+  far: { name: 'Long-range boundary vector cells', desc: 'Fires faster as a distant wall comes into range.' },
   hd: { name: 'Head direction cells', desc: 'Fires faster when facing a given angle.' },
   grid: { name: 'Grid cells', desc: 'Fires on a hexagonal grid.' },
   speed: { name: 'Speed cells', desc: '+1 at top speed forwards, −1 at top speed backwards.' },

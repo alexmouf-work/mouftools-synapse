@@ -29,7 +29,7 @@ html, body { overflow: hidden; }
 .app { position: fixed; left: 0; top: 0; width: 860px; height: 400px; transform-origin: 0 0; display: grid;
   grid-template-rows: minmax(36px, auto) 30px 1fr; gap: 6px; padding: 6px 10px; font-size: 12px; }
 .app[hidden] { display: none; }
-.top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .word { font-weight: 700; font-size: 15px; }
 .alloc { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 11.5px; min-width: 0; }
 .alloc b { font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -113,7 +113,8 @@ dialog#confirm { width: 260px; }
 /* the workbench is drawn at 860 × 400 and scaled to the screen: designer.ts fit() sets --unscale (1 / that scale), so
    these stay 44 px on screen however small it is drawn */
 .app .btn.menu, .app .btn.sound { min-height: max(40px, calc(44px * var(--unscale, 1))); }
-.app .btn.menu { font-size: 14px; padding: 0 12px; }
+.app .btn.menu { font-size: 13px; padding: 0 10px; }
+.app .sounds { gap: 4px; } /* the 44 px buttons take room from the energy split: the bar's figures must still show */
 .app .btn.sound { width: max(40px, calc(44px * var(--unscale, 1))); }
 .app .btn.sound svg { width: 22px; height: 22px; }
 .btn.sound[aria-pressed="true"] .off, .btn.sound[aria-pressed="false"] .on { display: none; }

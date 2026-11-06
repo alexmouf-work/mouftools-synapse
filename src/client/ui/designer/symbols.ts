@@ -39,7 +39,27 @@ function buildSymbols(): Record<string, Sym> {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.12, 6, 28, Math.PI * 1.6), mat(0x5b8def)); g.add(ring);
       const tip = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 6), mat(0x5b8def));
       tip.position.set(0.85 * Math.cos(Math.PI * 1.6), 0.85 * Math.sin(Math.PI * 1.6), 0); tip.rotation.z = Math.PI * 1.6; g.add(tip);
-      return (t) => { g.rotation.set(0.9, 0, -t * 0.4); };
+      // the ring's arc runs counter-clockwise to the tip, so the arrow spins the way it points (senses plan §4)
+      return (t) => { g.rotation.set(0.9, 0, t * 0.4); };
+    }),
+    // the long-range boundary vector cell (senses plan §3): the boundary cell's brick wall, small and far off, and a
+    // dashed sight line to it from a lens in the foreground; the dashes travel toward the wall
+    farwall: scene((g) => {
+      const m1 = mat(0xd98a6c), m2 = mat(0xc5755a), wall = new THREE.Group();
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.2), (r + c) % 2 ? m1 : m2);
+        b.position.set((c - 1) * 0.32 + (r % 2) * 0.16 - 0.08, r * 0.16, 0); wall.add(b);
+      }
+      wall.position.set(0.7, 0.25, -1.4); g.add(wall);
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), mat(0xe8edf5)); lens.position.set(-0.85, -0.45, 0.6); g.add(lens);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), mat(0x23324f)); pupil.position.set(-0.68, -0.37, 0.78); g.add(pupil);
+      const from = new THREE.Vector3(-0.68, -0.37, 0.78), to = new THREE.Vector3(0.62, 0.38, -1.35), N = 6;
+      const dashes = Array.from({ length: N }, () => { const d = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.22), mat(0x5b8def)); d.lookAt(to.clone().sub(from)); g.add(d); return d; });
+      const dir = to.clone().sub(from);
+      return (t) => {
+        dashes.forEach((d, i) => { const u = ((i + t * 0.6) % N) / N; d.position.copy(from).addScaledVector(dir, 0.12 + u * 0.8); });
+        g.rotation.set(0.15, -0.35, 0);
+      };
     }),
     hex: scene((g) => {
       const discs: THREE.Mesh[] = [], geo = new THREE.CylinderGeometry(0.3, 0.3, 0.16, 18);

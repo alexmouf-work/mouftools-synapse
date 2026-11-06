@@ -12,17 +12,17 @@ import { FIELD_PARAMS, fieldCount, fieldIndex, inputIds, paramCount, type BrainS
 import { generateTrack } from '../../src/common/sim/track';
 import { Rng } from '../../src/common/rng';
 
-const ALL: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 2, fn: 'tanh' }] };
+const ALL: BrainSpec = { v: 2, senses: { boundary: 3, far: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 2, fn: 'tanh' }] };
 
 describe('learned receptive fields', () => {
   it('field parameters of 0 are the even spread: every cell tuned as before', () => {
     const net = compile(zeroGenome(ALL));
     inputIds(ALL).forEach((id, i) => {
       const [, s, kk] = id.split(':'), k = Number(kk), n = ALL.senses[s as SenseId], q = 4 * i;
-      if (s === 'boundary' || s === 'landmark') {
+      if (s === 'boundary' || s === 'far') {
         expect(net.tune[q]).toBe(fieldDirDeg(s, k, n));
         expect(net.tune[q + 1]).toBe(fieldWidthDeg(s, n, k));
-        expect(net.tune[q + 2]).toBe(s === 'boundary' ? CONFIG.senses.boundary.rangeM : CONFIG.senses.landmark.rangeM);
+        expect(net.tune[q + 2]).toBe(s === 'boundary' ? CONFIG.senses.boundary.rangeM : CONFIG.senses.far.rangeM);
       } else if (s === 'hd') expect(net.tune[q]).toBe(hdPreferred(k, n));
       else if (s === 'grid') { expect(net.tune[q]).toBe(gridScale(k)); expect(net.gridPhase[i]).toBe(gridPhase(k)); expect([net.tune[q + 1], net.tune[q + 2], net.tune[q + 3]]).toEqual([0, 0, 0]); }
       else expect(net.tune[q]).toBe(1);
@@ -33,8 +33,8 @@ describe('learned receptive fields', () => {
 
   it('stays within its bounds however far the parameters go (any direction; width 20–180°; ranges; scale; gain)', () => {
     for (const p of [-4, -2, 0, 2, 4]) {
-      for (const s of ['boundary', 'landmark'] as const) for (const n of [1, 3]) {
-        const f = fieldOf(s, 0, n, p, p, p), [rl, rh] = s === 'boundary' ? FIELD_BOUNDS.boundaryRange : FIELD_BOUNDS.landmarkRange;
+      for (const s of ['boundary', 'far'] as const) for (const n of [1, 3]) {
+        const f = fieldOf(s, 0, n, p, p, p), [rl, rh] = s === 'boundary' ? FIELD_BOUNDS.boundaryRange : FIELD_BOUNDS.farRange;
         expect(f.dirDeg).toBeGreaterThanOrEqual(-180); expect(f.dirDeg).toBeLessThanOrEqual(180);
         expect(f.widthDeg).toBeGreaterThanOrEqual(20); expect(f.widthDeg).toBeLessThanOrEqual(180);
         expect(f.rangeM).toBeGreaterThanOrEqual(rl); expect(f.rangeM).toBeLessThanOrEqual(rh);
@@ -43,9 +43,13 @@ describe('learned receptive fields', () => {
       expect(g.scale).toBeGreaterThanOrEqual(10); expect(g.scale).toBeLessThanOrEqual(60);
       expect(speedGainOf(p)).toBeGreaterThanOrEqual(0.5 - 1e-12); expect(speedGainOf(p)).toBeLessThanOrEqual(2 + 1e-12);
     }
-    // the boundary range can shrink to its 5 m floor; a landmark can look out to 40 m and in to 10 m
+    // the boundary range can shrink to its 5 m floor; a long-range cell looks out 60 m, learnable from 30 to 80 m
     expect(fieldOf('boundary', 0, 1, 0, 0, -4).rangeM).toBe(5);
-    expect(fieldOf('landmark', 0, 1, 0, 0, -4).rangeM).toBe(10);
+    expect(fieldOf('far', 0, 1).rangeM).toBe(60);
+    expect(fieldOf('far', 0, 1, 0, 0, -4).rangeM).toBe(30);
+    expect(fieldOf('far', 0, 1, 0, 0, 4).rangeM).toBe(80);
+    // its directions are the boundary cells' table, by its own count
+    expect([0, 1, 2].map((k) => fieldOf('far', k, 3).dirDeg)).toEqual([-45, 0, 45]);
     expect(hdOf(0, 1, 4) - hdOf(0, 1, 0)).toBeCloseTo(Math.PI, 12);
   });
 
@@ -76,7 +80,7 @@ describe('learned receptive fields', () => {
             return (plus[i] - minus[i]) / (2 * h);
           };
           const n1 = num(1e-5), n2 = num(2e-5);
-          if (sense === 'boundary' && j < 2) { expect(grad[a + j]).toBe(0); continue; } // ray-sampled: no gradient
+          if ((sense === 'boundary' || sense === 'far') && j < 2) { expect(grad[a + j]).toBe(0); continue; } // ray-sampled: no gradient
           if (Math.abs(n1 - n2) > 1e-4 * (1 + Math.abs(n1))) continue; // a kink (a clamp, a ray switching walls)
           expect(grad[a + j]).toBeCloseTo(n1, 5);
           if (grad[a + j] !== 0) compared++;

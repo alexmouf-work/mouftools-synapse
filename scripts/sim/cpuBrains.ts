@@ -28,14 +28,14 @@ interface Style { base: BrainSpec; grow: Step[] }
 const b = (n = 1): Step[] => Array.from({ length: n }, () => ({ sense: 'boundary' as const }));
 const STYLES: Record<string, Style> = {
   // eyes first: wall cells, then neurons (then headings and landmarks once those are full, so it keeps growing)
-  eyes: { base: { v: 2, senses: { boundary: 3, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] }, grow: [...b(), { neuron: 0 }, ...b(), { neuron: 0 }, { sense: 'speed' }, { sense: 'hd' }, { sense: 'landmark' }] },
+  eyes: { base: { v: 2, senses: { boundary: 3, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] }, grow: [...b(), { neuron: 0 }, ...b(), { neuron: 0 }, { sense: 'speed' }, { sense: 'hd' }, { sense: 'far' }] },
   // balanced: a wall cell, a neuron, a heading now and then
-  even: { base: { v: 2, senses: { boundary: 2, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] }, grow: [...b(), { neuron: 0 }, { sense: 'hd' }, { neuron: 0 }, { sense: 'landmark' }] },
+  even: { base: { v: 2, senses: { boundary: 2, far: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] }, grow: [...b(), { neuron: 0 }, { sense: 'hd' }, { neuron: 0 }, { sense: 'far' }] },
   // speed-aware: the signed speed cell from the start
-  pace: { base: { v: 2, senses: { boundary: 3, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 3, fn: 'tanh' }] }, grow: [{ neuron: 0 }, ...b(), { neuron: 0 }, ...b(), { sense: 'hd' }, { sense: 'landmark' }] },
+  pace: { base: { v: 2, senses: { boundary: 3, far: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 3, fn: 'tanh' }] }, grow: [{ neuron: 0 }, ...b(), { neuron: 0 }, ...b(), { sense: 'hd' }, { sense: 'far' }] },
   // deep: a second layer once it can afford one
   // (two layers from round 1: a layer added later would start at 0 and cut the trained path through it)
-  deep: { base: { v: 2, senses: { boundary: 2, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }, { n: 2, fn: 'tanh' }] }, grow: [...b(), { neuron: 0 }, { neuron: 1 }, { sense: 'hd' }] },
+  deep: { base: { v: 2, senses: { boundary: 2, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }, { n: 2, fn: 'tanh' }] }, grow: [...b(), { neuron: 0 }, { neuron: 1 }, { sense: 'hd' }] },
 };
 // name order = budget order; styles alternate
 const PLAN: { share: number; style: string }[] = [

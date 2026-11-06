@@ -1,6 +1,7 @@
 // Sound check (docs/plans/2026-11-04-sound.md), headless Chromium with autoplay allowed:
 // - The page opens on the title; before any gesture audio is locked; the first tap unlocks it: the race track's quiet
 //   pool; Sandbox → the lounge; the music never falls silent through title → sandbox → train → drive → back.
+// - Multiplayer's lobby screens keep the title's lounge (senses plan §1).
 // - Train (10 generations from the popup, race mode) then Drive; the countdown follows the music: 5, 4, 3, 2, 1, Go, the car held on the line (tick 0) until Go
 //   and moving after, Go on the drop (the racing sections start there); the drive hash is the Node replay's.
 // - Back to the workbench → the lounge again. The winner hook plays the winner once, then the lounge comes back.
@@ -124,6 +125,15 @@ async function main() {
     check(a.state === 'running' && a.mode === 'lounge' && a.phrase === 'lounge', `first tap on the title: ${a.state}, ${a.mode} mode, playing ${a.phrase}`);
     // the music must never fall silent from here on (sampled every 50 ms through title → sandbox → train → drive → back)
     await page.evaluate('window.__lv = []; window.__lvT = setInterval(() => window.__lv.push([performance.now(), window.__audio.level, window.__audio.phrase, window.__audio.mode]), 50)');
+
+    // 1b. Multiplayer: the lobby plays the title's lounge too, straight on (senses plan §1), and back
+    await page.click('#toMatch');
+    await page.waitForSelector('#mp:not([hidden])');
+    await page.waitForTimeout(800);
+    a = await au(page);
+    check(a.mode === 'lounge' && a.phrase === 'lounge', `Multiplayer's lobby screens play the lounge, carried on from the title (${a.mode} mode, playing ${a.phrase})`);
+    await page.click('#mpBack');
+    await page.waitForSelector('#title:not([hidden])');
 
     // 2. Sandbox → the lounge carries straight on
     await page.click('#toSandbox');

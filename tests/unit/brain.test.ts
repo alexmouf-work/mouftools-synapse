@@ -17,7 +17,7 @@ const E = CONFIG.energy;
  * One speed cell → one neuron (fn) → the four wheels (tanh). Parameters: wires speed→h, then h→FL, FR, RL, RR; then
  * the biases of h, FL, FR, RL, RR (z = b + Σ w·x); then the speed cell's field (its gain; 0 = ×1).
  */
-const oneNeuron = (fn: Act): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
+const oneNeuron = (fn: Act): BrainSpec => ({ v: 2, senses: { boundary: 0, far: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
 
 describe('brain v2: outputs, rates and the energy load, hand-computed for every function', () => {
   for (const fn of ACTS) {
@@ -50,7 +50,7 @@ describe('brain v2: outputs, rates and the energy load, hand-computed for every 
     expect(transfer(ACT_CODE.linear, -7)).toBe(-1);
   });
   it('head-direction cells fire at (cos + 1) / 2', () => {
-    const net = compile({ spec: { v: 2, senses: { boundary: 0, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }, w: new Array(11).fill(0) });
+    const net = compile({ spec: { v: 2, senses: { boundary: 0, far: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }, w: new Array(11).fill(0) });
     expect(nodeRate(net, 0, -1)).toBe(0); expect(nodeRate(net, 0, 1)).toBe(1);
   });
 });

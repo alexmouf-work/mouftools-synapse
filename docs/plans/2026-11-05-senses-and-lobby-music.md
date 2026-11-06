@@ -34,3 +34,25 @@ around)"
 
 Checks (affected only): types, purity, unit, determinism, workbench (tray, inspector, icon), training and race (if
 the CPU brains change), audio (lobby music).
+
+## Built (2026-11-06)
+1. The lobby (main.ts `lobby()` and the lobby's `show`) plays the lounge; a latecomer watching a match keeps the
+   build music. check:audio: title → Multiplayer keeps the lounge.
+2. New layers (`insertLayer`) and the random starter's layer are Linear; `defaultSpec()` keeps tanh as the fixture.
+3. Sense id `far` (in the landmark's place, so the parameter layout is the same): `boundaryValue` at 60 m, learnable
+   30–80 m (`FIELD_BOUNDS.farRange`), the boundary table by its own count, max 5, cost 1.875 (1.25×); backprop
+   learns its range only, as the short cell's. "Long-range boundary vector cell" / "Fires faster as a distant wall
+   comes into range." Icon `farwall` (symbols.ts): a small brick wall far off and a lens in front, dashes travelling
+   to the wall (out/s2/far-cell.png). Saves and genome JSON with landmark cells load as long-range cells, weights
+   kept, fields reset (`spec.ts migrateGenome`; unit test). The landmark sensor and its gradient are gone. CPU brains
+   regenerated (median 30 s alone, weakest to strongest budget: R1 891–1421 m, R2 594–1367 m, R3 723–1329 m).
+   Goldens: `raceHeavy` and `raceEight` (the heavy brain had 2 landmark cells, now 2 long-range cells), `match` and
+   `round` (the CPU brains) change; every training-phase golden (evolution, backprop, actor-critic, A_RP, ×2, race
+   track) is unchanged.
+   - **S1:** unchanged. S1 trains `defaultSpec()` (one boundary, one head-direction cell, tanh), which this stage
+     doesn't touch, and the phase goldens of all four trainers on it are bit-identical, so the T1 table stands
+     (docs/plans/2026-11-05-tracks-v2-and-match-settings.md, T1): median final fitness 2876, (a) 1390 m, (b) 0/20,
+     (c) 19/20, (d) 17/20, (f) pass. Not re-run.
+4. The head-direction arrow turns with z increasing (`t * 0.4`): out/s2/hd-spin-1.png → hd-spin-2.png.
+- The workbench's top bar, tighter since match polish's 44 px buttons clipped the energy split's figures at 1440×900.
+- Checked: types, purity, unit, determinism, workbench, audio, race, training.

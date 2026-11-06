@@ -3,14 +3,14 @@ import { defaultGenome, genomeHash } from '../../src/common/sim/brain';
 import { parse, serialize, startSaved, starterGenome } from '../../src/client/ui/designer/store';
 import { biasCount, fieldCount, SENSE_IDS, starterSpec, validateGenome, wireCount, type Genome } from '../../src/common/sim/spec';
 
-/** A new brain (plan §3c): 2–6 input cells, at least one boundary vector cell, 3 tanh neurons, untrained. */
+/** A new brain (plan §3c): 2–6 input cells, at least one boundary vector cell, 3 Linear neurons (senses plan §2), untrained. */
 function expectStarter(g: Genome): void {
   validateGenome(g);
   const n = SENSE_IDS.reduce((a, id) => a + g.spec.senses[id], 0);
   expect(n).toBeGreaterThanOrEqual(2);
   expect(n).toBeLessThanOrEqual(6);
   expect(g.spec.senses.boundary).toBeGreaterThanOrEqual(1);
-  expect(g.spec.layers).toEqual([{ n: 3, fn: 'tanh' }]);
+  expect(g.spec.layers).toEqual([{ n: 3, fn: 'linear' }]);
   expect(g.w.every((w) => w === 0)).toBe(true);
 }
 

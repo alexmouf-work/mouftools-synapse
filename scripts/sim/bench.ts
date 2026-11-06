@@ -40,7 +40,7 @@ function race(spec: BrainSpec, w: ArrayLike<number>, t: Track, ticks: number = C
   return { prog: r.prog, wallTicks: r.wallTicks, x: rec.x, y: rec.y, ticks: rec.ticks };
 }
 /** (d)'s cheap design in brain v2: one boundary vector cell and one linear neuron (there are no presets any more). */
-const minimalSpec = (): Spec => ({ v: 2, senses: { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'linear' }] });
+const minimalSpec = (): Spec => ({ v: 2, senses: { boundary: 1, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'linear' }] });
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
 interface Row {

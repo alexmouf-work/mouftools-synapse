@@ -50,10 +50,10 @@ function allocText(s: BrainSpec): { brain: string; speed: string } {
 }
 const sizes: [string, BrainSpec][] = [
   ['default', defaultGenome().spec],
-  ['3 layers × 4, three senses', { v: 2, senses: { boundary: 3, landmark: 1, hd: 2, grid: 0, speed: 1 }, layers: [{ n: 4, fn: 'relu' }, { n: 4, fn: 'tanh' }, { n: 4, fn: 'sigmoid' }] }],
-  ['8 × 8, every sense full', { v: 2, senses: { boundary: 7, landmark: 5, hd: 8, grid: 6, speed: 1 }, layers: Array.from({ length: 8 }, (_, L) => ({ n: 8, fn: (['linear', 'relu', 'sigmoid', 'tanh'] as const)[L % 4] })) }],
-  ['8 layers × 1', { v: 2, senses: { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: Array.from({ length: 8 }, () => ({ n: 1, fn: 'tanh' as const })) }],
-  ['1 × 8, no senses', { v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 8, fn: 'linear' }] }],
+  ['3 layers × 4, three senses', { v: 2, senses: { boundary: 3, far: 1, hd: 2, grid: 0, speed: 1 }, layers: [{ n: 4, fn: 'relu' }, { n: 4, fn: 'tanh' }, { n: 4, fn: 'sigmoid' }] }],
+  ['8 × 8, every sense full', { v: 2, senses: { boundary: 7, far: 5, hd: 8, grid: 6, speed: 1 }, layers: Array.from({ length: 8 }, (_, L) => ({ n: 8, fn: (['linear', 'relu', 'sigmoid', 'tanh'] as const)[L % 4] })) }],
+  ['8 layers × 1', { v: 2, senses: { boundary: 1, far: 0, hd: 0, grid: 0, speed: 0 }, layers: Array.from({ length: 8 }, () => ({ n: 1, fn: 'tanh' as const })) }],
+  ['1 × 8, no senses', { v: 2, senses: { boundary: 0, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 8, fn: 'linear' }] }],
 ];
 
 async function saved(page: Page) {
@@ -143,6 +143,17 @@ async function main() {
     check((await page.locator('#insp .use b').innerText()) === fmtE(senseMax(s, 'boundary')), `"At maximum firing rate, uses ${fmtE(senseMax(s, 'boundary'))} energy" (energy.ts)`);
     await page.click('#insp .bin');
     check((await spec(page)).senses.boundary === 1, 'the bin removes the cell');
+    // the long-range boundary vector cell (senses plan §3): in the tray, named and described, its own icon
+    await page.click('#tray [data-s="far"]');
+    const far = { n: (await spec(page)).senses.far, h: await page.locator('#insp h2').innerText(), d: await page.locator('#insp .desc').innerText(), lab: await page.locator('#tray [data-s="far"]').getAttribute('aria-label') };
+    check(far.n === 1 && far.h.toLowerCase() === 'long-range boundary vector cell' && far.d === 'Fires faster as a distant wall comes into range.' && far.lab === 'Add a long-range boundary vector cell',
+      `tap the long-range tile: a long-range boundary vector cell ("${far.h}": "${far.d}"; tile "${far.lab}")`);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${OUT}/far-cell.png` });
+    // the head-direction arrow spins the way it points (senses plan §4): a pair of the tile 1.5 s apart, by eye
+    const hdBox = await page.locator('#tray [data-s="hd"]').boundingBox();
+    if (hdBox) for (const k of [1, 2]) { await page.screenshot({ path: `${OUT}/hd-spin-${k}.png`, clip: hdBox }); await page.waitForTimeout(1500); }
+    await page.click('#insp .bin');
     for (let k = 0; k < 2; k++) await page.click('#tray [data-s="speed"]', { force: true });
     check((await spec(page)).senses.speed === 1 && await page.locator('#tray [data-s="speed"]').isDisabled() && await page.locator('#tray [data-s="speed"] .plus').count() === 0, 'speed cells: one at most; the full tile dims and loses its "+"');
     // the signed speed cell (principal 2026-11-05): its graph runs from −top to +top forward speed and −1 to +1
@@ -180,7 +191,7 @@ async function main() {
       await page.evaluate((x) => window.__designer!.select(x), id);
       check(await bubbles() === 0, `${id} selected: no "−" (wheels and layers can't be removed that way)`);
     }
-    await page.evaluate((g) => { window.__designer!.load(g); window.__designer!.select('h0:0'); }, zeroGenome({ v: 2, senses: { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }));
+    await page.evaluate((g) => { window.__designer!.load(g); window.__designer!.select('h0:0'); }, zeroGenome({ v: 2, senses: { boundary: 1, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 1, fn: 'tanh' }] }));
     check(await bubbles() === 0 && await page.locator('#rmN').count() === 0, 'a layer\'s last neuron: no "−", as no bin');
     await page.evaluate((g) => { window.__designer!.load(g); window.__designer!.select('h0:2'); }, defaultGenome());
     await page.keyboard.press('Delete');
@@ -214,7 +225,7 @@ async function main() {
     check((await spec(page)).layers[0].n === 7, 'the "−" above the layer removes one');
     await page.click('#net g[data-add-l="1"]');
     s = await spec(page);
-    check(s.layers.length === 2 && s.layers[1].n === CONFIG.brain.newLayerNeurons && s.layers[1].fn === 'tanh', 'a "+" on a column boundary inserts a layer of two tanh neurons there');
+    check(s.layers.length === 2 && s.layers[1].n === CONFIG.brain.newLayerNeurons && s.layers[1].fn === 'linear', 'a "+" on a column boundary inserts a layer of two Linear neurons there (senses plan §2)');
     await page.click('#net g[data-rm-l="1"]');
     check((await spec(page)).layers.length === 1, 'the "−" at the foot of a column removes the layer');
     while ((await spec(page)).layers.length < 8) await page.click('#net g[data-add-l="1"]');

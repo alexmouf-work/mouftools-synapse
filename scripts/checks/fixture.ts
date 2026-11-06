@@ -11,11 +11,11 @@ export async function fixtureBrain(ctx: BrowserContext): Promise<void> {
   await ctx.addInitScript(([k, s]) => { try { if (localStorage.getItem(k) === null) localStorage.setItem(k, s); } catch { /* no storage */ } }, [SAVE_KEY, v] as const);
 }
 
-/** A new brain as plan §3c draws it: 2–6 input cells, one at least a boundary vector cell, 3 tanh neurons, untrained. */
+/** A new brain as plan §3c draws it: 2–6 input cells, one at least a boundary vector cell, 3 Linear neurons, untrained. */
 export function isStarter(g: Genome): boolean {
   const n = SENSE_IDS.reduce((a, id) => a + g.spec.senses[id], 0);
   return n >= 2 && n <= 6 && g.spec.senses.boundary >= 1 && g.spec.layers.length === 1 && g.spec.layers[0].n === 3
-    && g.spec.layers[0].fn === 'tanh' && g.w.every((w) => w === 0);
+    && g.spec.layers[0].fn === 'linear' && g.w.every((w) => w === 0);
 }
 
 /** The standings panel against the round's countdown, as the page lays it out (see STANDINGS_LAYOUT). */

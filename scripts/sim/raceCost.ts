@@ -10,7 +10,7 @@ import { paramCount, type BrainSpec, type Genome } from '../../src/common/sim/sp
 import { Rng } from '../../src/common/rng';
 
 const cpu = cpuRounds(cpuData)[4].map((b) => b.genome);
-const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 6, fn: 'relu' }, { n: 4, fn: 'sigmoid' }] };
+const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, far: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 6, fn: 'relu' }, { n: 4, fn: 'sigmoid' }] };
 const r = new Rng(1), heavy: Genome = { ...zeroGenome(HEAVY), w: Array.from({ length: paramCount(HEAVY) }, () => Math.max(-4, Math.min(4, r.normal()))) };
 const field = (n: number) => Array.from({ length: n }, (_, k) => (k % 10 === 9 ? heavy : cpu[k % cpu.length]));
 for (const n of [10, 100]) {

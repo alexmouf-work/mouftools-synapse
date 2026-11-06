@@ -17,7 +17,7 @@ export const CONFIG = {
    * halved 2026-11-04 ("increase the max energy allowed for a brain by 2x").
    */
   energy: {
-    sense: { boundary: 1.5, landmark: 1.5, hd: 1, grid: 1, speed: 1 },
+    sense: { boundary: 1.5, far: 1.875, hd: 1, grid: 1, speed: 1 }, // far: the long-range cell, 1.25× for its longer rays
     neuron: { linear: 0.75, relu: 1, sigmoid: 1.5, tanh: 1.5 },
     wheel: 0.75,
     wire: 0.075,
@@ -35,7 +35,7 @@ export const CONFIG = {
   /** The senses (brain v2 §2): how many cells each may have, and their fields. */
   senses: {
     boundary: { max: 7, rangeM: 20, widthDeg: 60 }, // a wall within 20 m in the field's direction
-    landmark: { max: 5, rangeM: 40, widthDeg: 70 }, // the finish line within 40 m
+    far: { max: 5, rangeM: 60, widthDeg: 60 }, // long-range boundary vector cell: a wall within 60 m (senses plan §3)
     hd: { max: 8 },
     grid: { max: 6, smallM: 11, largeM: 26, phaseStep: 2.1 },
     speed: { max: 1 },

@@ -24,14 +24,14 @@ describe('edit ops (brain v2: senses, layers, functions; wiring is fixed)', () =
     expect(g.spec.senses.hd).toBe(0);
     expect(removeSense(g, 'hd').ok).toBe(false);
   });
-  it('a new layer starts with two tanh neurons, where it is put; 8 layers at most; the last layer stays', () => {
+  it('a new layer starts with two Linear neurons (senses plan §2), where it is put; 8 layers at most; the last layer stays', () => {
     let g = ok(setLayerFn(defaultGenome(), 0, 'relu'));
     g = ok(insertLayer(g, 0));
-    expect(g.spec.layers).toEqual([{ n: 2, fn: 'tanh' }, { n: 3, fn: 'relu' }]);
+    expect(g.spec.layers).toEqual([{ n: 2, fn: 'linear' }, { n: 3, fn: 'relu' }]);
     while (g.spec.layers.length < 8) g = ok(insertLayer(g, g.spec.layers.length));
     expect(insertLayer(g, 0).ok).toBe(false);
     while (g.spec.layers.length > 1) g = ok(removeLayer(g, 0));
-    expect(g.spec.layers).toEqual([{ n: 2, fn: 'tanh' }]);
+    expect(g.spec.layers).toEqual([{ n: 2, fn: 'linear' }]);
     expect(removeLayer(g, 0).ok).toBe(false);
   });
   it('a layer holds 1 to 8 neurons', () => {
@@ -67,7 +67,7 @@ describe('edit ops (brain v2: senses, layers, functions; wiring is fixed)', () =
   it('vs CPU and Multiplayer refuse an edit past 100% flat out; the sandbox allows it', () => {
     // grow a brain one neuron at a time until the next neuron would pass 100% with everything flat out
     let g = defaultGenome();
-    for (let L = 0; L < 7; L++) g = ok(insertLayer(g, 0));
+    for (let L = 0; L < 7; L++) g = ok(setLayerFn(ok(insertLayer(g, 0)), 0, 'tanh')); // tanh: dear enough to pass 100%
     let crossing: { L: number; n: number } | null = null;
     for (let n = 2; n <= 8 && !crossing; n++) for (let L = 0; L < 8 && !crossing; L++) {
       if (g.spec.layers[L].n >= n) continue;

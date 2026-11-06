@@ -67,7 +67,7 @@ const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 const ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'];
 let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
-const BIG: BrainSpec = { v: 2, senses: { boundary: 4, landmark: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 7, fn: 'tanh' }] }; // 23.7%: past round 1's 20%
+const BIG: BrainSpec = { v: 2, senses: { boundary: 4, far: 0, hd: 0, grid: 0, speed: 0 }, layers: [{ n: 7, fn: 'tanh' }] }; // 23.7%: past round 1's 20%
 /** A round's race seed from the match seed (as ui/rounds draws it). */
 const raceSeedOf = (match: number, round: number) => derive(match >>> 0, 0x50d5, round);
 const km = (m: number) => { const v = (Math.abs(m) / 1000).toFixed(2); return `${m < 0 && v !== '0.00' ? '−' : ''}${v} km`; };

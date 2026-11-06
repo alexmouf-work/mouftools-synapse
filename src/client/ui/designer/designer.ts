@@ -10,7 +10,7 @@ import {
   type EditResult,
 } from '../../../common/sim/brain';
 import { cellMax, energyRefusal, layerMax, maxLoad, restLoad, senseMax, speedCap, type Mode, type Rule } from '../../../common/sim/energy';
-import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
+import { fieldAct, fieldOf, gridAct, gridOf, hdAct, hdOf, isFieldSense, SENSE_INFO, speedGainOf } from '../../../common/sim/senses';
 import { biasIndex, columns, defaultSpec, FIELD_PARAMS, fieldIndex, inputIds, layerIds, OUTPUTS, SENSE_IDS, wireList, type BrainSpec, type Genome, type SenseId } from '../../../common/sim/spec';
 import { TEMP_MAX, TEMP_MIN, TEMP_STEP, tempScale, trainerInfo } from '../../../common/train/trainer';
 import { weightStyle } from '../weights';
@@ -47,7 +47,7 @@ export const FX: Record<Act, { n: string; g: string }> = {
   sigmoid: { n: 'Sigmoid', g: 'M-8 4 C-2 4 2 -4 8 -4' },
   tanh: { n: 'Tanh', g: 'M-8 5 C-2 5 2 -5 8 -5' },
 };
-const SYM: Record<SenseId, string> = { boundary: 'wall', landmark: 'flag', hd: 'arrow', grid: 'hex', speed: 'gauge' };
+const SYM: Record<SenseId, string> = { boundary: 'wall', far: 'farwall', hd: 'arrow', grid: 'hex', speed: 'gauge' };
 const DESC = { neuron: 'Sums its inputs, then fires.', wheel: 'Sets this wheel\'s speed.' };
 /** The trainers in the picker, with the rule the strip shows (principal 2026-11-04: "Learning Rule : [equation]"). */
 export const TRAINERS: { id: TrainerId; n: string; eq: string }[] = [
@@ -289,7 +289,7 @@ function fieldLine(id: SenseId, k: number, n: number): string {
   if (p.every((x) => x === 0)) return '';
   const deg = (d: number) => `${d >= 0 ? '' : '−'}${Math.abs(Math.round(d))}°`;
   let t: string;
-  if (id === 'boundary' || id === 'landmark') { const f = fieldOf(id, k, n, p[0], p[1], p[2]); t = `${deg(f.dirDeg)} · ${Math.round(f.widthDeg)}° wide · ${f.rangeM.toFixed(1)} m`; }
+  if (isFieldSense(id)) { const f = fieldOf(id, k, n, p[0], p[1], p[2]); t = `${deg(f.dirDeg)} · ${Math.round(f.widthDeg)}° wide · ${f.rangeM.toFixed(1)} m`; }
   else if (id === 'hd') { let a = (hdOf(k, n, p[0]) * 180) / Math.PI; a -= 360 * Math.floor(a / 360); t = `prefers ${Math.round(a)}°`; }
   else if (id === 'grid') { const f = gridOf(k, p[0], p[1], p[2], p[3]); t = `${f.scale.toFixed(1)} m · shifted ${Math.hypot(f.ox, f.oy).toFixed(1)} m · turned ${deg((f.rot * 180) / Math.PI)}`; }
   else t = `gain ×${speedGainOf(p[0]).toFixed(2)}`;
@@ -439,9 +439,9 @@ function speedLine(gain: number): void {
 /** The cell's graph from its learned field (B2e): the inspector shows how training moved it. */
 function graphSense(id: SenseId, k: number, n: number): void {
   const p = fieldParams(id, k);
-  if (id === 'boundary' || id === 'landmark') {
+  if (isFieldSense(id)) {
     const f = fieldOf(id, k, n, p[0], p[1], p[2]);
-    polar(f.dirDeg, f.rangeM, f.widthDeg, id === 'boundary' ? 5 : 10);
+    polar(f.dirDeg, f.rangeM, f.widthDeg, id === 'boundary' ? 5 : 20);
   } else if (id === 'hd') wave(hdOf(k, n, p[0]));
   else if (id === 'grid') gridMap(k);
   else speedLine(speedGainOf(p[0]));

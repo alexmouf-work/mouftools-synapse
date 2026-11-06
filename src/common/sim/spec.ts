@@ -5,9 +5,10 @@
 import { ACTS, CONFIG, type Act } from '../config';
 import { derive, Rng, TAG } from '../rng';
 
-export type SenseId = 'boundary' | 'landmark' | 'hd' | 'grid' | 'speed';
+/** 'far': the long-range boundary vector cell (senses plan 2026-11-05 §3), in the place the landmark cell had. */
+export type SenseId = 'boundary' | 'far' | 'hd' | 'grid' | 'speed';
 /** The senses in their fixed order: the order of the compiled net's first nodes. */
-export const SENSE_IDS: readonly SenseId[] = ['boundary', 'landmark', 'hd', 'grid', 'speed'];
+export const SENSE_IDS: readonly SenseId[] = ['boundary', 'far', 'hd', 'grid', 'speed'];
 
 export interface LayerSpec { n: number; fn: Act }
 export interface BrainSpec { v: 2; senses: Record<SenseId, number>; layers: LayerSpec[] }
@@ -33,26 +34,26 @@ export const OUTPUTS = [
  * 2026-11-05 new brains start from starterSpec; this one stays as the fixture for the goldens, S1 and the checks.
  */
 export function defaultSpec(): BrainSpec {
-  return { v: 2, senses: { boundary: 1, landmark: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] };
+  return { v: 2, senses: { boundary: 1, far: 0, hd: 1, grid: 0, speed: 0 }, layers: [{ n: 3, fn: 'tanh' }] };
 }
 
 /**
  * A new brain (plan §3c, 2026-11-05: "a random assortment of input neurons, including copies of the same, with at
  * least 1 boundary vector cell always … between 2 and 6 inputs"): 2–6 cells, the count uniform; one boundary vector
  * cell, each of the rest uniform over the five senses, repeats allowed (a sense already at its most, which only the one
- * speed cell can be, is drawn again); copies spread their fields evenly (field parameters 0); 3 tanh neurons, the
+ * speed cell can be, is drawn again); copies spread their fields evenly (field parameters 0); 3 Linear neurons (senses plan §2), the
  * wheels. Deterministic given its seed; the client seeds it from crypto and the sim never calls it.
  */
 export function starterSpec(seed: number): BrainSpec {
   const r = new Rng(derive(seed >>> 0, TAG.starter));
   const n = 2 + r.int(5);
-  const senses: Record<SenseId, number> = { boundary: 1, landmark: 0, hd: 0, grid: 0, speed: 0 };
+  const senses: Record<SenseId, number> = { boundary: 1, far: 0, hd: 0, grid: 0, speed: 0 };
   for (let k = 1; k < n; k++) {
     let id: SenseId;
     do id = SENSE_IDS[r.int(SENSE_IDS.length)]; while (senses[id] >= CONFIG.senses[id].max);
     senses[id]++;
   }
-  return { v: 2, senses, layers: [{ n: 3, fn: 'tanh' }] };
+  return { v: 2, senses, layers: [{ n: 3, fn: 'linear' }] }; // Linear by default (senses plan §2)
 }
 
 export const inputIds = (s: BrainSpec): string[] => SENSE_IDS.flatMap((id) => Array.from({ length: s.senses[id] }, (_, k) => `i:${id}:${k}`));
@@ -77,10 +78,10 @@ export function wireCount(s: BrainSpec): number {
 /** Neurons with a bias: every hidden neuron and every wheel. */
 export const biasCount = (s: BrainSpec): number => s.layers.reduce((a, l) => a + l.n, 0) + OUTPUTS.length;
 /**
- * Learnable field parameters per cell (B2e, plan §3ad): boundary and landmark cells their direction, width and range;
+ * Learnable field parameters per cell (B2e, plan §3ad): boundary and long-range boundary cells their direction, width and range;
  * head direction its preferred angle; grid cells their scale, offset (x, y) and orientation; speed its gain.
  */
-export const FIELD_PARAMS: Record<SenseId, number> = { boundary: 3, landmark: 3, hd: 1, grid: 4, speed: 1 };
+export const FIELD_PARAMS: Record<SenseId, number> = { boundary: 3, far: 3, hd: 1, grid: 4, speed: 1 };
 export const fieldCount = (s: BrainSpec): number => SENSE_IDS.reduce((a, id) => a + s.senses[id] * FIELD_PARAMS[id], 0);
 /** Length of a genome's parameter vector: the wires' weights, the biases, then the input cells' fields. */
 export const paramCount = (s: BrainSpec): number => wireCount(s) + biasCount(s) + fieldCount(s);
@@ -99,6 +100,30 @@ export function biasIndex(s: BrainSpec, id: string): number {
   let k = 0;
   for (let c = 1; c < C.length; c++) for (const x of C[c]) { if (x === id) return off + k; k++; }
   throw new Error(`spec: ${id} has no bias`);
+}
+
+/**
+ * A spec or genome from before the long-range cell (senses plan §3): its landmark cells become long-range boundary
+ * cells in the same place (the parameter layout is unchanged), weights kept, their fields reset to the table.
+ * Returns the input untouched when there is nothing to change.
+ */
+export function migrateSpec<T extends { senses: Record<string, number> }>(s: T): T {
+  if (!s?.senses || !('landmark' in s.senses)) return s;
+  const { landmark, ...rest } = s.senses;
+  const senses: Record<string, number> = {};
+  for (const id of SENSE_IDS) senses[id] = id === 'far' ? landmark : rest[id];
+  for (const k of Object.keys(rest)) if (!(k in senses)) senses[k] = rest[k];
+  return { ...s, senses };
+}
+export function migrateGenome(g: Genome): Genome {
+  const old = g?.spec?.senses as Record<string, number> | undefined;
+  if (!old || !('landmark' in old)) return g;
+  const spec = migrateSpec(g.spec), w = [...g.w];
+  if (w.length === paramCount(spec)) {
+    const n = spec.senses.far;
+    for (let k = 0; k < n; k++) { const a = fieldIndex(spec, `i:far:${k}`); for (let j = 0; j < FIELD_PARAMS.far; j++) w[a + j] = 0; }
+  }
+  return { spec, w };
 }
 
 /** Throws with the first problem found. */

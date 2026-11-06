@@ -53,7 +53,7 @@ export function showStandings(title: string, round: number, rows: StandingsRow[]
 /**
  * Round 1's brain in every vs CPU or Multiplayer match (tracks-v2 plan, "A fresh random brain at the start of every
  * game"): a new random starter from a fresh crypto seed (starterSpec: 2–6 inputs, one at least a boundary vector cell,
- * 3 tanh), untrained like every new brain, drawn again until it fits round 1's budget. Nothing comes from the sandbox
+ * 3 Linear), untrained like every new brain, drawn again until it fits round 1's budget. Nothing comes from the sandbox
  * brain or an earlier match. Checks: `?starter=default` (dev server only) starts from defaultSpec(), the fixture
  * their Node runs use.
  */

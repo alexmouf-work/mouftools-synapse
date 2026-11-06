@@ -1,9 +1,9 @@
 // Sense cells read from the car and the track, through the rules in senses.ts (one definition, shared with the
 // designer's graphs). Boundary vector cells: a wall inside a 20 m field facing one way, sampled by three short rays
-// across the field. Landmark cells: the finish line within 40 m, in the field's direction. Head direction: the cosine
+// across the field. Long-range boundary vector cells: the same out to 60 m (senses plan §3). Head direction: the cosine
 // of the heading against the preferred one. Grid cells: the hexagonal pattern at the car's position. Speed: v / top.
 // Each cell reads with its own learned tuning (net.tune, decoded from its field parameters; B2e).
-import { atan2, cos, PI, sin, wrapAngle } from '../fmath';
+import { cos, PI, sin } from '../fmath';
 import { SENSE_CODE, type Net } from './brain';
 import { fieldAct, gridAct, hdAct, speedAct } from './senses';
 import { castRay, hiddenLayer, type Track } from './track';
@@ -33,33 +33,14 @@ export function boundaryValue(c: CarState, t: Track, dir: number, w: number, R: 
   return best;
 }
 
-/** The finish line: the segment across the road at the start, wall to wall (its nearest point to the car). */
-export function finishPoint(c: CarState, t: Track): { qx: number; qy: number } {
-  const i = t.startIdx, nx = -t.ty[i], ny = t.tx[i], h = t.wallOff;
-  const ax = t.px[i] + nx * h, ay = t.py[i] + ny * h, ex = -2 * nx * h, ey = -2 * ny * h;
-  let u = ((c.x - ax) * ex + (c.y - ay) * ey) / (ex * ex + ey * ey);
-  u = u < 0 ? 0 : u > 1 ? 1 : u;
-  return { qx: ax + ex * u, qy: ay + ey * u };
-}
-
-/** A landmark cell with field (dir °, width °, range m): the finish line inside it (distance and bearing). */
-export function landmarkValue(c: CarState, t: Track, dir: number, w: number, R: number): number {
-  const { qx, qy } = finishPoint(c, t), dx = qx - c.x, dy = qy - c.y;
-  const d = Math.sqrt(dx * dx + dy * dy);
-  const bearing = d > 1e-9 ? -wrapAngle(atan2(dy, dx) - c.hdg) / DEG : 0; // degrees clockwise from the nose
-  let off = bearing - dir;
-  off -= 360 * Math.round(off / 360);
-  return fieldAct(off, d, R, w);
-}
-
 /** Every sense cell's value for car c, in net input order, into out. */
 export function readSensors(c: CarState, t: Track, net: Net, out: Float64Array): void {
   const tu = net.tune;
   for (let i = 0; i < net.nIn; i++) {
     const q = 4 * i;
     switch (net.sense[i]) {
-      case SENSE_CODE.boundary: out[i] = boundaryValue(c, t, tu[q], tu[q + 1], tu[q + 2], net.ray, 2 * i); break;
-      case SENSE_CODE.landmark: out[i] = landmarkValue(c, t, tu[q], tu[q + 1], tu[q + 2]); break;
+      case SENSE_CODE.boundary:
+      case SENSE_CODE.far: out[i] = boundaryValue(c, t, tu[q], tu[q + 1], tu[q + 2], net.ray, 2 * i); break;
       case SENSE_CODE.hd: out[i] = hdAct(c.hdg, tu[q]); break;
       case SENSE_CODE.grid: out[i] = gridAct(c.x, c.y, tu[q], net.gridPhase[i], tu[q + 1], tu[q + 2], tu[q + 3]); break;
       default: out[i] = speedAct(c.v, tu[q]);

@@ -7,7 +7,7 @@
 // has no `temps`: its phases ran at 0 (×1). A save from before the learned fields (B2e) gets every field at its
 // default (0).
 import { genomeToJSON, zeroGenome } from '../../../common/sim/brain';
-import { biasCount, fieldCount, starterSpec, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
+import { biasCount, fieldCount, migrateGenome, starterSpec, validateGenome, validateSpec, wireCount, type Genome } from '../../../common/sim/spec';
 import { validTemperature } from '../../../common/train/trainer';
 
 export const SAVE_KEY = 'synapse.brain';
@@ -55,6 +55,8 @@ export function parse(text: string | null): { status: 'ok' | 'missing' | 'corrup
     if (!Array.isArray(temps) || temps.length !== train.phases || !temps.every(validTemperature)) throw new Error('save temps');
     if (!TRAINERS.includes(o.trainer as TrainerId)) throw new Error('save trainer');
     if (!o.genome) throw new Error('save genome');
+    // a save from before the long-range cell: its landmark cells load as long-range boundary cells (senses plan §3)
+    o.genome = migrateGenome(o.genome);
     validateSpec(o.genome.spec);
     // older brain v2 saves: weights only (before B2b) or weights and biases (before B2e); the rest start at 0 (no bias,
     // the even spread of fields), so they drive exactly as they did

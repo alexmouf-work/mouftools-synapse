@@ -17,7 +17,7 @@ import { fieldGrads } from '../../src/common/sim/fieldgrad';
 import { trainerRefusal } from '../../src/common/train/trainer';
 
 /** One speed cell → one neuron (fn) → the four wheels (tanh). Parameters: speed→h, h→FL, FR, RL, RR; biases h, FL, FR, RL, RR. */
-const tiny = (fn: 'tanh' | 'sigmoid' | 'relu' | 'linear'): BrainSpec => ({ v: 2, senses: { boundary: 0, landmark: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
+const tiny = (fn: 'tanh' | 'sigmoid' | 'relu' | 'linear'): BrainSpec => ({ v: 2, senses: { boundary: 0, far: 0, hd: 0, grid: 0, speed: 1 }, layers: [{ n: 1, fn }] });
 const W = [0.6, 0.8, -0.3, 0.5, 0.2, 0.1, -0.2, 0.05, 0, 0.3, 0]; // …then the speed cell's field (gain ×1)
 const SPD = 0.5, TARGET = 0.9;
 const F: Record<string, [(z: number) => number, (z: number) => number]> = {

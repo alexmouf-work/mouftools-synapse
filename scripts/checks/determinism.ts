@@ -29,7 +29,7 @@ const PHASE_T = 600_000; // a few generations of 60 s episodes
 const goldenPath = fileURLToPath(new URL('./golden.json', import.meta.url));
 
 const EIGHT_TRACK = 13; // a figure eight (track families, B5)
-const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, landmark: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 6, fn: 'relu' }, { n: 4, fn: 'sigmoid' }] };
+const HEAVY: BrainSpec = { v: 2, senses: { boundary: 3, far: 2, hd: 2, grid: 2, speed: 1 }, layers: [{ n: 6, fn: 'relu' }, { n: 4, fn: 'sigmoid' }] };
 
 /** A recorded 30 s race of `spec` with seeded random weights on the seed's unseen track (or the given one). */
 function raceHash(seed: number, spec: BrainSpec, track = phaseSeeds(seed).unseenTrack): string {
