@@ -315,3 +315,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   "default the processing method to linear." · "swap the landmark cell for a long-range boundary vector cell. come up
   with an appropriate icon for it." · "make the head direction cell's icon rotate the correct direction (following the
   arrow around)" → `docs/plans/2026-11-05-senses-and-lobby-music.md`.
+- "promote development to main." (2026-11-06) → main fast-forwarded to development at 67d28ce (tracks v2, track choice,
+  match settings and host, follow a racer, broadcast camera, timed rounds in Multiplayer, loading fix).
