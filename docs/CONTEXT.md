@@ -319,3 +319,6 @@ Rulings from the principal, verbatim where quoted. Newest last.
   match settings and host, follow a racer, broadcast camera, timed rounds in Multiplayer, loading fix).
 - "find a way to enormously accelerate the training methods besides evolution." (2026-11-06) →
   `docs/plans/2026-11-06-fast-gradient-trainers.md` (profile first; ≥3× faster and better S1 per T).
+- "push to main please." (2026-11-06) → main fast-forwarded to development at 5a913b1 (3 rounds by best race, training on
+  the race track, camera sight lines and POV, race clock from Go, larger sidebar buttons, long-range boundary cell,
+  lobby music, Linear default, faster and better gradient trainers).
