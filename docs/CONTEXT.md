@@ -317,3 +317,5 @@ Rulings from the principal, verbatim where quoted. Newest last.
   arrow around)" → `docs/plans/2026-11-05-senses-and-lobby-music.md`.
 - "promote development to main." (2026-11-06) → main fast-forwarded to development at 67d28ce (tracks v2, track choice,
   match settings and host, follow a racer, broadcast camera, timed rounds in Multiplayer, loading fix).
+- "find a way to enormously accelerate the training methods besides evolution." (2026-11-06) →
+  `docs/plans/2026-11-06-fast-gradient-trainers.md` (profile first; ≥3× faster and better S1 per T).
