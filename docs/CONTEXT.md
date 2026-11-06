@@ -324,3 +324,7 @@ Rulings from the principal, verbatim where quoted. Newest last.
   lobby music, Linear default, faster and better gradient trainers).
 - "the % speed vs brain shouldn't be capped at 20, it should always be 100, but the amount that 100 represents should
   increase. the car shouldn't go really fast at the beginning" (2026-11-06) → `docs/plans/2026-11-06-round-power.md`.
+- "the CPU brains need to incorporate multiple layers, multiple types of processing styles and need to vary the number and
+  type of input neurons that they use. currently the brains have a huge number of input neurons, a medium number of hidden
+  layer 1 neurons, and then outputs, almost always." · "the brain graph in the corner should also show the input neuron
+  types." (2026-11-06) → `docs/plans/2026-11-06-cpu-designs-and-card-icons.md`.
