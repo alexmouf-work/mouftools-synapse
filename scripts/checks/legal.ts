@@ -1,8 +1,8 @@
-// Legal pages check: build, then serve dist/ with vercel.json's redirects and rewrites applied (a small stand-in for
-// Vercel's router: exact sources and the catch-all), and check in headless Chromium that
-// /privacy, /terms and /cookies serve their pages at clean slugs, /privacy.html redirects to /privacy, other paths
-// still fall back to the app, the first-visit notice shows, links to the policy, goes once dismissed and stays gone,
-// the workbench links to all three pages, no cookies are set, nothing scrolls sideways on a phone, console clean.
+// Legal check: the privacy policy and terms are MOUFTOOLS-wide, at mouftools.com (principal 2026-11-12). Build, then serve
+// dist/ with vercel.json's redirects and rewrites applied (a small stand-in for Vercel's router: exact sources and the
+// catch-all), and check in headless Chromium that /privacy, /terms and /cookies (and their .html forms) redirect to the
+// Synapse sections of the shared pages, other paths still fall back to the app, the first-visit notice shows, links the
+// policy, goes once dismissed and stays gone, the title rail links both pages, no cookies are set, console clean.
 //   npx tsx scripts/checks/legal.ts
 import { readFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -11,8 +11,8 @@ import { chromium, type Browser } from 'playwright';
 import { build } from 'vite';
 
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
-const PAGES = ['privacy', 'terms', 'cookies'];
-const CONTACT = 'alexander@enkefalos.co.uk';
+const PRIVACY = 'https://mouftools.com/privacy#synapse', TERMS = 'https://mouftools.com/terms#synapse';
+const SLUGS: [string, string][] = [['/privacy', PRIVACY], ['/cookies', PRIVACY], ['/terms', TERMS]];
 let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 
@@ -23,12 +23,7 @@ const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javas
 
 async function main() {
   await build({ logLevel: 'warn' });
-  for (const p of PAGES) {
-    const f = `dist/${p}.html`;
-    check(existsSync(f) && readFileSync(f, 'utf8').includes(CONTACT), `${f} built, with the contact address`);
-  }
-  const rw = vercel.rewrites.map((r) => r.source), catchAll = rw.indexOf('/(.*)');
-  check(PAGES.every((p) => { const i = rw.indexOf(`/${p}`); return i >= 0 && i < catchAll; }), 'vercel.json: each slug rewrite comes before the app catch-all');
+  check(['privacy', 'terms', 'cookies'].every((p) => !existsSync(`dist/${p}.html`)), 'no legal pages of its own in dist/ (they live at mouftools.com)');
 
   // a stand-in for Vercel: redirects, then a real file, then rewrites (first match wins)
   const server = createServer((req, res) => {
@@ -50,9 +45,9 @@ async function main() {
   if (!addr || typeof addr === 'string') throw new Error('no address');
   const base = `http://127.0.0.1:${addr.port}`;
 
-  for (const p of PAGES) {
-    const r = await fetch(`${base}/${p}.html`, { redirect: 'manual' });
-    check(r.status === 308 && r.headers.get('location') === `/${p}`, `/${p}.html redirects to /${p}`);
+  for (const [slug, to] of SLUGS) for (const path of [slug, `${slug}.html`]) {
+    const r = await fetch(`${base}${path}`, { redirect: 'manual' });
+    check(r.status === 307 && r.headers.get('location') === to, `${path} redirects to ${to}`);
   }
 
   let browser: Browser;
@@ -66,18 +61,11 @@ async function main() {
 
     await page.goto(`${base}/`);
     await page.waitForSelector('#notice', { timeout: 10000 });
-    check(await page.locator('#notice a[href="/cookies"]').count() === 1, 'first visit: the notice shows, linking the cookie policy');
+    check(await page.locator(`#notice a[href="${PRIVACY}"]`).count() === 1, 'first visit: the notice shows, linking the privacy policy');
     const links = await page.$$eval('#title .rail .legal-links a', (as) => as.map((a) => a.getAttribute('href')));
-    check(JSON.stringify(links) === JSON.stringify(PAGES.map((p) => `/${p}`)), `title rail links: ${links.join(' ')}`);
+    check(JSON.stringify(links) === JSON.stringify([PRIVACY, TERMS]), `title rail links: ${links.join(' ')}`);
     const nb = await page.locator('#notice').boundingBox();
     check(!!nb && Math.abs(nb.y + nb.height - 800) < 1, 'notice sits at the bottom of the screen');
-
-    for (const p of PAGES) {
-      const r = await page.goto(`${base}/${p}`);
-      const h1 = await page.locator('h1').textContent();
-      check(r?.status() === 200 && page.url() === `${base}/${p}` && /policy|terms/i.test(h1 ?? ''), `/${p} serves "${h1}" at a clean slug`);
-      check(await page.locator(`nav a[href="/${p}"][aria-current="page"]`).count() === 1, `/${p}: nav marks the current page`);
-    }
 
     await page.locator('#notice button').click();
     check(await page.locator('#notice').count() === 0, 'OK dismisses the notice');
@@ -89,26 +77,10 @@ async function main() {
     await page.goto(`${base}/`);
     check(await page.locator('#notice').count() === 1 && /your name, your chosen track/.test(await page.locator('#notice').innerText()), 'a visitor who dismissed version 2 sees the notice again (it now names the name and the chosen track)');
     await page.locator('#notice button').click();
-    // the cookie policy's table lists every key the app stores
-    await page.goto(`${base}/cookies`);
-    const keys = await page.$$eval('table tbody td:first-child code', (cs) => cs.map((c) => c.textContent));
-    const want = ['synapse.brain', 'synapse.name', 'synapse.notice', 'synapse.sound', 'synapse.track'];
-    check(JSON.stringify(keys) === JSON.stringify(want), `the cookie policy's table: ${keys.join(', ')}`);
     const r = await page.goto(`${base}/some/unknown/path`);
     check(r?.status() === 200 && await page.locator('.app').count() === 1, 'an unknown path still falls back to the app');
     check((await ctx.cookies()).length === 0, 'no cookies set');
-
-    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
-    const pp = await phone.newPage();
-    pp.on('pageerror', (e) => errors.push(String(e)));
-    for (const p of PAGES) {
-      await pp.goto(`${base}/${p}`);
-      const [sw, iw] = await pp.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
-      check(sw <= iw, `/${p} on a phone: no sideways scroll (${sw} ≤ ${iw})`);
-    }
-    const bg = await pp.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    check(bg === 'rgb(21, 24, 30)', `dark mode follows the system (${bg})`);
-    await phone.close(); await ctx.close();
+    await ctx.close();
   } finally {
     await browser.close();
     server.close();

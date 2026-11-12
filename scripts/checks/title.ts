@@ -59,11 +59,7 @@ async function main() {
 
     // 2. the rail: legal links (resolving) and the credits; the designer's rule strip no longer carries them
     const rail = await page.evaluate(() => ({ links: [...document.querySelectorAll('#title .rail .legal-links a')].map((a) => a.getAttribute('href')), text: (document.querySelector('#title .rail') as HTMLElement).innerText }));
-    check(JSON.stringify(rail.links) === JSON.stringify(['/privacy', '/terms', '/cookies']) && /Music: DM DOKURO · “Airport Lounge” Kevin MacLeod \(CC BY 4\.0\)/.test(rail.text), `rail: ${rail.links.join(' ')} · ${rail.text.split('\n').pop()}`);
-    for (const p of ['privacy', 'terms', 'cookies']) {
-      const r = await page.request.get(`${base}${p}.html`);
-      check(r.status() === 200 && (await r.text()).includes('<h1'), `/${p} resolves (dev: ${p}.html; the slugs are checked on the production build by check:legal)`);
-    }
+    check(JSON.stringify(rail.links) === JSON.stringify(['https://mouftools.com/privacy#synapse', 'https://mouftools.com/terms#synapse']) && /Music: DM DOKURO · “Airport Lounge” Kevin MacLeod \(CC BY 4\.0\)/.test(rail.text), `rail: ${rail.links.join(' ')} · ${rail.text.split('\n').pop()}`);
     check(await page.locator('.rulebar .legal-links').count() === 0, 'the Learning Rule strip has no legal line any more');
 
     // 3. vs CPU → its settings screen (no designer; Main menu straight back) → Start match → the designer in match mode

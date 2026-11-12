@@ -1,7 +1,7 @@
 // First-visit storage notice (UK GDPR / PECR). Synapse stores only what it needs to work: the brain you build
 // (`synapse.brain`), the name you play under (`synapse.name`), the sandbox's chosen track (`synapse.track`), whether you
-// turned the music or sound effects off (`synapse.sound`) and the fact that you've seen this notice (`synapse.notice`). All are strictly necessary, so no consent is needed; the notice tells you, links the cookie
-// policy, and goes away once dismissed. No cookies are set.
+// turned the music or sound effects off (`synapse.sound`) and the fact that you've seen this notice (`synapse.notice`). All are strictly necessary, so no consent is needed; the notice tells you, links the
+// MOUFTOOLS privacy policy (whose Synapse section lists these keys), and goes away once dismissed. No cookies are set.
 // Storage can be missing or throw (private windows, blocked site data): the notice then shows and simply can't remember.
 import './notice.css';
 
@@ -20,7 +20,7 @@ export function showNotice(): void {
   bar.setAttribute('role', 'region');
   bar.setAttribute('aria-label', 'Cookies and storage');
   bar.innerHTML = '<p>Synapse keeps your brain, your name, your chosen track and whether the sound is off on this device so they are there next time. No tracking, no ads, no '
-    + 'cookies. <a href="/cookies">Cookie policy</a></p><button type="button">OK</button>';
+    + 'cookies. <a href="https://mouftools.com/privacy#synapse">Privacy policy</a></p><button type="button">OK</button>';
   bar.querySelector('button')!.addEventListener('click', () => {
     try { localStorage.setItem(NOTICE_KEY, NOTICE_VERSION); } catch { /* can't remember: it shows again next time */ }
     ro.disconnect();

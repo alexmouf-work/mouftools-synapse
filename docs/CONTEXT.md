@@ -334,3 +334,9 @@ Rulings from the principal, verbatim where quoted. Newest last.
   the top of the sidebar (≥48 px; Escape also stops); matches keep no Stop.
 - "push to main please." (2026-11-06) → main fast-forwarded to development (round power, CPU design styles, card symbols,
   long-range cell inverted, race timer on the race clock, sandbox Stop button).
+- "give the mouftools.com website a privacy policy and terms of use, then link all of the other mouftools sites to it,
+  making sure they all have one." (2026-11-12) → Synapse's own privacy, terms and cookie pages are gone: the policy and
+  terms are MOUFTOOLS-wide at mouftools.com/privacy and /terms (Synapse's section carries what these pages said: the five
+  storage keys, matches in Supabase deleted within 30 days, the music credits). /privacy, /terms and /cookies redirect
+  there (307), the title rail links both, the notice links the policy. Supersedes the page half of
+  `docs/plans/2026-11-04-legal-pages.md`; the notice stays as it was. main moved with it.

@@ -4,7 +4,7 @@
 // a hidden or unfocused tab (principal 2026-11-04: "it should keep playing even when not focused"). Two toggles are the
 // only off switches (2026-11-04: "have one toggle for engine sounds and another for music."): Music mutes the music bus,
 // Sound effects mutes the effects bus (engines, tyres, countdown blips); the master stays at 1. Both are remembered in
-// localStorage `synapse.sound` as {"music":true,"sfx":true} (strictly necessary; listed on /cookies); the old 'off' /
+// localStorage `synapse.sound` as {"music":true,"sfx":true} (strictly necessary; listed in the MOUFTOOLS privacy policy); the old 'off' /
 // 'on' reads as both off / both on.
 // Nothing here touches the sim: src/common stays pure.
 

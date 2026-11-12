@@ -530,7 +530,7 @@ show, or null); `init` throws the same sentence. All pass `contract.test.ts`.
   behind the same PostgREST shape, in memory, checking the anon key (with T2's settings, max players and host handover).
 - T2 additions to the checks: check:workbench (the Track picker), check:race (vs CPU's settings screen and the map
   modes), check:multiplayer (host tag and header, settings, max players, the map on every race, locked mid-match, Play
-  again → lobby, host handover), check:legal (the cookie table's keys, notice version 3), check:title (vs CPU → the
+  again → lobby, host handover), check:legal (the legal slugs redirect to mouftools.com's shared pages, notice version 3), check:title (vs CPU → the
   settings screen).
 - `scripts/checks/multiplayer.ts` — Multiplayer in headless Chromium against the stand-in: the code screen (the
   fourth letter checks; a code with no room says so and selects the letters), Create a room → the name screen (spaces

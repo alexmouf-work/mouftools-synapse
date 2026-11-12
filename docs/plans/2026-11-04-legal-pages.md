@@ -1,5 +1,8 @@
 # Privacy, terms, cookies (built 2026-11-04)
 
+> **Superseded in part, 2026-11-12:** the pages moved to the MOUFTOOLS-wide policy and terms at mouftools.com; Synapse's
+> slugs redirect there. The first-visit notice below is unchanged. See CONTEXT.md, 2026-11-12.
+
 Principal: "give the site a privacy policy and terms of service … normal looking slugs (eg synapse.mouftools.com/privacy)
 … keep them simple, add cookie policy and make sure that we comply with UK GDPR, adding a cookie banner at the bottom
 when first accessing the site." Controller: Alexander Moufarrige; contact alexander@enkefalos.co.uk (principal's

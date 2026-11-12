@@ -9,7 +9,7 @@ import { chromium, type Browser } from 'playwright';
 import { build } from 'vite';
 
 const CHROMIUM = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
-const PAGES = ['index', 'privacy', 'terms', 'cookies'];
+const PAGES = ['index'];
 let fails = 0;
 const check = (cond: boolean, what: string) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) fails++; };
 /** Width and height from a PNG's IHDR chunk. */
